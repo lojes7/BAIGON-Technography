@@ -1,0 +1,354 @@
+version: "3.9"
+
+services:
+  # ==================== 基础设施 ====================
+
+  # Consul — 服务注册与发现
+  consul:
+    image: hashicorp/consul:${CONSUL_VERSION:-1.19}
+    container_name: baigon-consul
+    ports:
+      - "${CONSUL_PORT}:8500"
+    command: agent -server -bootstrap-expect=1 -ui -client=0.0.0.0
+    healthcheck:
+      test: ["CMD", "consul", "members"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - baigon-net
+
+  # Zookeeper — Kafka 依赖
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: baigon-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "${ZOOKEEPER_PORT}:2181"
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - baigon-net
+
+  # Kafka — 消息队列
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: baigon-kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "${KAFKA_PORT}:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:${KAFKA_PORT:-9092}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:29092"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks:
+      - baigon-net
+
+  # PostgreSQL 16 + pgvector
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: baigon-postgres
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      # crawler_service 
+      CRAWLER_DB_NAME: ${CRAWLER_DB_NAME}
+      CRAWLER_DB_USER: ${CRAWLER_DB_USER}
+      CRAWLER_DB_PASSWORD: ${CRAWLER_DB_PASSWORD}
+
+      # ai_service
+      AI_DB_NAME: ${AI_DB_NAME}
+      AI_DB_USER: ${AI_DB_USER}
+      AI_DB_PASSWORD: ${AI_DB_PASSWORD}
+
+      # data_source_service
+      DATA_SOURCE_DB_NAME: ${DATA_SOURCE_DB_NAME}
+      DATA_SOURCE_DB_USER: ${DATA_SOURCE_DB_USER}
+      DATA_SOURCE_DB_PASSWORD: ${DATA_SOURCE_DB_PASSWORD}
+
+      # occupation_service
+      OCCUPATION_DB_NAME: ${OCCUPATION_DB_NAME}
+      OCCUPATION_DB_USER: ${OCCUPATION_DB_USER}
+      OCCUPATION_DB_PASSWORD: ${OCCUPATION_DB_PASSWORD}
+
+      # user_service 
+      USER_DB_NAME: ${USER_DB_NAME}
+      USER_DB_USER: ${USER_DB_USER}
+      USER_DB_PASSWORD: ${USER_DB_PASSWORD}
+
+      # university_service 
+      UNIVERSITY_DB_NAME: ${UNIVERSITY_DB_NAME}
+      UNIVERSITY_DB_USER: ${UNIVERSITY_DB_USER}
+      UNIVERSITY_DB_PASSWORD: ${UNIVERSITY_DB_PASSWORD}
+
+      # file_service 
+      FILE_DB_NAME: ${FILE_DB_NAME}
+      FILE_DB_USER: ${FILE_DB_USER}
+      FILE_DB_PASSWORD: ${FILE_DB_PASSWORD}
+    volumes:
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - baigon-net
+
+  # MinIO — 文件存储（兼容 S3）
+  minio:
+    image: minio/minio:latest
+    container_name: baigon-minio
+    ports:
+      - "${MINIO_PORT}:9000"
+      - "${MINIO_CONSOLE_PORT}:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    command: server /data --console-address ":9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - baigon-net
+
+  # ==================== 业务服务 ====================
+
+  # gateway_service — Go + GIN 网关
+  gateway:
+    build: ./gateway
+    container_name: baigon-gateway-service
+    ports:
+      - "${GATEWAY_PORT}:8080"
+    environment:
+      CONSUL_ADDR: consul:8500
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION_HOURS: ${JWT_EXPIRATION_HOURS}
+    depends_on:
+      consul:
+        condition: service_healthy
+    networks:
+      - baigon-net
+
+  # crawler_service — Python 爬虫服务
+  crawler:
+    build: ./crawler
+    container_name: baigon-crawler-service
+    ports:
+      - "${CRAWLER_GRPC_PORT}:50051"
+    environment:
+      CONSUL_ADDR: consul:8500
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${CRAWLER_DB_NAME}
+      DB_USER: ${CRAWLER_DB_USER}
+      DB_PASSWORD: ${CRAWLER_DB_PASSWORD}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      GRPC_PORT: 50051
+    depends_on:
+      consul:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - baigon-net
+
+  # data_source_service — Java 数据治理服务
+  data-source:
+    build: ./data-source
+    container_name: baigon-data-source-service
+    ports:
+      - "${DATA_SOURCE_GRPC_PORT}:50052"
+    environment:
+      CONSUL_ADDR: consul:8500
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DATA_SOURCE_DB_NAME}
+      DB_USER: ${DATA_SOURCE_DB_USER}
+      DB_PASSWORD: ${DATA_SOURCE_DB_PASSWORD}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      GRPC_PORT: 50052
+      SERVER_PORT: 8081
+    depends_on:
+      consul:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - baigon-net
+
+  # ai_service — Python AI 服务
+  ai:
+    build: ./ai
+    container_name: baigon-ai-service
+    ports:
+      - "${AI_GRPC_PORT}:50053"
+    environment:
+      CONSUL_ADDR: consul:8500
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${AI_DB_NAME}
+      DB_USER: ${AI_DB_USER}
+      DB_PASSWORD: ${AI_DB_PASSWORD}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      GRPC_PORT: 50053
+      APPID: ${APPID}
+      API_KEY: ${API_KEY}
+      API_SECRET: ${API_SECRET}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY}
+    depends_on:
+      consul:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - baigon-net
+
+  # occupation_service — Java 岗位分析服务
+  occupation:
+    build: ./occupation
+    container_name: baigon-occupation-service
+    ports:
+      - "${OCCUPATION_GRPC_PORT}:50054"
+    environment:
+      CONSUL_ADDR: consul:8500
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${OCCUPATION_DB_NAME}
+      DB_USER: ${OCCUPATION_DB_USER}
+      DB_PASSWORD: ${OCCUPATION_DB_PASSWORD}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      GRPC_PORT: 50054
+      SERVER_PORT: 8082
+    depends_on:
+      consul:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - baigon-net
+
+  # user_service — Java 用户服务
+  user:
+    build: ./user
+    container_name: baigon-user-service
+    ports:
+      - "${USER_GRPC_PORT}:50055"
+    environment:
+      CONSUL_ADDR: consul:8500
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${USER_DB_NAME}
+      DB_USER: ${USER_DB_USER}
+      DB_PASSWORD: ${USER_DB_PASSWORD}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      GRPC_PORT: 50055
+      SERVER_PORT: 8083
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      consul:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - baigon-net
+
+  # university_service — Java 院校服务
+  university:
+    build: ./university
+    container_name: baigon-university-service
+    ports:
+      - "${UNIVERSITY_GRPC_PORT}:50056"
+    environment:
+      CONSUL_ADDR: consul:8500
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${UNIVERSITY_DB_NAME}
+      DB_USER: ${UNIVERSITY_DB_USER}
+      DB_PASSWORD: ${UNIVERSITY_DB_PASSWORD}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      GRPC_PORT: 50056
+      SERVER_PORT: 8084
+    depends_on:
+      consul:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - baigon-net
+
+  # file_service — Java 文件服务
+  file:
+    build: ./file
+    container_name: baigon-file-service
+    ports:
+      - "${FILE_GRPC_PORT}:50057"
+    environment:
+      CONSUL_ADDR: consul:8500
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${FILE_DB_NAME}
+      DB_USER: ${FILE_DB_USER}
+      DB_PASSWORD: ${FILE_DB_PASSWORD}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      GRPC_PORT: 50057
+      SERVER_PORT: 8085
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+    depends_on:
+      consul:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - baigon-net
+
+# ==================== 网络与数据卷 ====================
+networks:
+  baigon-net:
+    driver: bridge
+
+volumes:
+  pgdata:
+  miniodata:

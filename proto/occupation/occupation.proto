@@ -1,0 +1,12 @@
+// 百工谱 — occupation_service 接口定义
+// 岗位演化分析、新岗位涌现检测、动态岗位能力图谱
+
+syntax = "proto3";
+
+package baigon.occupation;
+
+option java_package = "com.baigon.occupation";
+option java_multiple_files = true;
+option go_package = "baigon-technography/proto/gen/occupation;occupation";
+
+import "common/evidence.proto";

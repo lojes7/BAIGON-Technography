@@ -1,0 +1,12 @@
+// 百工谱 — data_source_service 接口定义
+// 数据清洗、质量治理、人工复核工作流
+
+syntax = "proto3";
+
+package baigon.data_source;
+
+option java_package = "com.baigon.datasource";
+option java_multiple_files = true;
+option go_package = "baigon-technography/proto/gen/datasource;datasource";
+
+import "common/evidence.proto";

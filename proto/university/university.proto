@@ -1,0 +1,12 @@
+// 百工谱 — university_service 接口定义
+// 院校专业管理、课程能力覆盖分析、培养方案评估
+
+syntax = "proto3";
+
+package baigon.university;
+
+option java_package = "com.baigon.university";
+option java_multiple_files = true;
+option go_package = "baigon-technography/proto/gen/university;university";
+
+import "common/evidence.proto";

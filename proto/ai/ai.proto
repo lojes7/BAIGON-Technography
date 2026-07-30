@@ -1,0 +1,18 @@
+// 百工谱 — ai_service 接口定义
+// LLM 结构化抽取、文本嵌入、语义归一
+
+syntax = "proto3";
+
+package baigon.ai;
+
+option java_package = "com.baigon.ai";
+option java_multiple_files = true;
+option go_package = "baigon-technography/proto/gen/ai;aipb";
+
+import "common/evidence.proto";
+
+// ==================== 服务定义 ====================
+
+service AIService {
+  // JD 结构化抽取
+}

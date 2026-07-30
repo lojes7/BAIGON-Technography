@@ -1,0 +1,12 @@
+// 百工谱 — crawler_service 接口定义
+// 多源数据采集服务
+
+syntax = "proto3";
+
+package baigon.crawler;
+
+option java_package = "com.baigon.crawler";
+option java_multiple_files = true;
+option go_package = "baigon-technography/proto/gen/crawler;crawler";
+
+import "common/evidence.proto";
