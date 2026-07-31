@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   # ==================== 基础设施 ====================
 
@@ -313,7 +311,7 @@ services:
     networks:
       - baigon-net
 
-  # file_service — Java 文件服务
+  # file_service — 文件服务
   file:
     build: ./file
     container_name: baigon-file-service

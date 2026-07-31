@@ -7,6 +7,7 @@ WORKDIR /build
 
 # 利用 Docker 层缓存，先拷贝 pom.xml 下载依赖
 COPY pom.xml .
+RUN mkdir -p /root/.m2 && echo '<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"><mirrors><mirror><id>aliyun</id><mirrorOf>central</mirrorOf><name>Aliyun</name><url>https://maven.aliyun.com/repository/public</url></mirror></mirrors></settings>' > /root/.m2/settings.xml
 RUN mvn dependency:go-offline -B
 
 # 拷贝源码并打包
