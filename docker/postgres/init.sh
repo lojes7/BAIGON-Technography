@@ -10,6 +10,8 @@ GRANT ALL PRIVILEGES ON DATABASE "${CRAWLER_DB_NAME}" TO "${CRAWLER_DB_USER}";
 \c "${CRAWLER_DB_NAME}"
 CREATE EXTENSION IF NOT EXISTS vector;
 GRANT ALL ON SCHEMA public TO "${CRAWLER_DB_USER}";
+
+\i ./service-init/crawler_init.sql
 SQL
 
 # data_source_service
@@ -20,6 +22,8 @@ GRANT ALL PRIVILEGES ON DATABASE "${DATA_SOURCE_DB_NAME}" TO "${DATA_SOURCE_DB_U
 \c "${DATA_SOURCE_DB_NAME}"
 CREATE EXTENSION IF NOT EXISTS vector;
 GRANT ALL ON SCHEMA public TO "${DATA_SOURCE_DB_USER}";
+
+\i ./service-init/data_source_init.sql
 SQL
 
 # occupation_service
@@ -39,6 +43,9 @@ CREATE USER "${USER_DB_USER}" WITH PASSWORD '${USER_DB_PASSWORD}';
 GRANT ALL PRIVILEGES ON DATABASE "${USER_DB_NAME}" TO "${USER_DB_USER}";
 \c "${USER_DB_NAME}"
 GRANT ALL ON SCHEMA public TO "${USER_DB_USER}";
+
+\i ./service-init/user_init.sql
+\i ./service-init/user_data.sql
 SQL
 
 # file_service

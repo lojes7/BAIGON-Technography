@@ -38,9 +38,9 @@ CREATE TYPE "semester" AS ENUM (
 );
 
 CREATE TABLE "logs" (
-    "created_at" timestamptz NOT NULL DEFAULT (now()),
-    "updated_at" timestamptz NOT NULL DEFAULT (now()),
-    "deleted_at" timestamptz,
+    "created_at" timestamp with time zone NOT NULL DEFAULT (now()),
+    "updated_at" timestamp with time zone NOT NULL DEFAULT (now()),
+    "deleted_at" timestamp with time zone,
     "id" bigint PRIMARY KEY,
     "trace_id" bigint,
     "user_id" bigint NOT NULL,
@@ -54,76 +54,84 @@ CREATE TABLE "logs" (
 );
 
 CREATE TABLE "users" (
-    "created_at" timestamptz NOT NULL DEFAULT (now()),
-    "updated_at" timestamptz NOT NULL DEFAULT (now()),
-    "deleted_at" timestamptz,
+    "created_at" timestamp with time zone NOT NULL DEFAULT (now()),
+    "updated_at" timestamp with time zone NOT NULL DEFAULT (now()),
+    "deleted_at" timestamp with time zone,
     "id" bigint PRIMARY KEY,
     "name" varchar(8) NOT NULL,
-    "uid" varchar(16) NOT NULL UNIQUE,
+    "uid" varchar(16) NOT NULL,
     "password" varchar(64) NOT NULL,
     "role" role NOT NULL,
     "status" user_status NOT NULL DEFAULT 'NORMAL'
 );
 
+CREATE UNIQUE INDEX ON "users" ("uid") WHERE "deleted_at" IS NULL;
+
 CREATE TABLE "students" (
-    "created_at" timestamptz NOT NULL DEFAULT (now()),
-    "updated_at" timestamptz NOT NULL DEFAULT (now()),
-    "deleted_at" timestamptz,
+    "created_at" timestamp with time zone NOT NULL DEFAULT (now()),
+    "updated_at" timestamp with time zone NOT NULL DEFAULT (now()),
+    "deleted_at" timestamp with time zone,
     "id" bigint PRIMARY KEY,
-    "user_id" bigint UNIQUE NOT NULL REFERENCES "users" ("id"),
+    "user_id" bigint NOT NULL REFERENCES "users" ("id"),
     "department_id" bigint
 );
+
+CREATE UNIQUE INDEX ON "students" ("user_id") WHERE "deleted_at" IS NULL;
 
 CREATE TABLE "teachers" (
-    "created_at" timestamptz NOT NULL DEFAULT (now()),
-    "updated_at" timestamptz NOT NULL DEFAULT (now()),
-    "deleted_at" timestamptz,
+    "created_at" timestamp with time zone NOT NULL DEFAULT (now()),
+    "updated_at" timestamp with time zone NOT NULL DEFAULT (now()),
+    "deleted_at" timestamp with time zone,
     "id" bigint PRIMARY KEY,
-    "user_id" bigint UNIQUE NOT NULL REFERENCES "users" ("id"),
+    "user_id" bigint NOT NULL REFERENCES "users" ("id"),
     "department_id" bigint
 );
+
+CREATE UNIQUE INDEX ON "teachers" ("user_id") WHERE "deleted_at" IS NULL;
 
 CREATE TABLE "student_affairs" (
-    "created_at" timestamptz NOT NULL DEFAULT (now()),
-    "updated_at" timestamptz NOT NULL DEFAULT (now()),
-    "deleted_at" timestamptz,
+    "created_at" timestamp with time zone NOT NULL DEFAULT (now()),
+    "updated_at" timestamp with time zone NOT NULL DEFAULT (now()),
+    "deleted_at" timestamp with time zone,
     "id" bigint PRIMARY KEY,
-    "user_id" bigint UNIQUE NOT NULL REFERENCES "users" ("id"),
+    "user_id" bigint NOT NULL REFERENCES "users" ("id"),
     "department_id" bigint
 );
 
+CREATE UNIQUE INDEX ON "student_affairs" ("user_id") WHERE "deleted_at" IS NULL;
+
 CREATE TABLE "universities" (
-    "created_at" timestamptz NOT NULL DEFAULT (now()),
-    "updated_at" timestamptz NOT NULL DEFAULT (now()),
-    "deleted_at" timestamptz,
+    "created_at" timestamp with time zone NOT NULL DEFAULT (now()),
+    "updated_at" timestamp with time zone NOT NULL DEFAULT (now()),
+    "deleted_at" timestamp with time zone,
     "id" bigint PRIMARY KEY,
-    "name" varchar(32) NOT NULL UNIQUE
+    "name" varchar(32) NOT NULL
 );)
 
+CREATE UNIQUE INDEX ON "universities" ("name") WHERE "deleted_at" IS NULL;
+
 CREATE TABLE "schools" (
-    "created_at" timestamptz NOT NULL DEFAULT (now()),
-    "updated_at" timestamptz NOT NULL DEFAULT (now()),
-    "deleted_at" timestamptz,
+    "created_at" timestamp with time zone NOT NULL DEFAULT (now()),
+    "updated_at" timestamp with time zone NOT NULL DEFAULT (now()),
+    "deleted_at" timestamp with time zone,
     "id" bigint PRIMARY KEY,
     "name" varchar(32) NOT NULL,
     "university_id" bigint REFERENCES "universities" ("id")
 );
 
 CREATE TABLE "departments" (
-    "created_at" timestamptz NOT NULL DEFAULT (now()),
-    "updated_at" timestamptz NOT NULL DEFAULT (now()),
-    "deleted_at" timestamptz,
+    "created_at" timestamp with time zone NOT NULL DEFAULT (now()),
+    "updated_at" timestamp with time zone NOT NULL DEFAULT (now()),
+    "deleted_at" timestamp with time zone,
     "id" bigint PRIMARY KEY,
     "name" varchar(32) NOT NULL,
     "school_id" bigint REFERENCES "schools" ("id")
 );
 
-CREATE UNIQUE INDEX ON "departments" ("name");
-
 CREATE TABLE "resumes" (
-    "created_at" timestamptz NOT NULL DEFAULT (now()),
-    "updated_at" timestamptz NOT NULL DEFAULT (now()),
-    "deleted_at" timestamptz,
+    "created_at" timestamp with time zone NOT NULL DEFAULT (now()),
+    "updated_at" timestamp with time zone NOT NULL DEFAULT (now()),
+    "deleted_at" timestamp with time zone,
     "id" bigint PRIMARY KEY,
     "user_id" bigint,
     "file_key" varchar(512),
@@ -138,13 +146,13 @@ CREATE TABLE "resumes" (
     "professional_skills" jsonb,
     "awards" jsonb,
     "review_status" review_status NOT NULL DEFAULT 'PENDING_REVIEW',
-    "reviewed_at" timestamptz
+    "reviewed_at" timestamp with time zone
 );
 
 CREATE TABLE "grades" (
-    "created_at" timestamptz NOT NULL DEFAULT (now()),
-    "updated_at" timestamptz NOT NULL DEFAULT (now()),
-    "deleted_at" timestamptz,
+    "created_at" timestamp with time zone NOT NULL DEFAULT (now()),
+    "updated_at" timestamp with time zone NOT NULL DEFAULT (now()),
+    "deleted_at" timestamp with time zone,
     "id" bigint PRIMARY KEY,
     "user_id" bigint,
     "course_name" varchar(64),
@@ -153,26 +161,29 @@ CREATE TABLE "grades" (
 );
 
 CREATE TABLE "user_analysis_tasks" (
-    "created_at" timestamptz NOT NULL DEFAULT (now()),
-    "updated_at" timestamptz NOT NULL DEFAULT (now()),
-    "deleted_at" timestamptz,
+    "created_at" timestamp with time zone NOT NULL DEFAULT (now()),
+    "updated_at" timestamp with time zone NOT NULL DEFAULT (now()),
+    "deleted_at" timestamp with time zone,
     "id" bigint PRIMARY KEY,
+    "trace_id" bigint,
     "user_id" bigint,
     "task_status" task_status NOT NULL DEFAULT 'FAILED',
     "model_name" varchar(32),
     "ai_suggestion" text
 );
 
+CREATE UNIQUE INDEX ON "user_analysis_tasks" ("trace_id") WHERE "deleted_at" IS NULL;
+
 CREATE INDEX ON "user_analysis_tasks" ("user_id");
 
 CREATE TABLE "user_graphs" (
-    "created_at" timestamptz NOT NULL DEFAULT (now()),
-    "updated_at" timestamptz NOT NULL DEFAULT (now()),
-    "deleted_at" timestamptz,
+    "created_at" timestamp with time zone NOT NULL DEFAULT (now()),
+    "updated_at" timestamp with time zone NOT NULL DEFAULT (now()),
+    "deleted_at" timestamp with time zone,
     "id" bigint PRIMARY KEY,
+    "trace_id" bigint,
     "user_id" bigint REFERENCES "users" ("id"),
     "ability_id" bigint,
-    "analysis_id" bigint REFERENCES "user_analysis_tasks" ("id"),
     "proficiency" proficiency
 );
 

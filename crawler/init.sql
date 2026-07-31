@@ -41,9 +41,9 @@ CREATE TYPE "task_status" AS ENUM (
 );
 
 CREATE TABLE "logs" (
-  "created_at" timestamptz NOT NULL DEFAULT (now()),
-  "updated_at" timestamptz NOT NULL DEFAULT (now()),
-  "deleted_at" timestamptz,
+  "created_at" timestamp with time zone NOT NULL DEFAULT (now()),
+  "updated_at" timestamp with time zone NOT NULL DEFAULT (now()),
+  "deleted_at" timestamp with time zone,
   "id" bigint PRIMARY KEY,
   "trace_id" bigint,
   "user_id" bigint NOT NULL,
@@ -57,11 +57,12 @@ CREATE TABLE "logs" (
 );
 
 CREATE TABLE "job_sources" (
-  "created_at" timestamptz NOT NULL DEFAULT (now()),
-  "updated_at" timestamptz NOT NULL DEFAULT (now()),
-  "deleted_at" timestamptz,
+  "created_at" timestamp with time zone NOT NULL DEFAULT (now()),
+  "updated_at" timestamp with time zone NOT NULL DEFAULT (now()),
+  "deleted_at" timestamp with time zone,
   "id" bigint PRIMARY KEY,
-  "publish_date" timestamptz NOT NULL,
+  "trace_id" bigint,  
+  "publish_date" timestamp with time zone NOT NULL,
   "source_platform" varchar(32) NOT NULL,
   "source_url" varchar(512),
   "city" varchar(64),
@@ -69,7 +70,7 @@ CREATE TABLE "job_sources" (
   "major" varchar(64),
   "nature" varchar(64),
   "salary" varchar(64),
-  "job_name" charchar(64),
+  "job_name" varchar(64),
   "company_name" varchar(64),
   "company_size" varchar(64),
   "province" varchar(64),
@@ -78,3 +79,5 @@ CREATE TABLE "job_sources" (
   "job_description" text,
   "clean_status" task_status
 );
+
+CREATE UNIQUE INDEX "idx_job_sources_trace_id" ON "job_sources" ("trace_id") WHERE "deleted_at" IS NULL;
