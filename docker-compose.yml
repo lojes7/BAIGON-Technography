@@ -88,22 +88,17 @@ services:
       OCCUPATION_DB_USER: ${OCCUPATION_DB_USER}
       OCCUPATION_DB_PASSWORD: ${OCCUPATION_DB_PASSWORD}
 
-      # user_service 
+      # user_service
       USER_DB_NAME: ${USER_DB_NAME}
       USER_DB_USER: ${USER_DB_USER}
       USER_DB_PASSWORD: ${USER_DB_PASSWORD}
 
-      # university_service 
-      UNIVERSITY_DB_NAME: ${UNIVERSITY_DB_NAME}
-      UNIVERSITY_DB_USER: ${UNIVERSITY_DB_USER}
-      UNIVERSITY_DB_PASSWORD: ${UNIVERSITY_DB_PASSWORD}
-
-      # file_service 
+      # file_service
       FILE_DB_NAME: ${FILE_DB_NAME}
       FILE_DB_USER: ${FILE_DB_USER}
       FILE_DB_PASSWORD: ${FILE_DB_PASSWORD}
     volumes:
-      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./docker/postgres/init.sh:/docker-entrypoint-initdb.d/01-init.sh:ro
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
@@ -275,32 +270,6 @@ services:
       GRPC_PORT: 50055
       SERVER_PORT: 8083
       JWT_SECRET: ${JWT_SECRET}
-    depends_on:
-      consul:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-    networks:
-      - baigon-net
-
-  # university_service — Java 院校服务
-  university:
-    build: ./university
-    container_name: baigon-university-service
-    ports:
-      - "${UNIVERSITY_GRPC_PORT}:50056"
-    environment:
-      CONSUL_ADDR: consul:8500
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: ${UNIVERSITY_DB_NAME}
-      DB_USER: ${UNIVERSITY_DB_USER}
-      DB_PASSWORD: ${UNIVERSITY_DB_PASSWORD}
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      GRPC_PORT: 50056
-      SERVER_PORT: 8084
     depends_on:
       consul:
         condition: service_healthy
