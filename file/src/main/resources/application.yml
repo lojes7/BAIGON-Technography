@@ -28,6 +28,8 @@ spring:
       group-id: file-service-group
   cloud:
     consul:
+      host: ${CONSUL_HOST:localhost}
+      port: ${CONSUL_PORT:8500}
       discovery:
         service-name: file-service
         health-check-path: /health

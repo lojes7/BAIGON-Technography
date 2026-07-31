@@ -179,7 +179,8 @@ services:
     ports:
       - "${DATA_SOURCE_GRPC_PORT}:50052"
     environment:
-      CONSUL_ADDR: consul:8500
+      CONSUL_HOST: consul
+      CONSUL_PORT: 8500
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: ${DATA_SOURCE_DB_NAME}
@@ -234,7 +235,8 @@ services:
     ports:
       - "${OCCUPATION_GRPC_PORT}:50054"
     environment:
-      CONSUL_ADDR: consul:8500
+      CONSUL_HOST: consul
+      CONSUL_PORT: 8500
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: ${OCCUPATION_DB_NAME}
@@ -260,7 +262,8 @@ services:
     ports:
       - "${USER_GRPC_PORT}:50055"
     environment:
-      CONSUL_ADDR: consul:8500
+      CONSUL_HOST: consul
+      CONSUL_PORT: 8500
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: ${USER_DB_NAME}
@@ -287,7 +290,8 @@ services:
     ports:
       - "${FILE_GRPC_PORT}:50057"
     environment:
-      CONSUL_ADDR: consul:8500
+      CONSUL_HOST: consul
+      CONSUL_PORT: 8500
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: ${FILE_DB_NAME}
