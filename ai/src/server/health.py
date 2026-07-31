@@ -9,7 +9,7 @@ router = APIRouter()
 @router.get("/health")
 async def health_check():
     return {
-        "service": "ai_service",
+        "service": "ai-service",
         "status": "healthy",
         "hostname": socket.gethostname(),
         "time": datetime.now(timezone.utc).isoformat(),

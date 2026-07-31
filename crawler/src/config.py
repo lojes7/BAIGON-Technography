@@ -9,7 +9,7 @@ class Config:
     def __init__(self):
         # 服务配置
         self.grpc_port: int = int(os.getenv("GRPC_PORT", "50051"))
-        self.service_name: str = "crawler_service"
+        self.service_name: str = "crawler-service"
 
         # Consul
         self.consul_addr: str = os.getenv("CONSUL_ADDR", "localhost:8500")

@@ -18,7 +18,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-logger = logging.getLogger("ai_service")
+logger = logging.getLogger("ai-service")
 
 app = FastAPI(
     title="百工谱 AI Service",
@@ -39,9 +39,6 @@ def register_to_consul():
             service_id=service_id,
             address=socket.gethostbyname(socket.gethostname()),
             port=config.grpc_port,
-            check=consul.Check.http(
-                url=f"http://{{}}:8000/health", interval="10s", timeout="5s"
-            ),
         )
         logger.info("已在 Consul 注册: %s (id=%s)", config.service_name, service_id)
         return c, service_id

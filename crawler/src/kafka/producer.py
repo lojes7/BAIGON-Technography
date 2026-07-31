@@ -29,7 +29,7 @@ class KafkaProducerStub:
             "trace_id": str(uuid.uuid4()),
             "event_type": "baigon.crawler.document.ingested",
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "source_service": "crawler_service",
+            "source_service": "crawler-service",
             "payload": {
                 "source_document_id": source_document_id,
                 "evidence_chain_id": evidence_chain_id,

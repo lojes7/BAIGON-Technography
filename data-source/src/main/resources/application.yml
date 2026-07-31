@@ -6,7 +6,7 @@ server:
 
 spring:
   application:
-    name: data_source_service
+    name: data-source-service
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:baigon_data_source}
     username: ${DB_USER}
@@ -20,11 +20,8 @@ spring:
   jpa:
     hibernate:
       ddl-auto: none
+    open-in-view: false
     show-sql: false
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
-        format_sql: true
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:
@@ -40,7 +37,7 @@ spring:
       port: ${CONSUL_PORT:8500}
       discovery:
         instance-id: ${spring.application.name}-${random.value}
-        service-name: data_source_service
+        service-name: data-source-service
         health-check-url: http://${HOSTNAME:localhost}:${server.port}/actuator/health
         health-check-interval: 10s
 

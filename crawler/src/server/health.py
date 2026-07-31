@@ -12,7 +12,7 @@ router = APIRouter()
 async def health_check():
     """Consul 健康检查端点"""
     return {
-        "service": "crawler_service",
+        "service": "crawler-service",
         "status": "healthy",
         "hostname": socket.gethostname(),
         "time": datetime.now(timezone.utc).isoformat(),

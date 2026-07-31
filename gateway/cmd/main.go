@@ -1,4 +1,4 @@
-// 百工谱 — gateway_service 主入口
+// 百工谱 — gateway-service 主入口
 // Go + GIN 网关，负责请求路由、JWT 鉴权、限流熔断
 
 package main
@@ -37,7 +37,7 @@ func main() {
 	serviceID := fmt.Sprintf("gateway-%s", cfg.Hostname)
 	err = consulClient.Agent().ServiceRegister(&consulapi.AgentServiceRegistration{
 		ID:      serviceID,
-		Name:    "gateway_service",
+		Name:    "gateway-service",
 		Address: cfg.Hostname,
 		Port:    cfg.Port,
 		Check: &consulapi.AgentServiceCheck{
@@ -49,7 +49,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("注册 Consul 服务失败: %v", err)
 	}
-	log.Printf("已在 Consul 注册: gateway_service (id=%s, port=%d)", serviceID, cfg.Port)
+	log.Printf("已在 Consul 注册: gateway-service (id=%s, port=%d)", serviceID, cfg.Port)
 
 	// 初始化 gRPC 客户端连接池
 	grpcPool := proxy.NewGrpcClientPool(consulClient)
@@ -66,7 +66,7 @@ func main() {
 	// 健康检查端点 (不需要鉴权)
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
-			"service": "gateway_service",
+			"service": "gateway-service",
 			"status":  "healthy",
 			"time":    time.Now().Format(time.RFC3339),
 		})
@@ -90,7 +90,7 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("gateway_service 启动在端口 %d", cfg.Port)
+		log.Printf("gateway-service 启动在端口 %d", cfg.Port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("HTTP 服务启动失败: %v", err)
 		}
@@ -100,7 +100,7 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	log.Println("正在关闭 gateway_service...")
+	log.Println("正在关闭 gateway-service...")
 
 	// 从 Consul 注销
 	consulClient.Agent().ServiceDeregister(serviceID)
@@ -109,5 +109,5 @@ func main() {
 	defer cancel()
 	srv.Shutdown(ctx)
 	grpcPool.Close()
-	log.Println("gateway_service 已安全关闭")
+	log.Println("gateway-service 已安全关闭")
 }

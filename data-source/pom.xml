@@ -20,7 +20,7 @@
     <properties>
         <java.version>21</java.version>
         <grpc.version>1.65.0</grpc.version>
-        <protobuf.version>4.27.0</protobuf.version>
+        <protobuf.version>3.25.3</protobuf.version>
     </properties>
 
     <dependencies>
@@ -66,13 +66,6 @@
             <artifactId>protobuf-java</artifactId>
             <version>${protobuf.version}</version>
         </dependency>
-        <!-- gRPC Spring Boot Starter (简化 gRPC server 配置) -->
-        <dependency>
-            <groupId>net.devh</groupId>
-            <artifactId>grpc-server-spring-boot-starter</artifactId>
-            <version>3.1.0.RELEASE</version>
-        </dependency>
-
         <!-- Consul 服务发现 -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
