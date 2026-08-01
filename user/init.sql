@@ -13,6 +13,25 @@ CREATE TYPE "user_status" AS ENUM (
   'LOCKED'
 );
 
+CREATE TYPE "review_status" AS ENUM (
+  'PASSED',
+  'REJECTED',
+  'PENDING'
+);
+
+CREATE TYPE "task_status" AS ENUM (
+  'SUCCESS',
+  'FAILED',
+  'PENDING'
+);
+
+CREATE TYPE "proficiency" AS ENUM (
+  'EXPERT',
+  'SKILLED',
+  'FAMILIAR',
+  'BASIC'
+);
+
 CREATE TYPE "level" AS ENUM (
   'INFO',
   'ERROR',
@@ -106,7 +125,7 @@ CREATE TABLE "universities" (
     "deleted_at" timestamp with time zone,
     "id" bigint PRIMARY KEY,
     "name" varchar(32) NOT NULL
-);)
+);
 
 CREATE UNIQUE INDEX ON "universities" ("name") WHERE "deleted_at" IS NULL;
 
@@ -145,7 +164,7 @@ CREATE TABLE "resumes" (
     "project_experiences" jsonb,
     "professional_skills" jsonb,
     "awards" jsonb,
-    "review_status" review_status NOT NULL DEFAULT 'PENDING_REVIEW',
+    "review_status" review_status NOT NULL DEFAULT 'PENDING',
     "reviewed_at" timestamp with time zone
 );
 

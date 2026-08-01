@@ -77,7 +77,7 @@ CREATE TABLE "cleaned_job_sources" (
   "education" varchar(64),
   "experience" text,
   "job_description" text,
-  "review_status" review_status,
+  "review_status" review_status DEFAULT 'PENDING',
   "reviewed_at" timestamp with time zone,
   "reviewed_by" bigint
 );
