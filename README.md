@@ -175,8 +175,27 @@ GitHub Actions 流水线（`.github/workflows/gateway-docs.yml`）在 push 到 m
 1. 安装 swag CLI（固定版本 v1.16.6，与 go.mod 一致）
 2. 从代码注解生成 Swagger 文档（`swag init`）
 3. 校验生成的 `swagger.json` 有效且包含 API 路径
+4. **push 到 main 时**：将文档部署到 GitHub Pages，获得固定 URL 供团队在线浏览
 
-> **说明**：流水线只负责文档生成与校验，暂不编译 gateway 服务（后续需要时可扩展）。
+> **说明**：流水线只负责文档生成与部署，暂不编译 gateway 服务（后续需要时可扩展）。
+
+### 在线文档地址
+
+每次 push 到 main 后，文档自动更新于：
+
+```
+https://<owner>.github.io/<repo>/
+```
+
+本项目即：https://lojes7.github.io/BAIGON-Technography/
+
+**首次使用需开启 GitHub Pages**（一次性）：
+
+1. 仓库 **Settings → Pages**
+2. **Source** 选择 **"GitHub Actions"**
+3. 之后每次 push 到 main，deploy job 会自动发布
+
+> **注意**：Pages 上的文档仅用于**浏览**。Swagger UI 的 "Try it out" 会指向 github.io 域名（非真实 API 地址），实际请求请使用本地 gateway（http://localhost:8000）。
 
 本地等效验证：
 

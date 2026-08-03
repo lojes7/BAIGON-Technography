@@ -1,5 +1,6 @@
-# 百工谱 — Gateway Swagger 文档自动生成
-# 每次 push 到 main 或 PR 时，从代码注解生成 OpenAPI 文档并校验生成结果
+# 百工谱 — Gateway Swagger 文档自动生成 + GitHub Pages 部署
+# push 到 main 或 PR 时，从代码注解生成 OpenAPI 文档并校验；
+# push 到 main 时额外部署到 GitHub Pages，获得固定 URL 供团队在线浏览。
 # 生成物（docs.go / swagger.json / swagger.yaml）不入库，构建前需重新生成
 
 name: Swagger Docs Generation
@@ -22,7 +23,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  generate-docs:
+  # ==================== 生成与组装（所有触发） ====================
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -49,3 +51,57 @@ jobs:
           test -s docs/swagger.json
           jq -e '.paths | length > 0' docs/swagger.json > /dev/null
           echo "Swagger 文档生成成功: $(jq -r '.info.title' docs/swagger.json)"
+
+      # 组装 GitHub Pages 静态页：swagger.json + Swagger UI 入口页
+      # UI 资源走 unpkg CDN，部署目录仅 2 个文件
+      - name: 组装 Pages 页面
+        run: |
+          mkdir -p public
+          cp gateway/docs/swagger.json public/swagger.json
+          cat > public/index.html <<'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <title>百工谱 Gateway API</title>
+            <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+          </head>
+          <body>
+            <div id="swagger-ui"></div>
+            <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js" crossorigin></script>
+            <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js" crossorigin></script>
+            <script>
+            window.onload = () => {
+              window.ui = SwaggerUIBundle({
+                url: './swagger.json',   // 相对路径，兼容 Pages 子路径 /BAIGON-Technography/
+                dom_id: '#swagger-ui',
+                presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+                layout: 'StandaloneLayout',
+              });
+            };
+            </script>
+          </body>
+          </html>
+          EOF
+
+      # 上传 Pages artifact（供 deploy job 取用）
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  # ==================== 部署到 Pages（仅 push main） ====================
+  deploy:
+    needs: build
+    # 只在 push 到 main 时部署，PR 只校验不发布
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment
