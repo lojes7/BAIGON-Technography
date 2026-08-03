@@ -92,6 +92,9 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- 雪花 ID 生成（hutool，生产级时钟回拨处理） -->
+        <dependency><groupId>cn.hutool</groupId><artifactId>hutool-core</artifactId><version>5.8.32</version></dependency>
+
     </dependencies>
 
     <build>
@@ -110,4 +113,5 @@
             </plugin>
         </plugins>
     </build>
+
 </project>

@@ -13,6 +13,10 @@ CREATE EXTENSION IF NOT EXISTS vector;
 GRANT ALL ON SCHEMA public TO "${CRAWLER_DB_USER}";
 
 \i ./service-init/crawler_init.sql
+
+-- 表由 postgres 用户创建，需将表与序列权限授予服务用户
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO "${CRAWLER_DB_USER}";
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO "${CRAWLER_DB_USER}";
 SQL
 
 # data_source_service
@@ -26,6 +30,10 @@ CREATE EXTENSION IF NOT EXISTS vector;
 GRANT ALL ON SCHEMA public TO "${DATA_SOURCE_DB_USER}";
 
 \i ./service-init/data_source_init.sql
+
+-- 表由 postgres 用户创建，需将表与序列权限授予服务用户
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO "${DATA_SOURCE_DB_USER}";
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO "${DATA_SOURCE_DB_USER}";
 SQL
 
 # occupation_service
@@ -50,6 +58,10 @@ GRANT ALL ON SCHEMA public TO "${USER_DB_USER}";
 
 \i ./service-init/user_init.sql
 \i ./service-init/user_data.sql
+
+-- 表由 postgres 用户创建，需将表与序列权限授予服务用户
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO "${USER_DB_USER}";
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO "${USER_DB_USER}";
 SQL
 
 # file_service

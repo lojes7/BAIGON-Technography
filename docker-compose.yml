@@ -143,6 +143,7 @@ services:
       - "${GATEWAY_PORT}:8080"
     environment:
       CONSUL_ADDR: consul:8500
+      SNOWFLAKE_WORKER_ID: ${SNOWFLAKE_WORKER_ID_GATEWAY}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRATION_HOURS: ${JWT_EXPIRATION_HOURS}
     depends_on:
@@ -159,6 +160,7 @@ services:
       - "${CRAWLER_GRPC_PORT}:50051"
     environment:
       CONSUL_ADDR: consul:8500
+      SNOWFLAKE_WORKER_ID: ${SNOWFLAKE_WORKER_ID_CRAWLER}
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: ${CRAWLER_DB_NAME}
@@ -185,6 +187,7 @@ services:
     environment:
       CONSUL_HOST: consul
       CONSUL_PORT: 8500
+      SNOWFLAKE_WORKER_ID: ${SNOWFLAKE_WORKER_ID_DATA_SOURCE}
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: ${DATA_SOURCE_DB_NAME}
@@ -241,6 +244,7 @@ services:
     environment:
       CONSUL_HOST: consul
       CONSUL_PORT: 8500
+      SNOWFLAKE_WORKER_ID: ${SNOWFLAKE_WORKER_ID_OCCUPATION}
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: ${OCCUPATION_DB_NAME}
@@ -260,14 +264,18 @@ services:
       - baigon-net
 
   # user_service — Java 用户服务
+  # context 指向根目录：构建时需要 proto/ 中的接口定义
   user:
-    build: ./user
+    build:
+      context: .
+      dockerfile: user/Dockerfile
     container_name: baigon-user-service
     ports:
       - "${USER_GRPC_PORT}:50055"
     environment:
       CONSUL_HOST: consul
       CONSUL_PORT: 8500
+      SNOWFLAKE_WORKER_ID: ${SNOWFLAKE_WORKER_ID_USER}
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: ${USER_DB_NAME}
@@ -277,6 +285,7 @@ services:
       GRPC_PORT: 50055
       SERVER_PORT: 8083
       JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION_HOURS: ${JWT_EXPIRATION_HOURS}
     depends_on:
       consul:
         condition: service_healthy

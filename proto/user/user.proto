@@ -10,3 +10,24 @@ option java_multiple_files = true;
 option go_package = "baigon-technography/proto/gen/user;userpb";
 
 import "common/evidence.proto";
+
+// 用户服务：认证与用户管理
+service UserService {
+  // 登录：校验账号密码，签发 JWT
+  rpc Login(LoginRequest) returns (LoginResponse);
+}
+
+// 登录请求
+message LoginRequest {
+  string uid = 1;      // 登录账号
+  string password = 2; // 密码（链路内加密）
+}
+
+// 登录响应
+message LoginResponse {
+  string token = 1;    // JWT，后续请求放入 Authorization: Bearer <token>
+  int64 user_id = 2;   // 用户 ID
+  string uid = 3;      // 登录账号
+  string name = 4;     // 显示名称
+  string role = 5;     // 角色
+}

@@ -3,22 +3,46 @@
 package middleware
 
 import (
+	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/bwmarrin/snowflake"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
+	"github.com/golang-jwt/jwt/v5"
 )
 
-// RequestID 为每个请求注入唯一 trace_id
+// 进程内单例雪花节点：trace_id 用 snowflake 数字，
+// workerId 从环境变量 SNOWFLAKE_WORKER_ID 注入（每服务实例唯一）
+var traceIDNode = newSnowflakeNode()
+
+func newSnowflakeNode() *snowflake.Node {
+	workerID, err := strconv.ParseInt(os.Getenv("SNOWFLAKE_WORKER_ID"), 10, 64)
+	if err != nil || workerID < 0 {
+		workerID = 0
+	}
+	// 自定义纪元 2024-01-01 00:00:00 UTC（与 Java/Python 端一致）
+	// bwmarrin 默认 10bit workerId（0-1023）
+	snowflake.Epoch = 1704067200000
+	node, err := snowflake.NewNode(workerID)
+	if err != nil {
+		node, _ = snowflake.NewNode(0)
+	}
+	return node
+}
+
+// RequestID 为每个请求注入唯一 trace_id（雪花 ID）
+// 上游已带 X-Trace-ID 时透传（保证全链路同一 trace_id）
 func RequestID() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		traceID := c.GetHeader("X-Trace-ID")
 		if traceID == "" {
-			traceID = uuid.New().String()
+			traceID = traceIDNode.Generate().String()
 		}
 		c.Set("trace_id", traceID)
 		c.Header("X-Trace-ID", traceID)
@@ -56,7 +80,9 @@ func CORS() gin.HandlerFunc {
 	}
 }
 
-// Auth JWT Token 验证中间件（桩实现）
+// Auth JWT Token 验证中间件
+// 与 user 服务共用同一把 JWT_SECRET 验签；验证通过后
+// 把 uid / userId / role 注入请求上下文，供下游 handler 使用
 func Auth(jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 跳过登录和注册接口
@@ -73,11 +99,34 @@ func Auth(jwtSecret string) gin.HandlerFunc {
 			return
 		}
 
-		// TODO: 实现 JWT 验证逻辑
-		// token := strings.TrimPrefix(authHeader, "Bearer ")
-		// claims, err := jwt.Parse(token, jwtSecret)
+		tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
+		if tokenStr == authHeader { // 没有 Bearer 前缀
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "认证令牌格式错误", "code": 401})
+			c.Abort()
+			return
+		}
 
-		// 桩：暂时放行所有请求
+		// 解析并验证签名与过期时间
+		token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (any, error) {
+			// 防算法混淆：只接受 HMAC 系列（user 服务用 HS512 签发）
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+			}
+			return []byte(jwtSecret), nil
+		})
+		if err != nil || !token.Valid {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "认证令牌无效或已过期", "code": 401})
+			c.Abort()
+			return
+		}
+
+		// 提取 claims 注入上下文
+		if claims, ok := token.Claims.(jwt.MapClaims); ok {
+			c.Set("uid", claims["sub"])
+			c.Set("userId", claims["userId"])
+			c.Set("role", claims["role"])
+		}
+
 		c.Next()
 	}
 }

@@ -32,7 +32,8 @@ spring:
       port: ${CONSUL_PORT:8500}
       discovery:
         service-name: file-service
-        health-check-path: /health
+        port: ${GRPC_PORT:50057}  # 注册端口 = gRPC 端口（gateway 经 Consul 发现后直连 gRPC）
+        health-check-url: http://${HOSTNAME:localhost}:${server.port}/health  # 健康检查显式走 HTTP 端口
         health-check-interval: 15s
   servlet:
     multipart:

@@ -84,6 +84,33 @@ CREATE TABLE "cleaned_job_sources" (
 
 CREATE UNIQUE INDEX "idx_cleaned_job_sources_trace_id" ON "cleaned_job_sources" ("trace_id") WHERE "deleted_at" IS NULL;
 
+CREATE TABLE "reviewed_cleaned_job_sources" (
+    "created_at" timestamp with time zone NOT NULL DEFAULT (now()),
+    "updated_at" timestamp with time zone NOT NULL DEFAULT (now()),
+    "deleted_at" timestamp with time zone,
+    "id" bigint PRIMARY KEY,
+    "trace_id" bigint,
+    "publish_date" timestamp with time zone NOT NULL,
+    "source_platform" varchar(32) NOT NULL,
+    "source_url" varchar(512),
+    "city" varchar(64), 
+    "tags" text,
+    "major" varchar(64),
+    "nature" varchar(64),
+    "salary" varchar(64),
+    "job_name" varchar(64),
+    "company_name" varchar(64),
+    "company_size" varchar(64),
+    "province" varchar(64),
+    "education" varchar(64),
+    "experience" text,
+    "job_description" text,
+    "reviewed_at" timestamp with time zone,
+    "reviewed_by" bigint
+);
+
+CREATE UNIQUE INDEX ON "reviewed_cleaned_job_sources" ("trace_id") WHERE "deleted_at" IS NULL;
+
 CREATE TABLE "job_analysis_tasks" (
   "created_at" timestamp with time zone NOT NULL DEFAULT (now()),
   "updated_at" timestamp with time zone NOT NULL DEFAULT (now()),
@@ -93,4 +120,3 @@ CREATE TABLE "job_analysis_tasks" (
   "model_name" varchar(32),
   "task_status" task_status
 );
-

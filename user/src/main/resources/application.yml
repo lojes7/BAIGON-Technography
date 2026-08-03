@@ -38,6 +38,7 @@ spring:
       discovery:
         instance-id: ${spring.application.name}-${random.value}
         service-name: user-service
+        port: ${GRPC_PORT:50055}  # 注册端口 = gRPC 端口（gateway 经 Consul 发现后直连 gRPC）
         health-check-url: http://${HOSTNAME:localhost}:${server.port}/actuator/health
         health-check-interval: 10s
 
@@ -47,6 +48,7 @@ grpc:
 
 jwt:
   secret: ${JWT_SECRET}
+  expiration-hours: ${JWT_EXPIRATION_HOURS:1}
 
 management:
   endpoints:

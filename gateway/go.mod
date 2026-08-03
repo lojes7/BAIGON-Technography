@@ -4,13 +4,15 @@ go 1.26
 
 require (
 	github.com/gin-gonic/gin v1.12.0
-	github.com/google/uuid v1.6.0
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/hashicorp/consul/api v1.34.4
 	google.golang.org/grpc v1.83.0
+	google.golang.org/protobuf v1.36.11
 )
 
 require (
 	github.com/armon/go-metrics v0.4.1 // indirect
+	github.com/bwmarrin/snowflake v0.3.0 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic v1.15.0 // indirect
 	github.com/bytedance/sonic/loader v0.5.0 // indirect
@@ -54,5 +56,4 @@ require (
 	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/text v0.38.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
-	google.golang.org/protobuf v1.36.11 // indirect
 )
