@@ -19,8 +19,8 @@ func Success(c *gin.Context, data any) {
 
 // Error 错误响应: {"code": <HTTP状态码>}，不携带消息
 // httpCode 同时作为 HTTP 状态码与响应体中的 code
-func Error(c *gin.Context, httpCode int) {
-	c.JSON(httpCode, gin.H{"code": httpCode})
+func Error(c *gin.Context, httpCode int, errorCode int) {
+	c.JSON(httpCode, gin.H{"code": errorCode})
 }
 
 // 以下结构体仅用于 Swagger 文档标注，非实际构造响应的类型

@@ -90,14 +90,14 @@ func Auth(jwtSecret string) gin.HandlerFunc {
 
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			response.Error(c, http.StatusUnauthorized)
+			response.Error(c, http.StatusUnauthorized, http.StatusUnauthorized)
 			c.Abort()
 			return
 		}
 
 		tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
 		if tokenStr == authHeader { // 没有 Bearer 前缀
-			response.Error(c, http.StatusUnauthorized)
+			response.Error(c, http.StatusUnauthorized, http.StatusUnauthorized)
 			c.Abort()
 			return
 		}
@@ -111,7 +111,7 @@ func Auth(jwtSecret string) gin.HandlerFunc {
 			return []byte(jwtSecret), nil
 		})
 		if err != nil || !token.Valid {
-			response.Error(c, http.StatusUnauthorized)
+			response.Error(c, http.StatusUnauthorized, http.StatusUnauthorized)
 			c.Abort()
 			return
 		}
@@ -135,7 +135,7 @@ func RateLimit(rate int, per time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		key := c.ClientIP()
 		if !limiter.Allow(key) {
-			response.Error(c, http.StatusTooManyRequests)
+			response.Error(c, http.StatusTooManyRequests, http.StatusTooManyRequests)
 			c.Abort()
 			return
 		}

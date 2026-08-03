@@ -42,18 +42,18 @@ func LoginHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req loginRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			response.Error(c, http.StatusBadRequest)
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
 			return
 		}
 		if req.Uid == "" || req.Password == "" {
-			response.Error(c, http.StatusBadRequest)
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
 			return
 		}
 
 		// 通过 Consul 发现 user-service，走 gRPC 调用
 		conn, err := pool.GetConn("user-service")
 		if err != nil {
-			response.Error(c, http.StatusServiceUnavailable)
+			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
 			return
 		}
 
@@ -77,7 +77,7 @@ func LoginHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 					code = http.StatusServiceUnavailable
 				}
 			}
-			response.Error(c, code)
+			response.Error(c, code, code)
 			return
 		}
 
