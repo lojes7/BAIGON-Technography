@@ -166,3 +166,24 @@ http://localhost:<GATEWAY_PORT>/swagger/index.html
 ### 网关 API 文档
 
 详细的 REST API 文档（请求体、响应体、错误码、调用链路）见 [gateway/docs/api.md](gateway/docs/api.md)。
+
+## 持续集成
+
+GitHub Actions 流水线（`.github/workflows/gateway-docs.yml`）在 push 到 main 或 PR（涉及 gateway 代码时）自动运行：
+
+1. 安装 swag CLI（固定版本 v1.16.6，与 go.mod 一致）
+2. 从代码注解生成 Swagger 文档（`swag init`）
+3. 校验生成的 `swagger.json` 有效且包含 API 路径
+
+> **说明**：流水线只负责文档生成与校验，暂不编译 gateway 服务（后续需要时可扩展）。
+
+本地等效验证：
+
+```bash
+cd gateway
+go install github.com/swaggo/swag/cmd/swag@v1.16.6
+swag init -g cmd/main.go -o docs/
+jq -e '.paths | length > 0' docs/swagger.json
+```
+
+> 生成物（docs.go / swagger.json / swagger.yaml）不入库，构建前需重新生成（与 gateway/pb 同理）。

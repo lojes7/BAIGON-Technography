@@ -1,0 +1,51 @@
+# 百工谱 — Gateway Swagger 文档自动生成
+# 每次 push 到 main 或 PR 时，从代码注解生成 OpenAPI 文档并校验生成结果
+# 生成物（docs.go / swagger.json / swagger.yaml）不入库，构建前需重新生成
+
+name: Swagger Docs Generation
+
+# 触发：push 到 main + 所有 PR（仅 gateway 相关改动，避免无意义运行）
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'gateway/**'
+      - '.github/workflows/gateway-docs.yml'
+  pull_request:
+    paths:
+      - 'gateway/**'
+      - '.github/workflows/gateway-docs.yml'
+
+# 并发控制：同一分支新提交时取消旧运行，节省 CI 资源
+concurrency:
+  group: gateway-docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generate-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 仅用于安装 swag CLI（swag init 是静态 AST 解析，不依赖 pb/生成物）
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: gateway/go.mod   # 读取 go.mod 中的 go 版本，不硬编码
+          cache: true                        # 缓存 go module 下载
+
+      # 固定版本，与 go.mod 中 swaggo/swag v1.16.6 一致，避免 @latest 漂移导致 CI 偶发失败
+      - name: 安装 swag CLI
+        run: go install github.com/swaggo/swag/cmd/swag@v1.16.6
+
+      # 从代码注解生成 OpenAPI 文档（gitignored，不入库）
+      - name: 生成 Swagger 文档
+        working-directory: gateway
+        run: swag init -g cmd/main.go -o docs/
+
+      # 校验生成结果：swagger.json 存在、合法、paths 非空
+      - name: 校验生成结果
+        working-directory: gateway
+        run: |
+          test -s docs/swagger.json
+          jq -e '.paths | length > 0' docs/swagger.json > /dev/null
+          echo "Swagger 文档生成成功: $(jq -r '.info.title' docs/swagger.json)"
