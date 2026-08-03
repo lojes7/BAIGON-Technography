@@ -28,6 +28,7 @@ import (
 	"baigon-technography/gateway/internal/config"
 	"baigon-technography/gateway/internal/grpcpool"
 	"baigon-technography/gateway/internal/middleware"
+	"baigon-technography/gateway/internal/response"
 	gatewayrouter "baigon-technography/gateway/internal/router"
 
 	_ "baigon-technography/gateway/docs" // swag init 生成的 OpenAPI 文档
@@ -82,7 +83,7 @@ func main() {
 
 	// 健康检查端点
 	router.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
+		response.Success(c, gin.H{
 			"service": "gateway-service",
 			"status":  "healthy",
 			"time":    time.Now().Format(time.RFC3339),

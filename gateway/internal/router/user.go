@@ -5,11 +5,10 @@
 package router
 
 import (
-	"net/http"
-
 	"baigon-technography/gateway/internal/grpcpool"
 	"baigon-technography/gateway/internal/handler"
 	"baigon-technography/gateway/internal/middleware"
+	"baigon-technography/gateway/internal/response"
 
 	"github.com/gin-gonic/gin"
 )
@@ -30,14 +29,16 @@ func RegisterUserRoutes(api *gin.RouterGroup, pool *grpcpool.GrpcClientPool, jwt
 
 // PingHandler 网关心跳探测
 // @Summary      网关 Ping
-// @Description  返回网关运行状态和 trace_id（免鉴权）
+// @Description  返回网关运行状态和 trace_id（免鉴权）。
+// @Description  统一响应格式：成功 {"code":200,"data":{...}}
 // @Tags         系统
 // @Produce      json
-// @Success      200  {object}  map[string]interface{}  "网关运行正常"
+// @Success      200  {object}  response.SuccessBody  "网关运行正常，data 内含 message 与 trace_id"
 // @Router       /api/ping [get]
 func PingHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
+		// 统一响应格式: {"code": 200, "data": {...}}
+		response.Success(c, gin.H{
 			"message":  "baigon gateway is running",
 			"trace_id": c.GetString("trace_id"),
 		})

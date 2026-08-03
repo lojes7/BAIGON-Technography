@@ -1,5 +1,21 @@
 # 百工谱 — gateway_service
 
+## 统一响应格式
+
+所有 API 响应必须遵循以下结构：
+
+```json
+// 成功
+{ "code": 200, "data": { ... } }
+
+// 失败（不携带消息）
+{ "code": 401 }
+```
+
+- `code` 始终与 HTTP 状态码一致
+- 成功时 `code` 恒为 200，业务数据放在 `data` 中
+- 失败时仅有 `code` 字段，无 `error` 消息
+
 ## 职责
 
 Go + Gin 网关，负责：
@@ -41,45 +57,49 @@ Go + Gin 网关，负责：
 
 **成功响应 (200)**
 
+所有成功响应遵循统一格式 `{"code": 200, "data": {...}}`：
+
 ```json
 {
-  "token": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsInVzZXJJZCI6MSwicm9sZSI6IkFETUlOIn0...",
-  "user": {
-    "id": 1234567890,
-    "uid": "admin",
-    "name": "管理员",
-    "role": "ADMIN"
+  "code": 200,
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsInVzZXJJZCI6MSwicm9sZSI6IkFETUlOIn0...",
+    "user": {
+      "id": 1234567890,
+      "uid": "admin",
+      "name": "管理员",
+      "role": "ADMIN"
+    }
   }
 }
 ```
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `token` | string | JWT，后续 API 请求放入 `Authorization: Bearer <token>` 请求头 |
-| `user.id` | number | 用户 ID（雪花 ID） |
-| `user.uid` | string | 登录账号 |
-| `user.name` | string | 显示名称 |
-| `user.role` | string | 角色（ADMIN / STUDENT / TEACHER / …） |
+| `code` | number | 状态码，恒为 200 |
+| `data.token` | string | JWT，后续 API 请求放入 `Authorization: Bearer <token>` 请求头 |
+| `data.user.id` | number | 用户 ID（雪花 ID） |
+| `data.user.uid` | string | 登录账号 |
+| `data.user.name` | string | 显示名称 |
+| `data.user.role` | string | 角色（ADMIN / STUDENT / TEACHER / …） |
 
 **错误响应**
 
-所有错误响应格式统一为：
+所有错误响应遵循统一格式 `{"code": <HTTP状态码>}`，**不携带消息**：
 
 ```json
 {
-  "code": 401,
-  "error": "uid or password error"
+  "code": 401
 }
 ```
 
-| HTTP 状态码 | `code` | `error` 说明 |
-|------------|--------|-------------|
+| HTTP 状态码 | `code` | 含义 |
+|------------|--------|------|
 | 400 | 400 | 请求体格式错误 |
-| 400 | 400 | uid 和 password 不能为空 |
-| 401 | 401 | uid or password error（账号或密码错误） |
-| 403 | 403 | your are locked!（账号已被锁定） |
+| 401 | 401 | 账号或密码错误 |
+| 403 | 403 | 账号已被锁定 |
 | 503 | 503 | 用户服务不可用（user-service 连接失败或超时） |
-| 500 | 500 | 内部服务错误: `<detail>` |
+| 500 | 500 | 内部服务错误 |
 
 **cURL 示例**
 
@@ -105,8 +125,11 @@ curl -X POST http://localhost:8000/api/login \
 
 ```json
 {
-  "message": "baigon gateway is running",
-  "trace_id": "1234567890123456789"
+  "code": 200,
+  "data": {
+    "message": "baigon gateway is running",
+    "trace_id": "1234567890123456789"
+  }
 }
 ```
 
@@ -125,9 +148,12 @@ Consul 健康探测端点，**不需要认证**。
 
 ```json
 {
-  "service": "gateway-service",
-  "status": "healthy",
-  "time": "2025-01-01T12:00:00+08:00"
+  "code": 200,
+  "data": {
+    "service": "gateway-service",
+    "status": "healthy",
+    "time": "2025-01-01T12:00:00+08:00"
+  }
 }
 ```
 

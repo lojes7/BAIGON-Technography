@@ -15,6 +15,8 @@ import (
 	"github.com/bwmarrin/snowflake"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+
+	"baigon-technography/gateway/internal/response"
 )
 
 // 进程内单例雪花节点：trace_id 用 snowflake 数字，
@@ -88,14 +90,14 @@ func Auth(jwtSecret string) gin.HandlerFunc {
 
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "未提供认证令牌", "code": 401})
+			response.Error(c, http.StatusUnauthorized)
 			c.Abort()
 			return
 		}
 
 		tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
 		if tokenStr == authHeader { // 没有 Bearer 前缀
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "认证令牌格式错误", "code": 401})
+			response.Error(c, http.StatusUnauthorized)
 			c.Abort()
 			return
 		}
@@ -109,7 +111,7 @@ func Auth(jwtSecret string) gin.HandlerFunc {
 			return []byte(jwtSecret), nil
 		})
 		if err != nil || !token.Valid {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "认证令牌无效或已过期", "code": 401})
+			response.Error(c, http.StatusUnauthorized)
 			c.Abort()
 			return
 		}
@@ -133,10 +135,7 @@ func RateLimit(rate int, per time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		key := c.ClientIP()
 		if !limiter.Allow(key) {
-			c.JSON(http.StatusTooManyRequests, gin.H{
-				"error": "请求过于频繁，请稍后再试",
-				"code":  429,
-			})
+			response.Error(c, http.StatusTooManyRequests)
 			c.Abort()
 			return
 		}
