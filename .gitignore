@@ -24,6 +24,12 @@ target/
 
 # Proto generated code
 proto/gen/
+gateway/pb/
+
+# Swagger generated docs
+gateway/docs/docs.go
+gateway/docs/swagger.json
+gateway/docs/swagger.yaml
 
 # IDE
 .idea/

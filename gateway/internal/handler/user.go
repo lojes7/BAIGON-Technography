@@ -1,13 +1,14 @@
-// 百工谱 — 认证相关 handler
-// 登录通过 gRPC 调用 user-service（user 服务不暴露 HTTP 业务接口）
+// 百工谱 — user-service 相关 REST handler
+// 网关 REST → gRPC 调用 user-service（user 服务不暴露 HTTP 业务接口）
 
-package proxy
+package handler
 
 import (
 	"context"
 	"net/http"
 	"time"
 
+	"baigon-technography/gateway/internal/grpcpool"
 	"baigon-technography/gateway/pb/userpb"
 
 	"github.com/gin-gonic/gin"
@@ -17,12 +18,25 @@ import (
 
 // loginRequest 登录请求体
 type loginRequest struct {
-	Uid      string `json:"uid"`
-	Password string `json:"password"`
+	Uid      string `json:"uid" example:"admin"`       // 登录账号
+	Password string `json:"password" example:"123456"`  // 密码
 }
 
-// LoginHandler 登录：gateway → user-service gRPC → JWT
-func LoginHandler(pool *GrpcClientPool) gin.HandlerFunc {
+// LoginHandler 处理用户登录，网关 REST → gRPC 调用 user-service
+// @Summary      用户登录
+// @Description  校验账号密码，成功返回 JWT Token 和用户信息
+// @Tags         认证
+// @Accept       json
+// @Produce      json
+// @Param        request body loginRequest true "登录请求"
+// @Success      200  {object}  map[string]interface{}  "登录成功，返回 token 和 user 信息"
+// @Failure      400  {object}  map[string]interface{}  "请求体格式错误，uid 和 password 不能为空"
+// @Failure      401  {object}  map[string]interface{}  "账号或密码错误"
+// @Failure      403  {object}  map[string]interface{}  "账号已被锁定"
+// @Failure      503  {object}  map[string]interface{}  "用户服务不可用"
+// @Failure      500  {object}  map[string]interface{}  "内部服务错误"
+// @Router       /api/login [post]
+func LoginHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req loginRequest
 		if err := c.ShouldBindJSON(&req); err != nil {

@@ -1,0 +1,45 @@
+// 百工谱 — user 服务路由注册
+// 鉴权约定：公开端点直接挂 api group；受保护端点必须挂 auth group（Auth 中间件）
+// 注意：Auth 中间件不再使用路径白名单，新增端点请显式声明是否需要鉴权
+
+package router
+
+import (
+	"net/http"
+
+	"baigon-technography/gateway/internal/grpcpool"
+	"baigon-technography/gateway/internal/handler"
+	"baigon-technography/gateway/internal/middleware"
+
+	"github.com/gin-gonic/gin"
+)
+
+// RegisterUserRoutes 注册 user 服务相关路由
+func RegisterUserRoutes(api *gin.RouterGroup, pool *grpcpool.GrpcClientPool, jwtSecret string) {
+	// ==================== 公开端点（免鉴权） ====================
+	// 登录：gateway 通过 gRPC 调用 user-service（user 服务不暴露 HTTP 业务接口）
+	api.POST("/login", handler.LoginHandler(pool))
+	// Ping 心跳探测
+	api.GET("/ping", PingHandler())
+
+	// ==================== 受保护端点（需 Bearer Token） ====================
+	// 占位：后续用户相关接口（资料、简历等）挂在此组下
+	auth := api.Group("/auth")
+	auth.Use(middleware.Auth(jwtSecret))
+}
+
+// PingHandler 网关心跳探测
+// @Summary      网关 Ping
+// @Description  返回网关运行状态和 trace_id（免鉴权）
+// @Tags         系统
+// @Produce      json
+// @Success      200  {object}  map[string]interface{}  "网关运行正常"
+// @Router       /api/ping [get]
+func PingHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"message":  "baigon gateway is running",
+			"trace_id": c.GetString("trace_id"),
+		})
+	}
+}

@@ -85,12 +85,6 @@ func CORS() gin.HandlerFunc {
 // 把 uid / userId / role 注入请求上下文，供下游 handler 使用
 func Auth(jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 跳过登录和注册接口
-		path := c.Request.URL.Path
-		if strings.Contains(path, "/auth/login") || strings.Contains(path, "/auth/register") {
-			c.Next()
-			return
-		}
 
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {

@@ -1,5 +1,17 @@
 // 百工谱 — gateway-service 主入口
 // Go + GIN 网关，负责请求路由、JWT 鉴权、限流熔断
+//
+// @title           百工谱 Gateway API
+// @version         1.0
+// @description     百工谱微服务网关 REST API。JWT 鉴权、请求路由、限流，REST → gRPC 转发。
+// @termsOfService  http://swagger.io/terms/
+// @contact.name   百工谱团队
+// @host            localhost
+// @BasePath        /
+// @securityDefinitions.apikey Bearer
+// @in              header
+// @name            Authorization
+// @description     输入 Bearer <JWT Token>，Token 通过 /api/login 获取
 
 package main
 
@@ -14,11 +26,16 @@ import (
 	"time"
 
 	"baigon-technography/gateway/internal/config"
+	"baigon-technography/gateway/internal/grpcpool"
 	"baigon-technography/gateway/internal/middleware"
-	"baigon-technography/gateway/internal/proxy"
+	gatewayrouter "baigon-technography/gateway/internal/router"
+
+	_ "baigon-technography/gateway/docs" // swag init 生成的 OpenAPI 文档
 
 	"github.com/gin-gonic/gin"
 	consulapi "github.com/hashicorp/consul/api"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 func main() {
@@ -52,7 +69,7 @@ func main() {
 	log.Printf("已在 Consul 注册: gateway-service (id=%s, port=%d)", serviceID, cfg.Port)
 
 	// 初始化 gRPC 客户端连接池
-	grpcPool := proxy.NewGrpcClientPool(consulClient)
+	grpcPool := grpcpool.NewGrpcClientPool(consulClient)
 
 	// 设置 GIN 路由
 	gin.SetMode(gin.ReleaseMode)
@@ -63,7 +80,7 @@ func main() {
 	router.Use(middleware.Logger())
 	router.Use(middleware.CORS())
 
-	// 健康检查端点 (不需要鉴权)
+	// 健康检查端点
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"service": "gateway-service",
@@ -72,20 +89,23 @@ func main() {
 		})
 	})
 
+	// Swagger 文档
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
 	// API 路由组
-	api := router.Group("/api/v1")
-	api.Use(middleware.Auth(cfg.JWTSecret))
-	api.Use(middleware.RateLimit(100, time.Minute)) // 100 req/min
+	api := router.Group("/api")
+	// 限流器
+	// api.Use(middleware.RateLimit(100, time.Minute)) // 100 req/min
 
 	// 注册所有路由
-	proxy.RegisterRoutes(api, grpcPool, consulClient)
+	gatewayrouter.RegisterUserRoutes(api, grpcPool, cfg.JWTSecret)
 
 	// 启动 HTTP 服务
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Port),
 		Handler:      router,
 		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 60 * time.Second,
+		WriteTimeout: 600 * time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
 

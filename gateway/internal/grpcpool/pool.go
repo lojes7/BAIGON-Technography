@@ -1,7 +1,7 @@
 // 百工谱 — gRPC 客户端连接池
 // 管理到各后端服务的 gRPC 连接，通过 Consul 做服务发现
 
-package proxy
+package grpcpool
 
 import (
 	"context"
