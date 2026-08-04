@@ -8,7 +8,7 @@ import grpc
 
 from src.kafka.producer import KafkaProducerClient
 from src.pb import crawler_pb2, crawler_pb2_grpc
-from src.dao.db import Database
+from src.repository.db import JobSourceRepository
 from src.service.cleaner import clean
 from src.service.fetcher import fetch_jobs
 from src.utils.snowflake import snowflake
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
     """CrawlerService gRPC 实现（stub 阶段同步执行；异步任务化留后续）"""
 
-    def __init__(self, db: Database, producer: KafkaProducerClient, max_documents: int):
+    def __init__(self, db: JobSourceRepository, producer: KafkaProducerClient, max_documents: int):
         self._db = db
         self._producer = producer
         self._max_documents = max_documents
@@ -64,6 +64,7 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
                 evidence_chain_id=str(snowflake.next_id()),
                 document_count=len(cleaned),
                 trace_id=str(trace_id),
+                documents=cleaned,
             )
 
             # 9) 更新状态并返回

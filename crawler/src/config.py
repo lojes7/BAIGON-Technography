@@ -37,22 +37,8 @@ class Config:
         )
 
     @property
-    def db_url(self) -> str:
-        return (
-            f"postgresql+asyncpg://{self.db_user}:{self.db_password}"
-            f"@{self.db_host}:{self.db_port}/{self.db_name}"
-        )
-
-    @property
     def db_url_sync(self) -> str:
-        return (
-            f"postgresql://{self.db_user}:{self.db_password}"
-            f"@{self.db_host}:{self.db_port}/{self.db_name}"
-        )
-
-    @property
-    def db_dsn(self) -> str:
-        """asyncpg 专用 DSN（db_url 是 SQLAlchemy 风格 +asyncpg scheme，asyncpg 不认）"""
+        """同步 SQLAlchemy DSN（psycopg2 驱动）"""
         return (
             f"postgresql://{self.db_user}:{self.db_password}"
             f"@{self.db_host}:{self.db_port}/{self.db_name}"

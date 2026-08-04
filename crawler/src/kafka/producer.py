@@ -1,5 +1,6 @@
 # 百工谱 — Kafka 生产者
-# 发送文档采集完成事件到 data-source 服务（清洗后的数据由 data-source 落库 cleaned_job_sources）
+# 发送文档采集完成事件到 data-source 服务（携带清洗后每条记录的完整明细，
+# data-source 据此写入 cleaned_job_sources 表）
 # kafka-python 是同步库；gRPC handler 在 worker 线程中运行，可直接阻塞调用
 
 import json
@@ -9,10 +10,28 @@ from datetime import datetime, timezone
 
 from kafka import KafkaProducer
 
+from src.service.fetcher import JobRecord
+
 logger = logging.getLogger(__name__)
 
-# topic 与事件名一致
+# topic 与事件名一致（已确认决策）
 TOPIC_DOCUMENT_INGESTED = "baigon.crawler.document.ingested"
+
+# cleaned_job_sources 表的业务列（不含 id / 审核列，id 由 data-source 生成，
+# review_status 等审核列由 data-source 管理，默认 PENDING）
+_PAYLOAD_FIELDS = [
+    "publish_date", "source_platform", "source_url", "city", "tags",
+    "major", "nature", "salary", "job_name", "company_name",
+    "company_size", "province", "education", "experience", "job_description",
+]
+
+
+def _record_to_dict(r: JobRecord) -> dict:
+    """JobRecord → JSON 可序列化 dict（datetime 转 ISO 字符串）"""
+    return {
+        f: getattr(r, f).isoformat() if isinstance(getattr(r, f), datetime) else getattr(r, f)
+        for f in _PAYLOAD_FIELDS
+    }
 
 
 class KafkaProducerClient:
@@ -33,8 +52,13 @@ class KafkaProducerClient:
         evidence_chain_id: str,
         document_count: int,
         trace_id: str,
+        documents: list[JobRecord],
     ) -> None:
-        """发送文档采集完成事件（事件信封与桩保持一致，透传 trace_id）"""
+        """发送文档采集完成事件
+
+        事件 payload 携带每条清洗后记录的完整明细（documents 数组，
+        每项对应 cleaned_job_sources 表的一行业务数据）。
+        """
         message = {
             "message_id": str(uuid.uuid4()),
             "trace_id": trace_id,
@@ -45,11 +69,16 @@ class KafkaProducerClient:
                 "source_document_id": source_document_id,
                 "evidence_chain_id": evidence_chain_id,
                 "document_count": document_count,
+                # 清洗后明细：每条记录全字段（对应 cleaned_job_sources 业务列）
+                "documents": [_record_to_dict(d) for d in documents],
             },
         }
         self._producer.send(self._topic, value=message)
         self._producer.flush()  # 同步确认落盘，桩阶段保证消息不丢
-        logger.info("已发送事件 %s (count=%d, trace_id=%s)", TOPIC_DOCUMENT_INGESTED, document_count, trace_id)
+        logger.info(
+            "已发送事件 %s (count=%d, trace_id=%s)",
+            TOPIC_DOCUMENT_INGESTED, document_count, trace_id,
+        )
 
     def close(self) -> None:
         self._producer.close()

@@ -15,7 +15,7 @@ from src.kafka.producer import KafkaProducerClient
 from src.pb import crawler_pb2_grpc
 from src.server.grpc_server import CrawlerServicer
 from src.server.health import router as health_router
-from src.dao.db import Database
+from src.repository.db import JobSourceRepository
 
 # 配置日志
 logging.basicConfig(
@@ -70,7 +70,7 @@ def deregister_from_consul(consul_client, service_id):
 
 
 # gRPC Server
-def create_grpc_server(db: Database, producer: KafkaProducerClient) -> grpc.Server:
+def create_grpc_server(db: JobSourceRepository, producer: KafkaProducerClient) -> grpc.Server:
     """创建 gRPC 服务器并注册 CrawlerService（stub 实现）"""
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=10),
@@ -80,10 +80,15 @@ def create_grpc_server(db: Database, producer: KafkaProducerClient) -> grpc.Serv
         ],
     )
 
-    # 注册 crawler_service（桩实现）
-    # TODO: 导入生成的 proto stub
-    # from proto.gen.python.crawler import crawler_pb2_grpc
-    # crawler_pb2_grpc.add_CrawlerServiceServicer_to_server(CrawlerServicer(), server)
+    # 注册生成的 proto stub
+    crawler_pb2_grpc.add_CrawlerServiceServicer_to_server(
+        CrawlerServicer(
+            db=db,
+            producer=producer,
+            max_documents=config.max_documents_per_task,
+        ),
+        server,
+    )
 
     return server
 
@@ -103,8 +108,8 @@ async def main():
     # 注册到 Consul
     consul_client, service_id = register_to_consul()
 
-    # 初始化依赖：数据库连接池 + Kafka 生产者
-    db = Database(config.db_dsn)
+    # 初始化依赖：数据库访问层 + Kafka 生产者
+    db = JobSourceRepository(config.db_url_sync)
     producer = KafkaProducerClient(
         config.kafka_bootstrap_servers, config.kafka_topic_ingested
     )
