@@ -7,6 +7,7 @@ import com.baigon.user.LoginRequest;
 import com.baigon.user.LoginResponse;
 import com.baigon.user.UserServiceGrpc;
 import com.baigon.user.service.AuthService;
+import com.baigon.user.service.LogService;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import org.slf4j.Logger;
@@ -19,9 +20,11 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
     private static final Logger log = LoggerFactory.getLogger(UserGrpcService.class);
 
     private final AuthService authService;
+    private final LogService logService;
 
-    public UserGrpcService(AuthService authService) {
+    public UserGrpcService(AuthService authService, LogService logService) {
         this.authService = authService;
+        this.logService = logService;
         log.info("UserGrpcService 初始化完成");
     }
 
@@ -30,6 +33,8 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
     public void login(LoginRequest request, StreamObserver<LoginResponse> responseObserver) {
         try {
             AuthService.AuthResult result = authService.login(request.getUid(), request.getPassword());
+            // 写业务日志：登录成功（登录请求无用户上下文，user_id 填 0，user_name 用请求账号）
+            logService.info(null, 0L, request.getUid(), null, "login success");
             responseObserver.onNext(LoginResponse.newBuilder()
                     .setToken(result.token())
                     .setUserId(result.userId())
@@ -39,6 +44,8 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
                     .build());
             responseObserver.onCompleted();
         } catch (AuthService.AuthException e) {
+            // 写业务日志：登录失败（账号或密码错误 / 账号锁定）
+            logService.error(null, 0L, request.getUid(), null, e.getMessage(), "login failed");
             // 业务异常 → gRPC 状态码
             Status status = switch (e.getStatus()) {
                 case 401 -> Status.UNAUTHENTICATED;

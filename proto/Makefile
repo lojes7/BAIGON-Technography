@@ -80,6 +80,7 @@ java: $(GEN_DIR)
 GO_PB_DIR := ../gateway/pb
 go:
 	@echo "=== 生成 Go gRPC stub (gateway/pb) ==="
+	@mkdir -p $(GO_PB_DIR)
 	protoc \
 		-I $(PROTO_DIR) \
 		--go_out=$(GO_PB_DIR) \
@@ -96,6 +97,8 @@ go:
 		$(PROTO_DIR)/user/*.proto \
 		$(PROTO_DIR)/crawler/*.proto
 	# source_relative 按 proto 目录输出，mv 到包名目录
+	# 注意：目标已存在时 mv 会嵌套目录，必须先清理旧目录
+	@rm -rf $(GO_PB_DIR)/userpb $(GO_PB_DIR)/commonpb $(GO_PB_DIR)/crawlerpb
 	@mv -f $(GO_PB_DIR)/user $(GO_PB_DIR)/userpb 2>/dev/null || true
 	@mv -f $(GO_PB_DIR)/common $(GO_PB_DIR)/commonpb 2>/dev/null || true
 	@mv -f $(GO_PB_DIR)/crawler $(GO_PB_DIR)/crawlerpb 2>/dev/null || true

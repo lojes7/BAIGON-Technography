@@ -53,11 +53,15 @@ class KafkaProducerClient:
         document_count: int,
         trace_id: str,
         documents: list[JobRecord],
+        user_id: int = 0,
+        user_name: str = "system",
+        user_ip: str | None = None,
     ) -> None:
         """发送文档采集完成事件
 
         事件 payload 携带每条清洗后记录的完整明细（documents 数组，
-        每项对应 cleaned_job_sources 表的一行业务数据）。
+        每项对应 cleaned_job_sources 表的一行业务数据），
+        以及操作者用户上下文（供 data-source 写日志/审计）。
         """
         message = {
             "message_id": str(uuid.uuid4()),
@@ -69,6 +73,10 @@ class KafkaProducerClient:
                 "source_document_id": source_document_id,
                 "evidence_chain_id": evidence_chain_id,
                 "document_count": document_count,
+                # 操作者用户上下文（gateway 透传，供 data-source 写日志/审计）
+                "user_id": user_id,
+                "user_name": user_name,
+                "user_ip": user_ip,
                 # 清洗后明细：每条记录全字段（对应 cleaned_job_sources 业务列）
                 "documents": [_record_to_dict(d) for d in documents],
             },

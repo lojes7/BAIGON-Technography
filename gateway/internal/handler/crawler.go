@@ -22,6 +22,19 @@ type crawlRequest struct {
 	Type string `json:"type" example:"JOB"` // 采集数据类型，目前仅支持 JOB
 }
 
+// 从 gin context 提取用户上下文（Auth 中间件已注入 userId/uid，见 middleware.go）
+func userIDFromContext(c *gin.Context) int64 {
+	if v, ok := c.Get("userId"); ok {
+		if id, ok := v.(int64); ok {
+			return id
+		}
+		if id, ok := v.(float64); ok { // JWT 数字可能被解析为 float64
+			return int64(id)
+		}
+	}
+	return 0
+}
+
 // grpcErrorToHTTP gRPC 状态码 → HTTP 状态码（失败响应仅返回状态码，不带消息）
 func grpcErrorToHTTP(err error) int {
 	code := http.StatusInternalServerError
@@ -63,8 +76,8 @@ func StartCrawlHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 		}
 		// 缺省 type 视为 JOB
 		if req.Type != "JOB" {
-            response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
-            return
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
 		}
 
 		conn, err := pool.GetConn("crawler-service")
@@ -77,9 +90,15 @@ func StartCrawlHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
 		defer cancel()
 
+		// 透传用户上下文（Auth 中间件已注入 userId/uid）
 		resp, err := crawlerpb.NewCrawlerServiceClient(conn).Crawl(ctx, &crawlerpb.CrawlRequest{
-			Type:    req.Type,
-			TraceId: c.GetString("trace_id"),
+			Type:          req.Type,
+			TraceId:       c.GetString("trace_id"),
+			UserId:        userIDFromContext(c),
+			UserName:      c.GetString("uid"),
+			UserIp:        c.ClientIP(),
+			RequestMethod: c.Request.Method,
+			RequestUrl:    c.Request.URL.Path,
 		})
 		if err != nil {
 			code := grpcErrorToHTTP(err)
@@ -117,7 +136,15 @@ func GetCrawlStatusHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 		defer cancel()
 
-		resp, err := crawlerpb.NewCrawlerServiceClient(conn).GetCrawlStatus(ctx, &crawlerpb.GetCrawlStatusRequest{})
+		// 透传用户上下文，供后端写 logs 表
+		resp, err := crawlerpb.NewCrawlerServiceClient(conn).GetCrawlStatus(ctx, &crawlerpb.GetCrawlStatusRequest{
+			TraceId:       c.GetString("trace_id"),
+			UserId:        userIDFromContext(c),
+			UserName:      c.GetString("uid"),
+			UserIp:        c.ClientIP(),
+			RequestMethod: c.Request.Method,
+			RequestUrl:    c.Request.URL.Path,
+		})
 		if err != nil {
 			code := grpcErrorToHTTP(err)
 			response.Error(c, code, code)
@@ -154,7 +181,15 @@ func StopCrawlHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 		defer cancel()
 
-		resp, err := crawlerpb.NewCrawlerServiceClient(conn).StopCrawl(ctx, &crawlerpb.StopCrawlRequest{})
+		// 透传用户上下文，供后端写 logs 表
+		resp, err := crawlerpb.NewCrawlerServiceClient(conn).StopCrawl(ctx, &crawlerpb.StopCrawlRequest{
+			TraceId:       c.GetString("trace_id"),
+			UserId:        userIDFromContext(c),
+			UserName:      c.GetString("uid"),
+			UserIp:        c.ClientIP(),
+			RequestMethod: c.Request.Method,
+			RequestUrl:    c.Request.URL.Path,
+		})
 		if err != nil {
 			code := grpcErrorToHTTP(err)
 			response.Error(c, code, code)

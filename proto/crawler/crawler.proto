@@ -25,6 +25,11 @@ service CrawlerService {
 message CrawlRequest {
   string type = 1; // 采集数据类型，为枚举值，目前暂时仅支持 `JOB`
   string trace_id = 2; // 链路追踪 ID（gateway RequestID 生成，透传全链路）
+  int64 user_id = 3; // 用户 ID（gateway 从 JWT 解析，透传供日志/审计）
+  string user_name = 4; // 登录账号 uid（gateway 从 JWT 解析）
+  string user_ip = 5; // 客户端 IP（gateway 获取）
+  string request_method = 6; // 原始 HTTP 方法（GET/POST/...）
+  string request_url = 7; // 原始 HTTP 路径
 }
 
 message CrawlResponse {
@@ -32,7 +37,14 @@ message CrawlResponse {
   string trace_id = 2; // 回显链路追踪 ID
 }
 
-message GetCrawlStatusRequest {}
+message GetCrawlStatusRequest {
+  string trace_id = 1; // 链路追踪 ID
+  int64 user_id = 2; // 用户 ID（gateway 透传）
+  string user_name = 3; // 登录账号 uid
+  string user_ip = 4; // 客户端 IP
+  string request_method = 5; // 原始 HTTP 方法
+  string request_url = 6; // 原始 HTTP 路径
+}
 
 message GetCrawlStatusResponse {
   string status = 1; // 采集状态：idle / running / success / failed / stopped
@@ -40,7 +52,14 @@ message GetCrawlStatusResponse {
   string message = 3; // 附加信息（如失败原因）
 }
 
-message StopCrawlRequest {}
+message StopCrawlRequest {
+  string trace_id = 1; // 链路追踪 ID
+  int64 user_id = 2; // 用户 ID（gateway 透传）
+  string user_name = 3; // 登录账号 uid
+  string user_ip = 4; // 客户端 IP
+  string request_method = 5; // 原始 HTTP 方法
+  string request_url = 6; // 原始 HTTP 路径
+}
 
 message StopCrawlResponse {
   string status = 1; // 停止后状态，stub 阶段固定返回 "stopped"

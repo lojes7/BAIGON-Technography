@@ -15,7 +15,9 @@ from src.kafka.producer import KafkaProducerClient
 from src.pb import crawler_pb2_grpc
 from src.server.grpc_server import CrawlerServicer
 from src.server.health import router as health_router
-from src.repository.db import JobSourceRepository
+from src.repository.job_source import JobSourceRepository
+from src.repository.log import LogRepository
+from src.service.log_service import LogService
 
 # 配置日志
 logging.basicConfig(
@@ -70,7 +72,8 @@ def deregister_from_consul(consul_client, service_id):
 
 
 # gRPC Server
-def create_grpc_server(db: JobSourceRepository, producer: KafkaProducerClient) -> grpc.Server:
+def create_grpc_server(db: JobSourceRepository, producer: KafkaProducerClient,
+                       log_service: LogService) -> grpc.Server:
     """创建 gRPC 服务器并注册 CrawlerService（stub 实现）"""
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=10),
@@ -85,6 +88,7 @@ def create_grpc_server(db: JobSourceRepository, producer: KafkaProducerClient) -
         CrawlerServicer(
             db=db,
             producer=producer,
+            log_service=log_service,
             max_documents=config.max_documents_per_task,
         ),
         server,
@@ -108,14 +112,16 @@ async def main():
     # 注册到 Consul
     consul_client, service_id = register_to_consul()
 
-    # 初始化依赖：数据库访问层 + Kafka 生产者
+    # 初始化依赖：数据库访问层 + Kafka 生产者 + 日志服务
     db = JobSourceRepository(config.db_url_sync)
+    log_repo = LogRepository(config.db_url_sync)
+    log_service = LogService(log_repo)
     producer = KafkaProducerClient(
         config.kafka_bootstrap_servers, config.kafka_topic_ingested
     )
 
     # 创建并启动 gRPC 服务器
-    grpc_server = create_grpc_server(db, producer)
+    grpc_server = create_grpc_server(db, producer, log_service)
 
     try:
         # 同时运行 FastAPI (健康检查) 和 gRPC
@@ -134,6 +140,7 @@ async def main():
         grpc_server.stop(grace=5)
         producer.close()
         db.close()
+        log_repo.close()
         logger.info("crawler_service 已安全关闭")
 
 

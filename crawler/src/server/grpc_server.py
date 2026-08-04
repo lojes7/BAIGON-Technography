@@ -8,9 +8,10 @@ import grpc
 
 from src.kafka.producer import KafkaProducerClient
 from src.pb import crawler_pb2, crawler_pb2_grpc
-from src.repository.db import JobSourceRepository
+from src.repository.job_source import JobSourceRepository
 from src.service.cleaner import clean
 from src.service.fetcher import fetch_jobs
+from src.service.log_service import LogService
 from src.utils.snowflake import snowflake
 
 logger = logging.getLogger(__name__)
@@ -19,9 +20,11 @@ logger = logging.getLogger(__name__)
 class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
     """CrawlerService gRPC 实现（stub 阶段同步执行；异步任务化留后续）"""
 
-    def __init__(self, db: JobSourceRepository, producer: KafkaProducerClient, max_documents: int):
+    def __init__(self, db: JobSourceRepository, producer: KafkaProducerClient,
+                 log_service: LogService, max_documents: int):
         self._db = db
         self._producer = producer
+        self._log = log_service
         self._max_documents = max_documents
         # 采集互斥锁：同一时间只允许一个采集任务
         self._lock = threading.Lock()
@@ -42,6 +45,15 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
 
         # 3) trace_id：gateway 透传或本服务生成
         trace_id = int(request.trace_id) if request.trace_id else snowflake.next_id()
+        # 日志上下文（gateway 透传的用户信息）
+        log_ctx = {
+            "trace_id": trace_id,
+            "user_id": request.user_id,
+            "user_name": request.user_name or "system",
+            "user_ip": request.user_ip,
+            "request_method": request.request_method,
+            "request_url": request.request_url,
+        }
 
         try:
             # 4) 爬取（stub）
@@ -65,12 +77,22 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
                 document_count=len(cleaned),
                 trace_id=str(trace_id),
                 documents=cleaned,
+                # 透传操作者用户上下文（gateway 从 JWT 解析）
+                user_id=request.user_id,
+                user_name=request.user_name or "system",
+                user_ip=request.user_ip,
             )
 
             # 9) 更新状态并返回
             with self._lock:
                 self._status = {"status": "success", "count": str(len(records)), "message": ""}
             logger.info("采集任务完成: %d 条（trace_id=%d）", len(records), trace_id)
+
+            # 10) 写业务日志：采集成功
+            self._log.info(
+                detail=f"crawl success: {len(records)} records, cleaned {len(cleaned)}",
+                **log_ctx,
+            )
             return crawler_pb2.CrawlResponse(count=str(len(records)), trace_id=str(trace_id))
 
         except grpc.RpcError:
@@ -79,12 +101,28 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
             logger.exception("采集任务失败")
             with self._lock:
                 self._status = {"status": "failed", "count": "0", "message": str(e)}
+            # 写业务日志：采集失败
+            self._log.error(
+                error_msg=str(e)[:2000],
+                detail="crawl failed",
+                **log_ctx,
+            )
             context.abort(grpc.StatusCode.INTERNAL, str(e))
 
     def GetCrawlStatus(self, request, context):
         """查询最近一次采集任务状态"""
         with self._lock:
             s = dict(self._status)
+        # 写业务日志：查询状态
+        self._log.info(
+            trace_id=int(request.trace_id) if request.trace_id else None,
+            user_id=request.user_id,
+            user_name=request.user_name or "system",
+            user_ip=request.user_ip,
+            request_method=request.request_method,
+            request_url=request.request_url,
+            detail=f"get crawl status: {s['status']}",
+        )
         return crawler_pb2.GetCrawlStatusResponse(
             status=s["status"], count=s["count"], message=s["message"]
         )
@@ -94,4 +132,14 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
         with self._lock:
             self._status = {"status": "stopped", "count": self._status["count"], "message": "stopped by user"}
         logger.info("采集任务已停止")
+        # 写业务日志：停止采集
+        self._log.warning(
+            trace_id=int(request.trace_id) if request.trace_id else None,
+            user_id=request.user_id,
+            user_name=request.user_name or "system",
+            user_ip=request.user_ip,
+            request_method=request.request_method,
+            request_url=request.request_url,
+            detail="crawl stopped by user",
+        )
         return crawler_pb2.StopCrawlResponse(status="stopped")
