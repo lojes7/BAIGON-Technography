@@ -13,44 +13,11 @@ import (
 	crawlerpb "baigon-technography/gateway/pb/crawlerpb"
 
 	"github.com/gin-gonic/gin"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // crawlRequest 启动采集请求体
 type crawlRequest struct {
 	Type string `json:"type" example:"JOB"` // 采集数据类型，目前仅支持 JOB
-}
-
-// 从 gin context 提取用户上下文（Auth 中间件已注入 userId/uid，见 middleware.go）
-func userIDFromContext(c *gin.Context) int64 {
-	if v, ok := c.Get("userId"); ok {
-		if id, ok := v.(int64); ok {
-			return id
-		}
-		if id, ok := v.(float64); ok { // JWT 数字可能被解析为 float64
-			return int64(id)
-		}
-	}
-	return 0
-}
-
-// grpcErrorToHTTP gRPC 状态码 → HTTP 状态码（失败响应仅返回状态码，不带消息）
-func grpcErrorToHTTP(err error) int {
-	code := http.StatusInternalServerError
-	if st, ok := status.FromError(err); ok {
-		switch st.Code() {
-		case codes.InvalidArgument:
-			code = http.StatusBadRequest
-		case codes.Unauthenticated:
-			code = http.StatusUnauthorized
-		case codes.PermissionDenied, codes.FailedPrecondition:
-			code = http.StatusForbidden
-		case codes.Unavailable, codes.DeadlineExceeded:
-			code = http.StatusServiceUnavailable
-		}
-	}
-	return code
 }
 
 // StartCrawlHandler 启动一次采集任务

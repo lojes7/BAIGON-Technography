@@ -16,13 +16,13 @@ import java.time.OffsetDateTime;
 @Service
 public class CleanedJobSourceService {
 
-    private static final Logger log = LoggerFactory.getLogger(CleanDataService.class);
+    private static final Logger log = LoggerFactory.getLogger(CleanedJobSourceService.class);
 
     private final CleanedJobSourceRepository cleanedJobSourceRepository;
     private final LogService logService;
     private final Snowflake snowflake;
 
-    public CleanDataService(CleanedJobSourceRepository cleanedJobSourceRepository,
+    public CleanedJobSourceService(CleanedJobSourceRepository cleanedJobSourceRepository,
                             LogService logService, Snowflake snowflake) {
         this.cleanedJobSourceRepository = cleanedJobSourceRepository;
         this.logService = logService;

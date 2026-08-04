@@ -13,8 +13,6 @@ import (
 	"baigon-technography/gateway/pb/userpb"
 
 	"github.com/gin-gonic/gin"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // loginRequest 登录请求体
@@ -65,18 +63,8 @@ func LoginHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			Password: req.Password,
 		})
 		if err != nil {
-			// gRPC 状态码 → HTTP 状态码（错误响应仅返回状态码，不带消息）
-			code := http.StatusInternalServerError
-			if st, ok := status.FromError(err); ok {
-				switch st.Code() {
-				case codes.Unauthenticated:
-					code = http.StatusUnauthorized
-				case codes.PermissionDenied:
-					code = http.StatusForbidden
-				case codes.Unavailable, codes.DeadlineExceeded:
-					code = http.StatusServiceUnavailable
-				}
-			}
+			// 复用公共 gRPC 状态码映射（见 common.go）
+			code := grpcErrorToHTTP(err)
 			response.Error(c, code, code)
 			return
 		}
