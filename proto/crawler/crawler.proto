@@ -10,3 +10,38 @@ option java_multiple_files = true;
 option go_package = "baigon-technography/proto/gen/crawler;crawler";
 
 import "common/evidence.proto";
+
+service CrawlerService {
+  // 采集数据
+  rpc Crawl (CrawlRequest) returns (CrawlResponse) {}
+
+  // 查询采集状态
+  rpc GetCrawlStatus (GetCrawlStatusRequest) returns (GetCrawlStatusResponse) {}
+
+  // 停止采集
+  rpc StopCrawl (StopCrawlRequest) returns (StopCrawlResponse) {}
+}
+
+message CrawlRequest {
+  string type = 1; // 采集数据类型，为枚举值，目前暂时仅支持 `JOB`
+  string trace_id = 2; // 链路追踪 ID（gateway RequestID 生成，透传全链路）
+}
+
+message CrawlResponse {
+  string count = 1; // 采集到的内容的数量
+  string trace_id = 2; // 回显链路追踪 ID
+}
+
+message GetCrawlStatusRequest {}
+
+message GetCrawlStatusResponse {
+  string status = 1; // 采集状态：idle / running / success / failed / stopped
+  string count = 2; // 最近一次采集数量
+  string message = 3; // 附加信息（如失败原因）
+}
+
+message StopCrawlRequest {}
+
+message StopCrawlResponse {
+  string status = 1; // 停止后状态，stub 阶段固定返回 "stopped"
+}

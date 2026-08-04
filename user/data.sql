@@ -1,9 +1,6 @@
 --- ADMIN
 INSERT INTO users (id, name, password, role, uid) VALUES (1,'管理员','$2b$12$5u5NsXnt3x6cADRcAW8U5uWLUb61MoTBt3mKOyOtyKRylVn7sJvmO','ADMIN','admin');
 
---- DATA_ENGINEER
-INSERT INTO users (id, name, password, role, uid) VALUES (2,'数据工程师','$2b$12$5u5NsXnt3x6cADRcAW8U5uWLUb61MoTBt3mKOyOtyKRylVn7sJvmO','DATA_ENGINEER','engineer');
-
 --- DATA_REVIEWER
 INSERT INTO users (id, name, password, role, uid) VALUES (3,'数据审核员','$2b$12$5u5NsXnt3x6cADRcAW8U5uWLUb61MoTBt3mKOyOtyKRylVn7sJvmO','DATA_REVIEWER','reviewer');
 

@@ -35,6 +35,29 @@ python: $(GEN_DIR)
 		sed -i '' 's/import common_pb2/from . import common_pb2/' $$f 2>/dev/null || true; \
 	done
 
+# ==================== Python stub（crawler 服务专用） ====================
+# 与 gateway 的 pb 命名保持一致，生成到 crawler/src/pb/（gitignored，构建前需先运行 make python-crawler）
+python-crawler: $(GEN_DIR)
+	@echo "=== 生成 crawler Python gRPC stub (crawler/src/pb) ==="
+	@mkdir -p $(GEN_DIR)/python-crawler
+	python -m grpc_tools.protoc \
+		-I $(PROTO_DIR) \
+		--python_out=$(GEN_DIR)/python-crawler \
+		--grpc_python_out=$(GEN_DIR)/python-crawler \
+		$(PROTO_DIR)/common/*.proto \
+		$(PROTO_DIR)/crawler/*.proto
+	@mkdir -p ../crawler/src/pb
+	# grpc_tools.protoc 按 proto 目录结构输出（common/、crawler/ 子目录），cp 各文件到目标
+	@cp $(GEN_DIR)/python-crawler/crawler/crawler_pb2.py $(GEN_DIR)/python-crawler/crawler/crawler_pb2_grpc.py \
+		$(GEN_DIR)/python-crawler/common/evidence_pb2.py $(GEN_DIR)/python-crawler/common/evidence_pb2_grpc.py \
+		../crawler/src/pb/
+	# 相对导入修复（生成代码是 from common import evidence_pb2 as xxx 形式，改为包内相对导入）
+	@cd ../crawler/src/pb && \
+		sed -i '' 's/^from common import evidence_pb2 as common_dot_evidence__pb2/from . import evidence_pb2 as common_dot_evidence__pb2/' crawler_pb2.py && \
+		sed -i '' 's/^from crawler import crawler_pb2 as crawler_dot_crawler__pb2/from . import crawler_pb2 as crawler_dot_crawler__pb2/' crawler_pb2_grpc.py
+	@touch ../crawler/src/pb/__init__.py
+	@echo "crawler python stub 已生成到 crawler/src/pb"
+
 # ==================== Java stub ====================
 java: $(GEN_DIR)
 	@echo "=== 生成 Java gRPC stub ==="
@@ -65,13 +88,17 @@ go:
 		--go-grpc_opt=paths=source_relative \
 		--go_opt=Muser/user.proto=baigon-technography/gateway/pb/userpb \
 		--go_opt=Mcommon/evidence.proto=baigon-technography/gateway/pb/commonpb \
+		--go_opt=Mcrawler/crawler.proto=baigon-technography/gateway/pb/crawlerpb \
 		--go-grpc_opt=Muser/user.proto=baigon-technography/gateway/pb/userpb \
 		--go-grpc_opt=Mcommon/evidence.proto=baigon-technography/gateway/pb/commonpb \
+		--go-grpc_opt=Mcrawler/crawler.proto=baigon-technography/gateway/pb/crawlerpb \
 		$(PROTO_DIR)/common/*.proto \
-		$(PROTO_DIR)/user/*.proto
+		$(PROTO_DIR)/user/*.proto \
+		$(PROTO_DIR)/crawler/*.proto
 	# source_relative 按 proto 目录输出，mv 到包名目录
 	@mv -f $(GO_PB_DIR)/user $(GO_PB_DIR)/userpb 2>/dev/null || true
 	@mv -f $(GO_PB_DIR)/common $(GO_PB_DIR)/commonpb 2>/dev/null || true
+	@mv -f $(GO_PB_DIR)/crawler $(GO_PB_DIR)/crawlerpb 2>/dev/null || true
 
 # ==================== 清理 ====================
 clean:

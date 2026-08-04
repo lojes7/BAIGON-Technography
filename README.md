@@ -48,10 +48,10 @@ cd baigon-technography
 
 ### 3. 生成 Proto 代码
 
-> **重要**：`gateway/pb/` 目录被 `.gitignore` 忽略，**必须在构建镜像前**生成，否则网关服务无法编译。
+> **重要**：`gateway/pb/` 与 `crawler/src/pb/` 目录被 `.gitignore` 忽略，**必须在构建镜像前**生成，否则对应服务无法编译。
 
 ```bash
-# 在 proto 目录下生成 Go gRPC stub
+# 在 proto 目录下生成 Go gRPC stub（gateway）
 cd proto
 make go
 cd ..
@@ -61,7 +61,16 @@ cd ..
 ```
 gateway/pb/
 ├── commonpb/   # 公共消息定义（evidence.proto）
-└── userpb/     # 用户服务 gRPC 接口
+├── userpb/     # 用户服务 gRPC 接口
+└── crawlerpb/  # 爬虫服务 gRPC 接口
+```
+
+生成 crawler 服务的 Python stub（crawler 服务运行时依赖，同样被 gitignore）：
+
+```bash
+cd proto
+make python-crawler    # 生成到 crawler/src/pb/
+cd ..
 ```
 
 如需同时生成 Python / Java stub（本地调试）：

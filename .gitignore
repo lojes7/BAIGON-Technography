@@ -25,6 +25,7 @@ target/
 # Proto generated code
 proto/gen/
 gateway/pb/
+crawler/src/pb/
 
 # Swagger generated docs
 gateway/docs/docs.go

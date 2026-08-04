@@ -127,6 +127,39 @@ func Auth(jwtSecret string) gin.HandlerFunc {
 	}
 }
 
+// RoleAuth 角色鉴权中间件：仅允许 allowedRoles 中的角色访问
+// 依赖 Auth 中间件先执行（已验证 JWT 并 c.Set("role", claims["role"])）
+// 用法: auth.Group("/crawl").Use(middleware.RoleAuth("ADMIN"))
+func RoleAuth(allowedRoles ...string) gin.HandlerFunc {
+	// 允许角色集合
+	allowed := make(map[string]struct{}, len(allowedRoles))
+	for _, r := range allowedRoles {
+		allowed[r] = struct{}{}
+	}
+	return func(c *gin.Context) {
+		// 无 role（未认证/claims 缺失）：401 —— Auth 正常已拦截，此处为纵深防御
+		role, ok := c.Get("role")
+		if !ok || role == nil {
+			response.Error(c, http.StatusUnauthorized, http.StatusUnauthorized)
+			c.Abort()
+			return
+		}
+		roleStr, ok := role.(string)
+		if !ok {
+			response.Error(c, http.StatusUnauthorized, http.StatusUnauthorized)
+			c.Abort()
+			return
+		}
+		// 有 role 但不在允许列表：403
+		if _, ok := allowed[roleStr]; !ok {
+			response.Error(c, http.StatusForbidden, http.StatusForbidden)
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
 // ==================== 限流器 ====================
 
 // RateLimit token bucket 限流中间件

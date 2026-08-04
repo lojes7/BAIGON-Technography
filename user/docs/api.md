@@ -65,17 +65,15 @@
 | 学工 | STUDENT_AFFAIR | 学生事务管理 |
 | 数据分析师 | DATA_ANALYST | 岗位数据分析 |
 | 数据审核员 | DATA_REVIEWER | 数据质量审核 |
-| 数据工程师 | DATA_ENGINEER | 数据采集与治理 |
 | 管理员 | ADMIN | 系统管理员 |
 
 ## 种子账号
 
-`data.sql` 预置了 4 个测试账号（密码相同），用于开发调试：
+`data.sql` 预置了 3 个测试账号（密码相同），用于开发调试：
 
 | 账号 uid | 角色 |
 |----------|------|
 | `admin` | ADMIN |
-| `engineer` | DATA_ENGINEER |
 | `reviewer` | DATA_REVIEWER |
 | `analyst` | DATA_ANALYST |
 

@@ -55,7 +55,7 @@ public class User {
 
     /** 角色（与 init.sql 中 role 枚举保持一致） */
     public enum Role {
-        STUDENT, TEACHER, STUDENT_AFFAIR, DATA_ANALYST, DATA_REVIEWER, DATA_ENGINEER, ADMIN
+        STUDENT, TEACHER, STUDENT_AFFAIR, DATA_ANALYST, DATA_REVIEWER, ADMIN
     }
 
     /** 账号状态（与 init.sql 中 user_status 枚举保持一致） */

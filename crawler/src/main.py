@@ -11,8 +11,11 @@ import uvicorn
 from fastapi import FastAPI
 
 from src.config import config
+from src.kafka.producer import KafkaProducerClient
+from src.pb import crawler_pb2_grpc
 from src.server.grpc_server import CrawlerServicer
 from src.server.health import router as health_router
+from src.dao.db import Database
 
 # 配置日志
 logging.basicConfig(
@@ -67,8 +70,8 @@ def deregister_from_consul(consul_client, service_id):
 
 
 # gRPC Server
-def create_grpc_server() -> grpc.Server:
-    """创建 gRPC 服务器"""
+def create_grpc_server(db: Database, producer: KafkaProducerClient) -> grpc.Server:
+    """创建 gRPC 服务器并注册 CrawlerService（stub 实现）"""
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=10),
         options=[
@@ -100,8 +103,14 @@ async def main():
     # 注册到 Consul
     consul_client, service_id = register_to_consul()
 
+    # 初始化依赖：数据库连接池 + Kafka 生产者
+    db = Database(config.db_dsn)
+    producer = KafkaProducerClient(
+        config.kafka_bootstrap_servers, config.kafka_topic_ingested
+    )
+
     # 创建并启动 gRPC 服务器
-    grpc_server = create_grpc_server()
+    grpc_server = create_grpc_server(db, producer)
 
     try:
         # 同时运行 FastAPI (健康检查) 和 gRPC
@@ -118,6 +127,8 @@ async def main():
     finally:
         deregister_from_consul(consul_client, service_id)
         grpc_server.stop(grace=5)
+        producer.close()
+        db.close()
         logger.info("crawler_service 已安全关闭")
 
 

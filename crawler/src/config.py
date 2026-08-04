@@ -25,6 +25,10 @@ class Config:
         self.kafka_bootstrap_servers: str = os.getenv(
             "KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"
         )
+        # 采集完成事件 topic（与事件名一致）
+        self.kafka_topic_ingested: str = os.getenv(
+            "KAFKA_TOPIC_INGESTED", "baigon.crawler.document.ingested"
+        )
 
         # 采集配置
         self.default_crawl_interval: str = os.getenv("CRAWL_INTERVAL", "24h")
@@ -41,6 +45,14 @@ class Config:
 
     @property
     def db_url_sync(self) -> str:
+        return (
+            f"postgresql://{self.db_user}:{self.db_password}"
+            f"@{self.db_host}:{self.db_port}/{self.db_name}"
+        )
+
+    @property
+    def db_dsn(self) -> str:
+        """asyncpg 专用 DSN（db_url 是 SQLAlchemy 风格 +asyncpg scheme，asyncpg 不认）"""
         return (
             f"postgresql://{self.db_user}:{self.db_password}"
             f"@{self.db_host}:{self.db_port}/{self.db_name}"
