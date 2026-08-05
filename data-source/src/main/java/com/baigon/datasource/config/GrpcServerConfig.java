@@ -37,8 +37,8 @@ public class GrpcServerConfig {
     @PostConstruct
     public void startGrpcServer() throws IOException {
         server = ServerBuilder.forPort(grpcPort)
-                // TODO: 当 proto stub 生成后注册实际服务
-                // .addService(grpcService)
+                // 注册 DataSourceService（清洗数据查询与复核）
+                .addService(grpcService)
                 .maxInboundMessageSize(50 * 1024 * 1024) // 50MB
                 .build()
                 .start();

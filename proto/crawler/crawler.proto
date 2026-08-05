@@ -20,6 +20,9 @@ service CrawlerService {
 
   // 停止采集
   rpc StopCrawl (StopCrawlRequest) returns (StopCrawlResponse) {}
+
+  // 按 trace_id 查询原始岗位记录（供 data-source 追溯 job_sources 表）
+  rpc GetJobSourceByTraceId (GetJobSourceByTraceIdRequest) returns (GetJobSourceByTraceIdResponse) {}
 }
 
 message CrawlRequest {
@@ -63,4 +66,36 @@ message StopCrawlRequest {
 
 message StopCrawlResponse {
   string status = 1; // 停止后状态，stub 阶段固定返回 "stopped"
+}
+
+message GetJobSourceByTraceIdRequest {
+  int64 trace_id = 1; // job_sources.trace_id
+  // 审计字段（gateway 透传，供后端写 logs 表）
+  int64 user_id = 2;
+  string user_name = 3;
+  string user_ip = 4;
+  string request_method = 5;
+  string request_url = 6;
+}
+
+message GetJobSourceByTraceIdResponse {
+  // job_sources 全字段（与表结构一一对应）
+  int64 id = 1;
+  int64 trace_id = 2;
+  string publish_date = 3; // ISO8601 时间
+  string source_platform = 4;
+  string source_url = 5;
+  string city = 6;
+  string tags = 7;
+  string major = 8;
+  string nature = 9;
+  string salary = 10;
+  string job_name = 11;
+  string company_name = 12;
+  string company_size = 13;
+  string province = 14;
+  string education = 15;
+  string experience = 16;
+  string job_description = 17;
+  string clean_status = 18; // PENDING / SUCCESS / FAILED
 }

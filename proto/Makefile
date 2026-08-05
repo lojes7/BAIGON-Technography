@@ -90,18 +90,22 @@ go:
 		--go_opt=Muser/user.proto=baigon-technography/gateway/pb/userpb \
 		--go_opt=Mcommon/evidence.proto=baigon-technography/gateway/pb/commonpb \
 		--go_opt=Mcrawler/crawler.proto=baigon-technography/gateway/pb/crawlerpb \
+		--go_opt=Mdata_source/data_source.proto=baigon-technography/gateway/pb/datasourcepb \
 		--go-grpc_opt=Muser/user.proto=baigon-technography/gateway/pb/userpb \
 		--go-grpc_opt=Mcommon/evidence.proto=baigon-technography/gateway/pb/commonpb \
 		--go-grpc_opt=Mcrawler/crawler.proto=baigon-technography/gateway/pb/crawlerpb \
+		--go-grpc_opt=Mdata_source/data_source.proto=baigon-technography/gateway/pb/datasourcepb \
 		$(PROTO_DIR)/common/*.proto \
 		$(PROTO_DIR)/user/*.proto \
-		$(PROTO_DIR)/crawler/*.proto
+		$(PROTO_DIR)/crawler/*.proto \
+		$(PROTO_DIR)/data_source/*.proto
 	# source_relative 按 proto 目录输出，mv 到包名目录
 	# 注意：目标已存在时 mv 会嵌套目录，必须先清理旧目录
-	@rm -rf $(GO_PB_DIR)/userpb $(GO_PB_DIR)/commonpb $(GO_PB_DIR)/crawlerpb
+	@rm -rf $(GO_PB_DIR)/userpb $(GO_PB_DIR)/commonpb $(GO_PB_DIR)/crawlerpb $(GO_PB_DIR)/datasourcepb
 	@mv -f $(GO_PB_DIR)/user $(GO_PB_DIR)/userpb 2>/dev/null || true
 	@mv -f $(GO_PB_DIR)/common $(GO_PB_DIR)/commonpb 2>/dev/null || true
 	@mv -f $(GO_PB_DIR)/crawler $(GO_PB_DIR)/crawlerpb 2>/dev/null || true
+	@mv -f $(GO_PB_DIR)/data_source $(GO_PB_DIR)/datasourcepb 2>/dev/null || true
 
 # ==================== 清理 ====================
 clean:

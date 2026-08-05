@@ -101,6 +101,7 @@ func main() {
 	// 注册所有路由
 	gatewayrouter.RegisterUserRoutes(api, grpcPool, cfg.JWTSecret)
 	gatewayrouter.RegisterCrawlerRoutes(api, grpcPool, cfg.JWTSecret)
+	gatewayrouter.RegisterDataSourceRoutes(api, grpcPool, cfg.JWTSecret)
 
 	// 启动 HTTP 服务
 	srv := &http.Server{

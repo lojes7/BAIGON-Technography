@@ -179,8 +179,11 @@ services:
       - baigon-net
 
   # data_source_service — Java 数据治理服务
+  # context 指向根目录：构建时需要 proto/ 中的接口定义
   data-source:
-    build: ./data-source
+    build:
+      context: .
+      dockerfile: data-source/Dockerfile
     container_name: baigon-data-source-service
     ports:
       - "${DATA_SOURCE_GRPC_PORT}:50052"

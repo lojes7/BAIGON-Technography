@@ -21,6 +21,8 @@
         <java.version>21</java.version>
         <grpc.version>1.65.0</grpc.version>
         <protobuf.version>3.25.3</protobuf.version>
+        <!-- proto 目录：本地默认仓库根 proto/；Docker 构建时用 -Dproto.root=proto 覆盖（proto 在 /app/proto） -->
+        <proto.root>../proto</proto.root>
     </properties>
 
     <dependencies>
@@ -94,6 +96,8 @@
         </dependency>
         <!-- 雪花 ID 生成（hutool，生产级时钟回拨处理） -->
         <dependency><groupId>cn.hutool</groupId><artifactId>hutool-core</artifactId><version>5.8.32</version></dependency>
+        <!-- gRPC 生成的 stub 引用 @javax.annotation.Generated，JDK 9+ 已移除该注解 -->
+        <dependency><groupId>javax.annotation</groupId><artifactId>javax.annotation-api</artifactId><version>1.3.2</version></dependency>
 
     </dependencies>
 
@@ -110,6 +114,36 @@
                         </exclude>
                     </excludes>
                 </configuration>
+            </plugin>
+            <!-- 检测当前平台，用于定位 protoc 可执行文件 -->
+            <plugin>
+                <groupId>kr.motd.maven</groupId>
+                <artifactId>os-maven-plugin</artifactId>
+                <version>1.7.1</version>
+                <executions><execution><phase>initialize</phase><goals><goal>detect</goal></goals></execution></executions>
+            </plugin>
+            <!-- 从 proto/ 编译 gRPC Java stub（protoSourceRoot=proto，与 Dockerfile 中 COPY proto/ 对应）
+                 同时编译 data_source（本服务）与 crawler（本服务需调 crawler 查询原始记录） -->
+            <plugin>
+                <groupId>org.xolstice.maven.plugins</groupId>
+                <artifactId>protobuf-maven-plugin</artifactId>
+                <version>0.6.1</version>
+                <configuration>
+                    <protocArtifact>com.google.protobuf:protoc:${protobuf.version}:exe:${os.detected.classifier}</protocArtifact>
+                    <pluginId>grpc-java</pluginId>
+                    <pluginArtifact>io.grpc:protoc-gen-grpc-java:${grpc.version}:exe:${os.detected.classifier}</pluginArtifact>
+                    <protoSourceRoot>${proto.root}</protoSourceRoot>
+                    <includes>
+                        <include>data_source/data_source.proto</include>
+                        <include>crawler/crawler.proto</include>
+                        <include>common/evidence.proto</include>
+                    </includes>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals><goal>compile</goal><goal>compile-custom</goal></goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

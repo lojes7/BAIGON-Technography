@@ -159,6 +159,57 @@ Consul 健康探测端点，**不需要认证**。
 
 ---
 
+### 数据治理端点（`/api/auth/data-source`）
+
+以下端点需要 **ADMIN / DATA_REVIEWER** 角色（Auth 验 JWT + RoleAuth 验角色）。
+
+#### POST /api/auth/data-source — 分页查询清洗后岗位
+
+请求体（分页 + 筛选）：
+
+```json
+{
+  "page": 0,
+  "pageSize": 20,
+  "reviewStatus": "PENDING",
+  "publishDateFrom": "2025-01-01T00:00:00+08:00",
+  "publishDateTo": "2025-12-31T23:59:59+08:00"
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `page` | number | 否 | 页码，从 0 开始，默认 0 |
+| `pageSize` | number | 否 | 每页条数，默认 20 |
+| `reviewStatus` | string | 否 | 复核状态：PENDING / PASSED / REJECTED，空=全部 |
+| `publishDateFrom` / `publishDateTo` | string | 否 | 发布时间范围（ISO8601），可选 |
+
+成功响应 `data` 内含 `items`（摘要：id / job_name / company_name / source_platform / publish_date / created_at / review_status）、`total`、`page`、`pageSize`。
+
+#### GET /api/auth/data-source/{id} — 清洗后岗位详情
+
+返回 `cleaned_job_sources` 全字段。`{id}` 为 cleaned_job_sources.id。
+
+#### GET /api/auth/data-source/{id}/source — 原始记录追溯
+
+返回对应 `job_sources` 原始记录（data-source 经 gRPC 调 crawler-service 查询）。不存在 → 404。
+
+#### POST /api/auth/data-source/{id}/review — 复核通过
+
+将记录标记为 `PASSED`，写入 `reviewed_at/reviewed_by`。
+
+#### DELETE /api/auth/data-source/{id}/review — 复核拒绝
+
+将记录标记为 `REJECTED`。
+
+#### PUT /api/auth/data-source/{id}/review — 修改后通过复核
+
+请求体携带修改后的字段（jobName / companyName / salary / city / education / experience / jobDescription），应用后标记为 `PASSED`。
+
+**错误响应**：400 参数错误 / 401 未认证 / 403 非 ADMIN·DATA_REVIEWER / 404 记录不存在 / 503 服务不可用。
+
+---
+
 ## 认证说明
 
 鉴权中间件按**路由组**挂载，无全局白名单机制：

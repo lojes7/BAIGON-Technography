@@ -10,3 +10,156 @@ option java_multiple_files = true;
 option go_package = "baigon-technography/proto/gen/datasource;datasource";
 
 import "common/evidence.proto";
+
+service DataSourceService {
+  // 分页查询清洗后岗位数据（列表，含筛选）
+  rpc ListCleanedJobs (ListCleanedJobsRequest) returns (ListCleanedJobsResponse) {}
+
+  // 查询某条清洗后岗位详情（全字段）
+  rpc GetCleanedJob (GetCleanedJobRequest) returns (GetCleanedJobResponse) {}
+
+  // 查询某条清洗后岗位的原始记录（内部调 crawler-service 查 job_sources）
+  rpc GetSourceJob (GetSourceJobRequest) returns (GetSourceJobResponse) {}
+
+  // 人工复核（通过 / 拒绝 / 修改后通过）
+  rpc ReviewJob (ReviewJobRequest) returns (ReviewJobResponse) {}
+}
+
+// ==================== 列表 ====================
+
+message ListCleanedJobsRequest {
+  int32 page = 1; // 页码，从 0 开始
+  int32 page_size = 2; // 每页条数，默认 20
+  string review_status = 3; // 复核状态筛选：PENDING / PASSED / REJECTED，空=全部
+  string publish_date_from = 4; // 发布时间筛选起点（ISO8601，可选）
+  string publish_date_to = 5; // 发布时间筛选终点（ISO8601，可选）
+  // 审计字段（gateway 从 JWT 解析透传）
+  string trace_id = 6;
+  int64 user_id = 7;
+  string user_name = 8;
+  string user_ip = 9;
+  string request_method = 10;
+  string request_url = 11;
+}
+
+// 列表摘要：仅返回岗位名、公司名、来源、发布时间、获取时间、复核状态等
+message CleanedJobSummary {
+  int64 id = 1;
+  string job_name = 2;
+  string company_name = 3;
+  string source_platform = 4;
+  string publish_date = 5; // ISO8601
+  string created_at = 6; // 获取时间（入库时间）
+  string review_status = 7; // PENDING / PASSED / REJECTED
+}
+
+message ListCleanedJobsResponse {
+  repeated CleanedJobSummary items = 1;
+  int64 total = 2; // 总数
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+// ==================== 详情 ====================
+
+message GetCleanedJobRequest {
+  int64 id = 1; // cleaned_job_sources.id
+  // 审计字段
+  string trace_id = 2;
+  int64 user_id = 3;
+  string user_name = 4;
+  string user_ip = 5;
+  string request_method = 6;
+  string request_url = 7;
+}
+
+message CleanedJobDetail {
+  int64 id = 1;
+  int64 trace_id = 2;
+  string publish_date = 3; // ISO8601
+  string source_platform = 4;
+  string source_url = 5;
+  string city = 6;
+  string tags = 7;
+  string major = 8;
+  string nature = 9;
+  string salary = 10;
+  string job_name = 11;
+  string company_name = 12;
+  string company_size = 13;
+  string province = 14;
+  string education = 15;
+  string experience = 16;
+  string job_description = 17;
+  string review_status = 18; // PENDING / PASSED / REJECTED
+  string reviewed_at = 19; // 复核时间 ISO8601（未复核为空）
+  int64 reviewed_by = 20; // 复核人 ID
+}
+
+message GetCleanedJobResponse {
+  CleanedJobDetail job = 1;
+}
+
+// ==================== 原始记录 ====================
+
+message GetSourceJobRequest {
+  int64 id = 1; // cleaned_job_sources.id（data-source 据此查 trace_id 后调 crawler）
+  // 审计字段
+  string trace_id = 2;
+  int64 user_id = 3;
+  string user_name = 4;
+  string user_ip = 5;
+  string request_method = 6;
+  string request_url = 7;
+}
+
+// job_sources 原始记录（来自 crawler 库）
+message SourceJobDetail {
+  int64 id = 1;
+  int64 trace_id = 2;
+  string publish_date = 3; // ISO8601
+  string source_platform = 4;
+  string source_url = 5;
+  string city = 6;
+  string tags = 7;
+  string major = 8;
+  string nature = 9;
+  string salary = 10;
+  string job_name = 11;
+  string company_name = 12;
+  string company_size = 13;
+  string province = 14;
+  string education = 15;
+  string experience = 16;
+  string job_description = 17;
+  string clean_status = 18; // PENDING / SUCCESS / FAILED
+}
+
+message GetSourceJobResponse {
+  SourceJobDetail source = 1;
+}
+
+// ==================== 复核 ====================
+
+enum ReviewAction {
+  APPROVE = 0; // 复核通过
+  REJECT = 1; // 复核拒绝
+  APPROVE_WITH_EDIT = 2; // 修改后通过
+}
+
+message ReviewJobRequest {
+  int64 id = 1; // cleaned_job_sources.id
+  ReviewAction action = 2;
+  CleanedJobDetail edited = 3; // APPROVE_WITH_EDIT 时携带修改后的字段（仅业务字段生效）
+  // 审计字段
+  string trace_id = 4;
+  int64 user_id = 5;
+  string user_name = 6;
+  string user_ip = 7;
+  string request_method = 8;
+  string request_url = 9;
+}
+
+message ReviewJobResponse {
+  CleanedJobDetail job = 1;
+}
