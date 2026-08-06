@@ -137,7 +137,9 @@ services:
 
   # gateway_service — Go + GIN 网关
   gateway:
-    build: ./gateway
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
     container_name: baigon-gateway-service
     ports:
       - "${GATEWAY_PORT}:8080"
@@ -153,8 +155,11 @@ services:
       - baigon-net
 
   # crawler_service — Python 爬虫服务
+  # context 指向根目录：构建时需要 proto/ 中的接口定义（stub 在镜像内自动生成）
   crawler:
-    build: ./crawler
+    build:
+      context: .
+      dockerfile: crawler/Dockerfile
     container_name: baigon-crawler-service
     ports:
       - "${CRAWLER_GRPC_PORT}:50051"
