@@ -18,7 +18,7 @@ from DrissionPage import ChromiumOptions, ChromiumPage
 from DrissionPage.errors import PageDisconnectedError
 
 from src.config.city_mapping import get_province
-from src.config.job_list import JOB_LIST_URL
+from src.config.Zhi_Lian import JOB_LIST_URL
 from src.utils.snowflake import snowflake
 
 logger = logging.getLogger(__name__)
@@ -113,6 +113,10 @@ class ZhaopinCrawler:
         self._seen.add(number)
         with open(self._dedup_file, "a", encoding="utf-8") as f:
             f.write(f"{number}\n")
+
+    def _is_duplicate(self, number: str) -> bool:
+        """该职位是否已爬过（job_number 稳定 ID 在去重集合中）"""
+        return number in self._seen
 
     # ============================================================
     # 浏览器管理

@@ -73,6 +73,9 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
         # 4) 启动后台爬取线程（爬取参数由 ADMIN 前端传参）
         categories = list(request.categories) if request.categories else None
         max_documents = request.max_documents or self._max_documents
+        # 约束：单分类最大条数上限 1000（防止一次性爬取过多）
+        if max_documents > 1000:
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "max_documents must be <= 1000")
         self._worker = threading.Thread(
             target=self._crawl_worker,
             args=(trace_id, log_ctx, categories, max_documents, self._stop_event),

@@ -19,8 +19,8 @@ class JobSourceRepository:
     """job_sources 表数据访问（同步 SQLAlchemy）"""
 
     def __init__(self, dsn: str):
-        # 同步引擎（psycopg2 驱动，依赖已在 requirements）
-        self._engine = create_engine(dsn, pool_size=5, max_overflow=10)
+        # 同步引擎（psycopg2 驱动）；pool_pre_ping：取连接前验证，防 Postgres 重启后的僵尸连接
+        self._engine = create_engine(dsn, pool_size=5, max_overflow=10, pool_pre_ping=True)
         self._session_factory = sessionmaker(bind=self._engine)
         logger.info("数据库引擎已就绪")
 
@@ -56,9 +56,11 @@ class JobSourceRepository:
             for r in rows
         ]
         with self._session_factory() as session:
-            # PostgreSQL dialect 的 insert ... on_conflict_do_nothing（按各自 trace_id 防重）
+            # 普通批量 INSERT：每条 trace_id 独立（雪花 ID 不重复），
+            # 表上 idx_job_sources_trace_id 部分唯一索引天然防重。
+            # 注意：不能用 ON CONFLICT (trace_id)——部分唯一索引（WHERE deleted_at IS NULL）
+            # 无法被 ON CONFLICT 匹配，会报 "no unique or exclusion constraint matching"。
             stmt = insert(JobSource).values(records)
-            stmt = stmt.on_conflict_do_nothing(index_elements=["trace_id"])
             result = session.execute(stmt)
             session.commit()
         inserted = result.rowcount

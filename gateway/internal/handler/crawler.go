@@ -48,6 +48,11 @@ func StartCrawlHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
 			return
 		}
+		// 约束：单分类最大条数上限 1000
+		if req.MaxDocuments > 1000 {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
 
 		conn, err := pool.GetConn("crawler-service")
 		if err != nil {
