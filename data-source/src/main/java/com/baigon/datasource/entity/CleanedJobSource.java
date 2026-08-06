@@ -24,8 +24,8 @@ public class CleanedJobSource {
     @Column(name = "trace_id")
     private Long traceId;
 
-    /** 发布日期 */
-    @Column(name = "publish_date", nullable = false)
+    /** 发布日期（可空：crawler 解析失败时诚实存 NULL） */
+    @Column(name = "publish_date")
     private OffsetDateTime publishDate;
 
     /** 来源平台（拉勾/Boss直聘等） */

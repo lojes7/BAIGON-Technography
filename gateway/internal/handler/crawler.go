@@ -15,15 +15,17 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// crawlRequest 启动采集请求体
+// crawlRequest 启动采集请求体（ADMIN 前端直接配置爬取参数）
 type crawlRequest struct {
-	Type string `json:"type" example:"JOB"` // 采集数据类型，目前仅支持 JOB
+	Type         string   `json:"type" example:"JOB"`          // 采集数据类型，目前仅支持 JOB
+	Categories   []string `json:"categories"`                  // 要爬的岗位分类，空=全部
+	MaxDocuments int      `json:"maxDocuments" example:"1000"` // 单分类最大条数，默认 1000
 }
 
 // StartCrawlHandler 启动一次采集任务
 // @Summary      启动采集
 // @Description  触发 crawler-service 执行一次采集：爬取(stub) → 写 job_sources → 清洗(stub) → Kafka 发送
-// @Tags         爬虫
+// @Tags         数据获取
 // @Accept       json
 // @Produce      json
 // @Security     Bearer
@@ -57,7 +59,7 @@ func StartCrawlHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
 		defer cancel()
 
-		// 透传用户上下文（Auth 中间件已注入 userId/uid）
+		// 透传用户上下文 + 爬取参数（ADMIN 前端传参）
 		resp, err := crawlerpb.NewCrawlerServiceClient(conn).Crawl(ctx, &crawlerpb.CrawlRequest{
 			Type:          req.Type,
 			TraceId:       c.GetString("trace_id"),
@@ -66,6 +68,8 @@ func StartCrawlHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			UserIp:        c.ClientIP(),
 			RequestMethod: c.Request.Method,
 			RequestUrl:    c.Request.URL.Path,
+			Categories:    req.Categories,
+			MaxDocuments:  int32(req.MaxDocuments),
 		})
 		if err != nil {
 			code := grpcErrorToHTTP(err)
@@ -74,9 +78,11 @@ func StartCrawlHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 		}
 
 		// 统一响应格式: {"code": 200, "data": {...}}
+		// 异步任务：立即返回 running 状态，进度用 GET /crawl 查询
 		response.Success(c, gin.H{
 			"count":    resp.GetCount(), // string，proto 定义如此，原样透出
 			"trace_id": resp.GetTraceId(),
+			"status":   resp.GetStatus(),
 		})
 	}
 }
@@ -84,7 +90,7 @@ func StartCrawlHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 // GetCrawlStatusHandler 查询采集状态
 // @Summary      查询采集状态
 // @Description  返回 crawler-service 最近一次采集任务状态（idle/running/success/failed/stopped）
-// @Tags         爬虫
+// @Tags         数据获取
 // @Produce      json
 // @Security     Bearer
 // @Success      200  {object}  response.SuccessBody  "采集状态，data 内含 status/count/message"
@@ -119,9 +125,12 @@ func GetCrawlStatusHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 		}
 
 		response.Success(c, gin.H{
-			"status":  resp.GetStatus(),
-			"count":   resp.GetCount(),
-			"message": resp.GetMessage(),
+			"status":          resp.GetStatus(),
+			"count":           resp.GetCount(),
+			"message":         resp.GetMessage(),
+			"currentCategory": resp.GetCurrentCategory(),
+			"progress":        resp.GetProgress(),
+			"totalCleaned":    resp.GetTotalCleaned(),
 		})
 	}
 }
@@ -129,7 +138,7 @@ func GetCrawlStatusHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 // StopCrawlHandler 停止采集
 // @Summary      停止采集
 // @Description  请求 crawler-service 停止当前采集任务
-// @Tags         爬虫
+// @Tags         数据获取
 // @Produce      json
 // @Security     Bearer
 // @Success      200  {object}  response.SuccessBody  "已停止，data 内含 status"

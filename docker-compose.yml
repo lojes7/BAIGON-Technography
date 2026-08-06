@@ -168,6 +168,10 @@ services:
       DB_PASSWORD: ${CRAWLER_DB_PASSWORD}
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       GRPC_PORT: 50051
+      # 爬虫进度/去重文件目录（容器卷持久化）
+      CRAWLER_PROGRESS_DIR: /app/data
+    volumes:
+      - crawlerdata:/app/data
     depends_on:
       consul:
         condition: service_healthy
@@ -339,3 +343,4 @@ networks:
 volumes:
   pgdata:
   miniodata:
+  crawlerdata:  # 爬虫进度/去重文件（断点续爬持久化）

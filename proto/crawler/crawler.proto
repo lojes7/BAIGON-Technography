@@ -33,11 +33,14 @@ message CrawlRequest {
   string user_ip = 5; // 客户端 IP（gateway 获取）
   string request_method = 6; // 原始 HTTP 方法（GET/POST/...）
   string request_url = 7; // 原始 HTTP 路径
+  repeated string categories = 8; // 要爬的岗位分类（ADMIN 前端传参），空=全部
+  int32 max_documents = 10; // 单分类最大条数（ADMIN 前端传参），默认 1000
 }
 
 message CrawlResponse {
   string count = 1; // 采集到的内容的数量
   string trace_id = 2; // 回显链路追踪 ID
+  string status = 3; // 异步任务状态：running（已启动后台爬取）
 }
 
 message GetCrawlStatusRequest {
@@ -50,9 +53,12 @@ message GetCrawlStatusRequest {
 }
 
 message GetCrawlStatusResponse {
-  string status = 1; // 采集状态：idle / running / success / failed / stopped
+  string status = 1; // 采集状态：idle / running / stopping / success / failed / stopped
   string count = 2; // 最近一次采集数量
   string message = 3; // 附加信息（如失败原因）
+  string current_category = 4; // 正在爬取的分类
+  int32 progress = 5; // 当前分类已完成页数
+  int64 total_cleaned = 6; // 累计清洗条数
 }
 
 message StopCrawlRequest {

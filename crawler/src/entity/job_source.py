@@ -14,7 +14,7 @@ class JobSource(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     trace_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
-    publish_date: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False)
+    publish_date: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True))  # 可空：解析失败诚实存 NULL
     source_platform: Mapped[str] = mapped_column(String(32), nullable=False)
     source_url: Mapped[str | None] = mapped_column(String(512))
     city: Mapped[str | None] = mapped_column(String(64))

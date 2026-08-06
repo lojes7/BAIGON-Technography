@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 from kafka import KafkaProducer
 
-from src.service.fetcher import JobRecord
+from src.service.Zhi_Lian_crawler import JobRecord
 
 logger = logging.getLogger(__name__)
 
@@ -18,9 +18,10 @@ logger = logging.getLogger(__name__)
 TOPIC_DOCUMENT_INGESTED = "baigon.crawler.document.ingested"
 
 # cleaned_job_sources 表的业务列（不含 id / 审核列，id 由 data-source 生成，
-# review_status 等审核列由 data-source 管理，默认 PENDING）
+# review_status 等审核列由 data-source 管理，默认 PENDING）。
+# trace_id 每条记录独立，data-source 据此关联原始记录。
 _PAYLOAD_FIELDS = [
-    "publish_date", "source_platform", "source_url", "city", "tags",
+    "trace_id", "publish_date", "source_platform", "source_url", "city", "tags",
     "major", "nature", "salary", "job_name", "company_name",
     "company_size", "province", "education", "experience", "job_description",
 ]
@@ -48,10 +49,7 @@ class KafkaProducerClient:
 
     def send_document_ingested(
         self,
-        source_document_id: str,
-        evidence_chain_id: str,
         document_count: int,
-        trace_id: str,
         documents: list[JobRecord],
         user_id: int = 0,
         user_name: str = "system",
@@ -65,27 +63,23 @@ class KafkaProducerClient:
         """
         message = {
             "message_id": str(uuid.uuid4()),
-            "trace_id": trace_id,
             "event_type": TOPIC_DOCUMENT_INGESTED,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "source_service": "crawler-service",
             "payload": {
-                "source_document_id": source_document_id,
-                "evidence_chain_id": evidence_chain_id,
                 "document_count": document_count,
                 # 操作者用户上下文（gateway 透传，供 data-source 写日志/审计）
                 "user_id": user_id,
                 "user_name": user_name,
                 "user_ip": user_ip,
-                # 清洗后明细：每条记录全字段（对应 cleaned_job_sources 业务列）
+                # 清洗后明细：每条记录全字段（含各自 trace_id，对应 cleaned_job_sources 业务列）
                 "documents": [_record_to_dict(d) for d in documents],
             },
         }
         self._producer.send(self._topic, value=message)
         self._producer.flush()  # 同步确认落盘，桩阶段保证消息不丢
         logger.info(
-            "已发送事件 %s (count=%d, trace_id=%s)",
-            TOPIC_DOCUMENT_INGESTED, document_count, trace_id,
+            "已发送事件 %s (count=%d)", TOPIC_DOCUMENT_INGESTED, document_count,
         )
 
     def close(self) -> None:

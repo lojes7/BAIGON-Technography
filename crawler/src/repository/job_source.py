@@ -9,7 +9,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import sessionmaker
 
 from src.entity.job_source import JobSource
-from src.service.fetcher import JobRecord
+from src.service.Zhi_Lian_crawler import JobRecord
 from src.utils.snowflake import snowflake
 
 logger = logging.getLogger(__name__)
@@ -24,17 +24,18 @@ class JobSourceRepository:
         self._session_factory = sessionmaker(bind=self._engine)
         logger.info("数据库引擎已就绪")
 
-    def insert_job_sources(self, rows: list[JobRecord], trace_id: int) -> int:
+    def insert_job_sources(self, rows: list[JobRecord]) -> int:
         """插入原始数据（clean_status='PENDING'），返回成功插入行数。
 
-        使用 PostgreSQL 的 INSERT ... ON CONFLICT (trace_id) DO NOTHING
-        防止同一请求重试时违反唯一索引（idx_job_sources_trace_id）。
+        每条记录使用各自的 trace_id（JobRecord.trace_id，爬虫生成时赋值），
+        因为 job_sources 有 trace_id 唯一索引（idx_job_sources_trace_id），
+        同批共享一个 trace_id 会导致只有第一条入库。
         """
         # 组装与 ORM 实体列对应的字段字典
         records = [
             {
                 "id": snowflake.next_id(),  # 雪花 ID
-                "trace_id": trace_id,
+                "trace_id": r.trace_id,
                 "publish_date": r.publish_date,
                 "source_platform": r.source_platform,
                 "source_url": r.source_url,
@@ -55,23 +56,36 @@ class JobSourceRepository:
             for r in rows
         ]
         with self._session_factory() as session:
-            # PostgreSQL dialect 的 insert ... on_conflict_do_nothing
+            # PostgreSQL dialect 的 insert ... on_conflict_do_nothing（按各自 trace_id 防重）
             stmt = insert(JobSource).values(records)
             stmt = stmt.on_conflict_do_nothing(index_elements=["trace_id"])
             result = session.execute(stmt)
             session.commit()
         inserted = result.rowcount
-        logger.info("job_sources 插入 %d 条（trace_id=%d）", inserted, trace_id)
+        logger.info("job_sources 插入 %d 条", inserted)
         return inserted
 
-    def mark_clean_success(self, trace_id: int) -> None:
-        """清洗成功：clean_status PENDING → SUCCESS"""
+    def mark_clean_success(self, trace_ids: list[int]) -> None:
+        """清洗成功：clean_status PENDING → SUCCESS（批量按 trace_id 列表）"""
+        if not trace_ids:
+            return
         with self._session_factory() as session:
-            session.query(JobSource).filter(JobSource.trace_id == trace_id).update(
-                {"clean_status": "SUCCESS"}
+            session.query(JobSource).filter(JobSource.trace_id.in_(trace_ids)).update(
+                {"clean_status": "SUCCESS"}, synchronize_session=False
             )
             session.commit()
-        logger.info("job_sources 清洗状态已置 SUCCESS（trace_id=%d）", trace_id)
+        logger.info("job_sources 清洗状态已置 SUCCESS（%d 条）", len(trace_ids))
+
+    def mark_clean_failed(self, trace_ids: list[int]) -> None:
+        """清洗失败：clean_status PENDING → FAILED（批量按 trace_id 列表）"""
+        if not trace_ids:
+            return
+        with self._session_factory() as session:
+            session.query(JobSource).filter(JobSource.trace_id.in_(trace_ids)).update(
+                {"clean_status": "FAILED"}, synchronize_session=False
+            )
+            session.commit()
+        logger.info("job_sources 清洗状态已置 FAILED（%d 条）", len(trace_ids))
 
     def close(self) -> None:
         """关闭引擎"""
