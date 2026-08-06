@@ -13,7 +13,7 @@ from src.pb import crawler_pb2, crawler_pb2_grpc
 from src.repository.job_source import JobSourceRepository
 from src.service.cleaner import clean
 from src.service.log_service import LogService
-from src.service.Zhi_Lian_crawler import ZhaopinCrawler
+from src.service.Zhi_Lian_crawler import JobRecord, ZhaopinCrawler, _parse_publish_date
 from src.utils.snowflake import snowflake
 
 logger = logging.getLogger(__name__)
@@ -90,9 +90,41 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
     # ============================================================
     # 后台爬取 worker
     # ============================================================
+    # 公共处理流程：落库 → 清洗 → 标记 SUCCESS → Kafka 发送
+    # 爬虫（_crawl_worker）与模拟注入（IngestData）共用
+    # ============================================================
+    def _process_records(self, records: list, log_ctx: dict) -> list:
+        """处理一批记录：写 job_sources → 清洗 → 标记 SUCCESS → Kafka 发送
+
+        返回清洗后的记录列表。
+        """
+        # 写入 job_sources（每条记录独立 trace_id，clean_status=PENDING）
+        if records:
+            self._db.insert_job_sources(records)
+
+        # 清洗
+        cleaned = clean(records)
+
+        # 清洗成功：批量将各条 clean_status → SUCCESS
+        trace_ids = [r.trace_id for r in records if r.trace_id]
+        if trace_ids:
+            self._db.mark_clean_success(trace_ids)
+
+        # 发送采集完成事件到 data-source（topic=baigon.crawler.document.ingested）
+        if cleaned:
+            self._producer.send_document_ingested(
+                document_count=len(cleaned),
+                documents=cleaned,
+                # 透传操作者用户上下文（gateway 从 JWT 解析）
+                user_id=log_ctx["user_id"],
+                user_name=log_ctx["user_name"],
+                user_ip=log_ctx["user_ip"],
+            )
+        return cleaned
+
     def _crawl_worker(self, trace_id: int, log_ctx: dict, categories: list[str] | None,
                       max_documents: int, stop_event: threading.Event) -> None:
-        """后台线程：爬取 → 写 job_sources → 清洗 → Kafka 发送"""
+        """后台线程：爬取 → 公共处理流程"""
         records: list = []
         try:
             # 1) 爬取（真实爬虫 DrissionPage）
@@ -105,28 +137,8 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
                 # 用户主动停止：已抓数据照常入库
                 logger.info("收到停止信号，已抓 %d 条，开始落库", len(records))
 
-            # 2) 写入 job_sources（每条记录独立 trace_id，clean_status=PENDING）
-            if records:
-                self._db.insert_job_sources(records)
-
-            # 3) 清洗
-            cleaned = clean(records)
-
-            # 4) 清洗成功：批量将各条 clean_status → SUCCESS
-            trace_ids = [r.trace_id for r in records if r.trace_id]
-            if trace_ids:
-                self._db.mark_clean_success(trace_ids)
-
-            # 5) 发送采集完成事件到 data-source（topic=baigon.crawler.document.ingested）
-            if cleaned:
-                self._producer.send_document_ingested(
-                    document_count=len(cleaned),
-                    documents=cleaned,
-                    # 透传操作者用户上下文（gateway 从 JWT 解析）
-                    user_id=log_ctx["user_id"],
-                    user_name=log_ctx["user_name"],
-                    user_ip=log_ctx["user_ip"],
-                )
+            # 2-5) 公共处理：落库 → 清洗 → 标记 SUCCESS → Kafka
+            cleaned = self._process_records(records, log_ctx)
 
             # 6) 更新状态
             with self._lock:
@@ -215,3 +227,78 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
             detail="crawl stop requested",
         )
         return crawler_pb2.StopCrawlResponse(status="stopping")
+
+    # ============================================================
+    # 模拟采集：注入配置数据走完整链路（不真爬）
+    # ============================================================
+    def IngestData(self, request, context):
+        """注入配置好的岗位数据，走与爬虫相同的落库/清洗/Kafka 流程"""
+        # 1) 参数校验：jobs 非空、条数 ≤ 1000（与 max_documents 同约束）
+        jobs = list(request.jobs)
+        if not jobs:
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "jobs must not be empty")
+        if len(jobs) > 1000:
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "jobs count must be <= 1000")
+
+        # 2) trace_id + 日志上下文（gateway 透传）
+        trace_id = int(request.trace_id) if request.trace_id else snowflake.next_id()
+        log_ctx = {
+            "trace_id": trace_id,
+            "user_id": request.user_id,
+            "user_name": request.user_name or "system",
+            "user_ip": request.user_ip,
+            "request_method": request.request_method,
+            "request_url": request.request_url,
+        }
+
+        try:
+            # 3) 每条注入数据 → JobRecord（trace_id 各赋雪花 ID，publish_date 解析失败置 None）
+            records = [
+                JobRecord(
+                    publish_date=_parse_publish_date(j.publish_date),
+                    source_platform=j.source_platform or "手动注入",
+                    source_url=j.source_url or None,
+                    city=j.city or None,
+                    tags=j.tags or None,
+                    major=j.major or None,
+                    nature=j.nature or None,
+                    salary=j.salary or None,
+                    job_name=j.job_name,
+                    company_name=j.company_name or None,
+                    company_size=j.company_size or None,
+                    province=j.province or None,
+                    education=j.education or None,
+                    experience=j.experience or None,
+                    job_description=j.job_description or None,
+                    trace_id=snowflake.next_id(),
+                )
+                for j in jobs
+            ]
+
+            # 4) 复用公共处理流程：落库 → 清洗 → 标记 SUCCESS → Kafka
+            cleaned = self._process_records(records, log_ctx)
+
+            # 5) 写业务日志
+            self._log.info(
+                detail=f"ingest success: {len(records)} records, cleaned {len(cleaned)}",
+                **log_ctx,
+            )
+            return crawler_pb2.IngestDataResponse(
+                count=str(len(cleaned)), trace_id=str(trace_id), status="success",
+            )
+        except Exception as e:
+            logger.exception("模拟注入失败")
+            # 已入库记录 clean_status → FAILED（按各自 trace_id）
+            trace_ids = [r.trace_id for r in locals().get("records", []) if r.trace_id]
+            try:
+                if trace_ids:
+                    self._db.mark_clean_failed(trace_ids)
+            except Exception:
+                pass
+            # 写业务日志
+            self._log.error(
+                error_msg=str(e)[:2000],
+                detail="ingest failed",
+                **log_ctx,
+            )
+            context.abort(grpc.StatusCode.INTERNAL, str(e))

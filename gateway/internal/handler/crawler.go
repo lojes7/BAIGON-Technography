@@ -182,3 +182,108 @@ func StopCrawlHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 		})
 	}
 }
+
+// ingestedJob 单条注入数据（字段与爬虫产出的 JobRecord 完全一致）
+type ingestedJob struct {
+	PublishDate    string `json:"publishDate" example:"2025-01-01T00:00:00+08:00"` // 发布日期 ISO8601，可空
+	SourcePlatform string `json:"sourcePlatform" example:"手动注入"`                   // 来源平台
+	SourceURL      string `json:"sourceUrl"`                                       // 来源 URL
+	City           string `json:"city"`                                            // 城市
+	Tags           string `json:"tags"`                                            // 技能标签
+	Major          string `json:"major"`                                           // 专业方向
+	Nature         string `json:"nature"`                                          // 工作性质
+	Salary         string `json:"salary"`                                          // 薪资
+	JobName        string `json:"jobName"`                                         // 岗位名称
+	CompanyName    string `json:"companyName"`                                     // 公司名称
+	CompanySize    string `json:"companySize"`                                     // 公司规模
+	Province       string `json:"province"`                                        // 省份
+	Education      string `json:"education"`                                       // 学历要求
+	Experience     string `json:"experience"`                                      // 经验要求
+	JobDescription string `json:"jobDescription"`                                  // 岗位描述
+}
+
+// ingestDataRequest 模拟采集请求体
+type ingestDataRequest struct {
+	Jobs []ingestedJob `json:"jobs"` // 注入的岗位数据
+}
+
+// IngestDataHandler 模拟采集：注入配置数据走完整链路
+// @Summary      模拟采集（注入数据）
+// @Description  由 ADMIN 提交配置好的岗位数据，走与爬虫相同的落库/清洗/Kafka 流程（不真爬）
+// @Tags         数据获取
+// @Accept       json
+// @Produce      json
+// @Security     Bearer
+// @Param        request body ingestDataRequest true "注入的岗位数据"
+// @Success      200  {object}  response.SuccessBody  "注入完成，data 内含 count/trace_id/status"
+// @Failure      400  {object}  response.ErrorBody    "请求体格式错误、jobs 为空或超过 1000 条"
+// @Failure      401  {object}  response.ErrorBody    "未认证"
+// @Failure      403  {object}  response.ErrorBody    "非 ADMIN"
+// @Failure      503  {object}  response.ErrorBody    "crawler 服务不可用"
+// @Router       /api/auth/crawl/ingest [post]
+func IngestDataHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req ingestDataRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+		// 校验：jobs 非空、条数 ≤ 1000
+		if len(req.Jobs) == 0 || len(req.Jobs) > 1000 {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+
+		conn, err := pool.GetConn("crawler-service")
+		if err != nil {
+			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		// 组装 gRPC 请求（透传审计字段）
+		jobs := make([]*crawlerpb.IngestedJob, 0, len(req.Jobs))
+		for _, j := range req.Jobs {
+			jobs = append(jobs, &crawlerpb.IngestedJob{
+				PublishDate:    j.PublishDate,
+				SourcePlatform: j.SourcePlatform,
+				SourceUrl:      j.SourceURL,
+				City:           j.City,
+				Tags:           j.Tags,
+				Major:          j.Major,
+				Nature:         j.Nature,
+				Salary:         j.Salary,
+				JobName:        j.JobName,
+				CompanyName:    j.CompanyName,
+				CompanySize:    j.CompanySize,
+				Province:       j.Province,
+				Education:      j.Education,
+				Experience:     j.Experience,
+				JobDescription: j.JobDescription,
+			})
+		}
+		resp, err := crawlerpb.NewCrawlerServiceClient(conn).IngestData(ctx, &crawlerpb.IngestDataRequest{
+			Jobs:          jobs,
+			TraceId:       c.GetString("trace_id"),
+			UserId:        userIDFromContext(c),
+			UserName:      c.GetString("uid"),
+			UserIp:        c.ClientIP(),
+			RequestMethod: c.Request.Method,
+			RequestUrl:    c.Request.URL.Path,
+		})
+		if err != nil {
+			code := grpcErrorToHTTP(err)
+			response.Error(c, code, code)
+			return
+		}
+
+		// 统一响应格式: {"code": 200, "data": {...}}
+		response.Success(c, gin.H{
+			"count":    resp.GetCount(),
+			"trace_id": resp.GetTraceId(),
+			"status":   resp.GetStatus(),
+		})
+	}
+}

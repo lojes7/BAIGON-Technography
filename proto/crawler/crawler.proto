@@ -23,6 +23,45 @@ service CrawlerService {
 
   // 按 trace_id 查询原始岗位记录（供 data-source 追溯 job_sources 表）
   rpc GetJobSourceByTraceId (GetJobSourceByTraceIdRequest) returns (GetJobSourceByTraceIdResponse) {}
+
+  // 模拟采集：注入配置数据走完整链路（不真爬，复用落库/清洗/Kafka 流程）
+  rpc IngestData (IngestDataRequest) returns (IngestDataResponse) {}
+}
+
+// 单条注入数据（字段与爬虫产出的 JobRecord 完全一致）
+message IngestedJob {
+  string publish_date = 1; // 发布日期 ISO8601，可空
+  string source_platform = 2; // 来源平台
+  string source_url = 3; // 来源 URL
+  string city = 4;
+  string tags = 5;
+  string major = 6;
+  string nature = 7;
+  string salary = 8;
+  string job_name = 9;
+  string company_name = 10;
+  string company_size = 11;
+  string province = 12;
+  string education = 13;
+  string experience = 14;
+  string job_description = 15;
+}
+
+message IngestDataRequest {
+  repeated IngestedJob jobs = 1; // 注入的岗位数据
+  // 审计字段（gateway 透传，与现有请求一致）
+  string trace_id = 2;
+  int64 user_id = 3;
+  string user_name = 4;
+  string user_ip = 5;
+  string request_method = 6;
+  string request_url = 7;
+}
+
+message IngestDataResponse {
+  string count = 1; // 注入并清洗的条数
+  string trace_id = 2;
+  string status = 3; // success
 }
 
 message CrawlRequest {

@@ -72,6 +72,27 @@
 
 设置停止信号,后台线程**立即中断**(不等当前页爬完):翻页/请求前检查、CDP fetch 用短超时(6s)后检查。已抓到的数据照常入库不丢,然后状态置 `stopped`。
 
+### IngestData — 模拟采集（注入配置数据）
+
+| 项目 | 内容 |
+|------|------|
+| **Full Method** | `/baigon.crawler.CrawlerService/IngestData` |
+| **对应 REST** | `POST /api/auth/crawl/ingest`（仅 ADMIN） |
+
+不真爬,由 ADMIN 提交配置好的岗位数据,**走与爬虫完全相同的流程**:写 job_sources → 清洗 → Kafka → data-source 落库。
+
+**请求 — IngestDataRequest**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `jobs` | repeated IngestedJob | 是 | 注入的岗位数据（1~1000 条） |
+
+`IngestedJob` 字段与爬虫产出的 JobRecord 完全一致:publish_date(ISO,可空)/ source_platform / source_url / city / tags / major / nature / salary / job_name / company_name / company_size / province / education / experience / job_description。
+
+**响应**:`count`(注入并清洗条数)/ `trace_id` / `status`(success)。
+
+**约束**:jobs 非空、≤ 1000 条;仅 ADMIN 可访问。
+
 ## 爬虫机制
 
 ### 支持分类（16 个）
