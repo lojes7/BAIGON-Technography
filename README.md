@@ -26,8 +26,8 @@ cd baigon-technography
 | `JWT_SECRET`                       | JWT 签名密钥       |            |
 | `POSTGRES_PASSWORD`                | 数据库主密码       | `123456`   |
 | `MINIO_ROOT_PASSWORD`              | MinIO 对象存储密码 | `12345678` |
-| `APPID` / `API_KEY` / `API_SECRET` | 大模型 API 凭证    |            |
-| `DASHSCOPE_API_KEY`                | DashScope API 密钥 |            |
+| `SPARK_API_PASSWORD`               | 讯飞星火 OpenAI 兼容接口密码 |            |
+| `DASHSCOPE_API_KEY`                | 阿里云百炼嵌入模型 API 密钥 |            |
 
 ### 3. 生成 Proto 代码（本地开发）
 

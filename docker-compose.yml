@@ -236,7 +236,12 @@ services:
       APPID: ${APPID}
       API_KEY: ${API_KEY}
       API_SECRET: ${API_SECRET}
+      SPARK_API_PASSWORD: ${SPARK_API_PASSWORD}
+      SPARK_BASE_URL: ${SPARK_BASE_URL:-https://spark-api-open.xf-yun.com/agent/v1/}
+      SPARK_MODEL: ${SPARK_MODEL:-spark-x}
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY}
+      DASHSCOPE_BASE_URL: ${DASHSCOPE_BASE_URL:-https://ws-02585sz1ly0611yl.cn-beijing.maas.aliyuncs.com/compatible-mode/v1}
+      DASHSCOPE_EMBEDDING_MODEL: ${DASHSCOPE_EMBEDDING_MODEL:-qwen3.7-text-embedding}
     depends_on:
       consul:
         condition: service_healthy
