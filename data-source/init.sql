@@ -62,7 +62,7 @@ CREATE TABLE "cleaned_job_sources" (
   "deleted_at" timestamp with time zone,
   "id" bigint PRIMARY KEY,
   "trace_id" bigint,
-  "publish_date" timestamp with time zone NOT NULL,
+  "publish_date" timestamp with time zone, -- 可空：爬虫解析失败时诚实存 NULL
   "source_platform" varchar(32) NOT NULL,
   "source_url" varchar(512),
   "city" varchar(64),
@@ -90,7 +90,7 @@ CREATE TABLE "reviewed_cleaned_job_sources" (
     "deleted_at" timestamp with time zone,
     "id" bigint PRIMARY KEY,
     "trace_id" bigint,
-    "publish_date" timestamp with time zone NOT NULL,
+    "publish_date" timestamp with time zone, -- 可空：爬虫解析失败时诚实存 NULL
     "source_platform" varchar(32) NOT NULL,
     "source_url" varchar(512),
     "city" varchar(64), 

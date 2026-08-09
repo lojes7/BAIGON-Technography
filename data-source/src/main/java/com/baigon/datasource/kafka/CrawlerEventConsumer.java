@@ -46,19 +46,20 @@ public class CrawlerEventConsumer {
             long userId = payload.path("user_id").asLong(0);
             String userName = payload.path("user_name").asText("system");
             String userIp = payload.path("user_ip").isNull() ? null : payload.path("user_ip").asText();
-            long traceId = root.path("trace_id").asLong(0);
 
             // 逐条清洗明细写入 cleaned_job_sources
+            // 每条记录使用各自的 trace_id（crawler 生成时赋值，与 job_sources 关联）
             JsonNode documents = payload.path("documents");
             int saved = 0;
             if (documents.isArray()) {
                 for (JsonNode doc : documents) {
+                    long docTraceId = doc.path("trace_id").asLong(0);
                     CleanedJobSource job = parseDocument(doc);
-                    cleanedJobSourceService.saveCleaned(job, traceId, userId, userName, userIp);
+                    cleanedJobSourceService.saveCleaned(job, docTraceId, userId, userName, userIp);
                     saved++;
                 }
             }
-            log.info("消费采集完成事件: trace_id={}, 落库 {} 条", traceId, saved);
+            log.info("消费采集完成事件: 落库 {} 条", saved);
         } catch (Exception e) {
             // 消费失败：记录业务日志，不重试（桩阶段）
             log.error("消费 crawler 事件失败", e);

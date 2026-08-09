@@ -35,6 +35,10 @@ class Config:
         self.max_documents_per_task: int = int(
             os.getenv("MAX_DOCUMENTS_PER_TASK", "1000")
         )
+        # 爬虫去重文件目录（跨分类去重 seen_numbers.txt，增量基线）
+        self.crawler_progress_dir: str = os.getenv(
+            "CRAWLER_PROGRESS_DIR", "./data"
+        )
 
     @property
     def db_url_sync(self) -> str:

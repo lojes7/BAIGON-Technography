@@ -137,7 +137,9 @@ services:
 
   # gateway_service — Go + GIN 网关
   gateway:
-    build: ./gateway
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
     container_name: baigon-gateway-service
     ports:
       - "${GATEWAY_PORT}:8080"
@@ -153,8 +155,11 @@ services:
       - baigon-net
 
   # crawler_service — Python 爬虫服务
+  # context 指向根目录：构建时需要 proto/ 中的接口定义（stub 在镜像内自动生成）
   crawler:
-    build: ./crawler
+    build:
+      context: .
+      dockerfile: crawler/Dockerfile
     container_name: baigon-crawler-service
     ports:
       - "${CRAWLER_GRPC_PORT}:50051"
@@ -168,6 +173,10 @@ services:
       DB_PASSWORD: ${CRAWLER_DB_PASSWORD}
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       GRPC_PORT: 50051
+      # 爬虫进度/去重文件目录（容器卷持久化）
+      CRAWLER_PROGRESS_DIR: /app/data
+    volumes:
+      - crawlerdata:/app/data
     depends_on:
       consul:
         condition: service_healthy
@@ -339,3 +348,4 @@ networks:
 volumes:
   pgdata:
   miniodata:
+  crawlerdata:  # 爬虫进度/去重文件（断点续爬持久化）

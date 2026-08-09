@@ -17,7 +17,7 @@ func RegisterCrawlerRoutes(api *gin.RouterGroup, pool *grpcpool.GrpcClientPool, 
 	auth := api.Group("/auth")
 	auth.Use(middleware.Auth(jwtSecret))
 
-    // ==================== 爬虫服务端点 ====================
+	// ==================== 爬虫服务端点 ====================
 	crawl := auth.Group("/crawl")
 	crawl.Use(middleware.RoleAuth("ADMIN"))
 
@@ -27,4 +27,6 @@ func RegisterCrawlerRoutes(api *gin.RouterGroup, pool *grpcpool.GrpcClientPool, 
 	crawl.GET("", handler.GetCrawlStatusHandler(pool))
 	// 停止爬虫
 	crawl.DELETE("", handler.StopCrawlHandler(pool))
+	// 模拟采集：注入配置数据走完整链路（不真爬）
+	crawl.POST("/ingest", handler.IngestDataHandler(pool))
 }

@@ -10,6 +10,8 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
 
@@ -24,8 +26,8 @@ public class CleanedJobSource {
     @Column(name = "trace_id")
     private Long traceId;
 
-    /** 发布日期 */
-    @Column(name = "publish_date", nullable = false)
+    /** 发布日期（可空：crawler 解析失败时诚实存 NULL） */
+    @Column(name = "publish_date")
     private OffsetDateTime publishDate;
 
     /** 来源平台（拉勾/Boss直聘等） */
@@ -86,6 +88,8 @@ public class CleanedJobSource {
 
     /** 人工复核状态（默认 PENDING） */
     @Enumerated(EnumType.STRING)
+    // @JdbcTypeCode(NAMED_ENUM)：Hibernate 6 按 PG 原生枚举绑定参数，否则报类型不匹配
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(name = "review_status")
     private ReviewStatus reviewStatus;
 

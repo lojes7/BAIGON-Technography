@@ -21,7 +21,8 @@ class LogRepository:
     """logs 表数据访问（同步 SQLAlchemy）"""
 
     def __init__(self, dsn: str):
-        self._engine = create_engine(dsn, pool_size=5, max_overflow=10)
+        # pool_pre_ping：取连接前验证，防 Postgres 重启后的僵尸连接
+        self._engine = create_engine(dsn, pool_size=5, max_overflow=10, pool_pre_ping=True)
         self._session_factory = sessionmaker(bind=self._engine)
         logger.info("日志表引擎已就绪")
 
