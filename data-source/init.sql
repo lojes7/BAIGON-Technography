@@ -112,11 +112,14 @@ CREATE TABLE "reviewed_cleaned_job_sources" (
 CREATE UNIQUE INDEX ON "reviewed_cleaned_job_sources" ("trace_id") WHERE "deleted_at" IS NULL;
 
 CREATE TABLE "job_analysis_tasks" (
-  "created_at" timestamp with time zone NOT NULL DEFAULT (now()),
-  "updated_at" timestamp with time zone NOT NULL DEFAULT (now()),
-  "deleted_at" timestamp with time zone,
-  "id" bigint PRIMARY KEY,
-  "trace_id" bigint,
-  "model_name" varchar(32),
-  "task_status" task_status
+    "created_at" timestamp with time zone NOT NULL DEFAULT (now()),
+    "updated_at" timestamp with time zone NOT NULL DEFAULT (now()),
+    "deleted_at" timestamp with time zone,
+    "id" bigint PRIMARY KEY,
+    "trace_id" bigint,
+    "model_name" varchar(32),
+    "task_status" task_status,
+    "review_status" review_status DEFAULT 'PENDING',
+    "reviewed_at" timestamp with time zone,
+    "reviewed_by" bigint,
 );

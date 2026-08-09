@@ -102,6 +102,8 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./crawler/init.sql:/service-init/crawler_init.sql:ro
       - ./data-source/init.sql:/service-init/data_source_init.sql:ro
+      - ./occupation/init.sql:/service-init/occupation_init.sql:ro
+      - ./occupation/data.sql:/service-init/occupation_data.sql:ro
       - ./user/init.sql:/service-init/user_init.sql:ro
       - ./user/data.sql:/service-init/user_data.sql:ro
     healthcheck:
