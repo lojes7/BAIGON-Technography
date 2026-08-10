@@ -1,18 +1,18 @@
 # 百工谱 — 智联招聘爬虫（真实爬虫，迁移自 demo：~/code/baigon/backend/app/data）
 # 用 DrissionPage（Chromium 自动化）监听 search/positions 网络接口拿 JSON，
-# 每次任务所有分类从第 1 页开始；跨分类去重（seen_numbers.txt）保证不重复——
-# 去重集合即增量基线，集合里没有的就是新职位。
+# 每次任务所有分类从第 1 页开始；从 job_sources 加载 job_number 作为增量基线，
+# 并使用进程内集合保证跨页、跨分类不重复。
 # CDP 后台 fetch 详情页兜底描述、技能标签抽取。
 # 本模块只负责"爬"，产出 list[JobRecord]，由 CrawlerServicer 统一落库。
 
 import json
 import logging
-import os
 import re
 import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Callable
 
 from DrissionPage import ChromiumOptions, ChromiumPage
 from DrissionPage.errors import PageDisconnectedError
@@ -22,6 +22,10 @@ from src.config.Zhi_Lian import JOB_LIST_URL
 from src.utils.snowflake import snowflake
 
 logger = logging.getLogger(__name__)
+
+
+class BatchCallbackError(RuntimeError):
+    """处理流水线的批次回调失败，必须终止本次采集。"""
 
 
 @dataclass
@@ -45,6 +49,8 @@ class JobRecord:
     job_description: str | None
     # 每条记录唯一 trace_id（爬虫生成时赋雪花 ID，job_sources 有 trace_id 唯一索引）
     trace_id: int | None = None
+    # 智联稳定 ID，写入 job_sources，作为同一岗位跨次采集的业务身份。
+    job_number: str | None = None
 
 
 # 列表数据中可能的职位描述字段名（demo 迁移）
@@ -89,34 +95,62 @@ def _parse_publish_date(date_str: str) -> datetime | None:
 class ZhaopinCrawler:
     """智联招聘爬虫 — 按岗位分类爬取职位数据
 
-    每次任务所有分类都从第 1 页开始；跨分类去重（seen_numbers.txt，
-    job_number 稳定 ID）保证已爬职位不重复——去重集合即增量基线，
-    集合里没有的就是新职位。
+    每次任务所有分类都从第 1 页开始；从 job_sources 加载 job_number，
+    并通过进程内集合保证跨页、跨分类不重复。
     产出 list[JobRecord]，由 CrawlerServicer 统一落库。
     停止：传入 stop_event，设置后立即中断（不等当前页爬完）。
     """
 
-    def __init__(self, data_dir: str) -> None:
-        os.makedirs(data_dir, exist_ok=True)
-        self._dedup_file = os.path.join(data_dir, "seen_numbers.txt")
+    SOURCE_PLATFORM = "智联招聘"
+
+    def __init__(self, load_job_numbers: Callable[[str], set[str]]) -> None:
+        self._load_job_numbers = load_job_numbers
         self._seen: set[str] = set()
+        self._persisted_seen: set[str] = set()
+        self._seen_lock = threading.Lock()
 
     # ============================================================
     # 去重管理
     # ============================================================
     def _load_seen(self) -> None:
-        if os.path.exists(self._dedup_file):
-            with open(self._dedup_file, "r", encoding="utf-8") as f:
-                self._seen = {line.strip() for line in f if line.strip()}
+        """从 job_sources 加载已有岗位编号，数据库是唯一持久化来源。"""
+        persisted = {
+            number
+            for number in self._load_job_numbers(self.SOURCE_PLATFORM)
+            if number
+        }
+        with self._seen_lock:
+            self._persisted_seen = persisted
+            self._seen = set(persisted)
 
-    def _mark_seen(self, number: str) -> None:
-        self._seen.add(number)
-        with open(self._dedup_file, "a", encoding="utf-8") as f:
-            f.write(f"{number}\n")
+    def _reserve_seen(self, number: str) -> bool:
+        """在本次任务内预占岗位 ID，防止并行批次或跨分类重复。"""
+        with self._seen_lock:
+            if number in self._seen:
+                return False
+            self._seen.add(number)
+            return True
+
+    def mark_records_persisted(self, records: list[JobRecord]) -> None:
+        """数据库提交成功后，将预占编号标记为本次任务已持久化。"""
+        numbers = {record.job_number for record in records if record.job_number}
+        if not numbers:
+            return
+        with self._seen_lock:
+            self._persisted_seen.update(numbers)
+            self._seen.update(numbers)
+
+    def release_records(self, records: list[JobRecord]) -> None:
+        """批次未落库时释放预占 ID，使下次采集能够重新发现这些岗位。"""
+        numbers = {record.job_number for record in records if record.job_number}
+        with self._seen_lock:
+            for number in numbers - self._persisted_seen:
+                self._seen.discard(number)
 
     def _is_duplicate(self, number: str) -> bool:
-        """该职位是否已爬过（job_number 稳定 ID 在去重集合中）"""
-        return number in self._seen
+        """判断岗位编号是否已存在于数据库基线或本次任务集合。"""
+        with self._seen_lock:
+            return number in self._seen
 
     # ============================================================
     # 浏览器管理
@@ -230,9 +264,12 @@ class ZhaopinCrawler:
         self, dp: ChromiumPage, job_name: str, job_url: str,
         pages_per_category: int, max_documents: int,
         stop_event: threading.Event | None = None,
+        on_batch: Callable[[list[JobRecord]], None] | None = None,
+        batch_size: int = 20,
     ) -> list[JobRecord]:
         """爬取一个岗位分类的所有职位，返回 JobRecord 列表"""
         records: list[JobRecord] = []
+        pending_batch: list[JobRecord] = []
         entry_url = job_url.rstrip("/")
         entry_url = re.sub(r"/p\d+$", "", entry_url) + "/p2"
 
@@ -301,9 +338,13 @@ class ZhaopinCrawler:
                 if not work_desc:
                     logger.warning("[%s] 无描述: %s", job_name, job.get("name", "")[:25])
 
+                # 详情抓取完成后再预占；数据库失败时由处理流水线释放内存状态。
+                if job_number and not self._reserve_seen(job_number):
+                    continue
+
                 record = JobRecord(
                     publish_date=_parse_publish_date(job.get("firstPublishTime", "")),
-                    source_platform="智联招聘",
+                    source_platform=self.SOURCE_PLATFORM,
                     source_url=job_detail_url,
                     city=job.get("workCity", "") or None,
                     tags=skill_tags or None,
@@ -319,11 +360,18 @@ class ZhaopinCrawler:
                     job_description=work_desc or None,
                     # 每条记录唯一 trace_id（job_sources 有 trace_id 唯一索引）
                     trace_id=snowflake.next_id(),
+                    job_number=job_number or None,
                 )
                 records.append(record)
-
-                if job_number:
-                    self._mark_seen(job_number)
+                pending_batch.append(record)
+                if on_batch and len(pending_batch) >= batch_size:
+                    batch = list(pending_batch)
+                    try:
+                        on_batch(batch)
+                    except Exception as exc:
+                        self.release_records(batch)
+                        raise BatchCallbackError("提交岗位处理批次失败") from exc
+                    pending_batch.clear()
 
                 # 单分类最大条数限制
                 if len(records) >= max_documents:
@@ -342,6 +390,13 @@ class ZhaopinCrawler:
                 if not self._click_next_page(dp):
                     break
 
+        if on_batch and pending_batch:
+            batch = list(pending_batch)
+            try:
+                on_batch(batch)
+            except Exception as exc:
+                self.release_records(batch)
+                raise BatchCallbackError("提交岗位处理批次失败") from exc
         return records
 
     # ============================================================
@@ -353,6 +408,8 @@ class ZhaopinCrawler:
         pages_per_category: int = 5,
         max_documents: int = 1000,
         stop_event: threading.Event | None = None,
+        on_batch: Callable[[list[JobRecord]], None] | None = None,
+        batch_size: int = 20,
     ) -> list[JobRecord]:
         """遍历指定分类爬取，返回全部 JobRecord
 
@@ -361,9 +418,11 @@ class ZhaopinCrawler:
             pages_per_category: 每分类最大页数
             max_documents: 单分类最大条数
             stop_event: 停止信号，设置后立即中断
+            on_batch: 每产生一个小批次时调用的处理回调
+            batch_size: 流水线批大小
         """
         self._load_seen()
-        logger.info("已加载 %d 条去重记录", len(self._seen))
+        logger.info("已从 job_sources 加载 %d 条岗位去重记录", len(self._seen))
 
         targets = list(categories) if categories else list(JOB_LIST_URL.keys())
         all_records: list[JobRecord] = []
@@ -390,9 +449,14 @@ class ZhaopinCrawler:
                         pages_per_category=pages_per_category,
                         max_documents=max_documents,
                         stop_event=stop_event,
+                        on_batch=on_batch,
+                        batch_size=batch_size,
                     )
                     all_records.extend(records)
                     logger.info("[%s] 完成，本分类 %d 条", job_name, len(records))
+                except BatchCallbackError:
+                    # 流水线故障不能按浏览器异常忽略，否则会继续抓取并积压数据。
+                    raise
                 except PageDisconnectedError:
                     logger.warning("[%s] 断连，重启浏览器继续", job_name)
                     dp = self._create_browser()

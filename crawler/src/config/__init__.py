@@ -4,7 +4,7 @@ import os
 
 
 class Config:
-    """从环境变量加载配置，所有敏感信息不设默认值"""
+    """加载公共配置与部署配置，内部调优参数放在独立配置模块。"""
 
     def __init__(self):
         # 服务配置
@@ -30,15 +30,9 @@ class Config:
             "KAFKA_TOPIC_INGESTED", "baigon.crawler.document.ingested"
         )
 
-        # 采集配置
-        self.default_crawl_interval: str = os.getenv("CRAWL_INTERVAL", "24h")
-        self.max_documents_per_task: int = int(
-            os.getenv("MAX_DOCUMENTS_PER_TASK", "1000")
-        )
-        # 爬虫去重文件目录（跨分类去重 seen_numbers.txt，增量基线）
-        self.crawler_progress_dir: str = os.getenv(
-            "CRAWLER_PROGRESS_DIR", "./data"
-        )
+        # AI 嵌入服务：默认通过 Consul 发现，也可在本地调试时指定固定地址。
+        self.ai_service_name: str = os.getenv("AI_SERVICE_NAME", "ai-service")
+        self.ai_grpc_target: str = os.getenv("AI_GRPC_TARGET", "")
 
     @property
     def db_url_sync(self) -> str:

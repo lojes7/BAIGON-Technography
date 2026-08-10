@@ -5,6 +5,7 @@ from typing import Any
 
 import grpc
 
+from src.config import model_config
 from src.llm.exceptions import ModelConfigurationError
 from src.pb import ai_pb2, ai_pb2_grpc
 from src.service.model_service import AIModelService
@@ -12,10 +13,10 @@ from src.service.model_service import AIModelService
 logger = logging.getLogger(__name__)
 
 # 当前 Qwen 嵌入模型的默认输出维度，建库和检索必须保持一致。
-DEFAULT_DIMENSIONS = 1024
-DEFAULT_CHUNK_SIZE = 20
-MAX_BATCH_SIZE = 1000
-MAX_CHUNK_SIZE = 100
+DEFAULT_DIMENSIONS = model_config.embedding_default_dimensions
+DEFAULT_CHUNK_SIZE = model_config.embedding_default_chunk_size
+MAX_BATCH_SIZE = model_config.embedding_max_batch_size
+MAX_CHUNK_SIZE = model_config.embedding_max_chunk_size
 
 
 class AIServicer(ai_pb2_grpc.AIServiceServicer):
@@ -103,7 +104,7 @@ class AIServicer(ai_pb2_grpc.AIServiceServicer):
     @staticmethod
     def _validate_dimensions(dimensions: int, context) -> None:
         """限制客户端传入的向量维度，避免异常的大响应占用 gRPC 资源。"""
-        if not 1 <= dimensions <= 4096:
+        if not 1 <= dimensions <= model_config.embedding_max_dimensions:
             context.abort(grpc.StatusCode.INVALID_ARGUMENT, "dimensions 不在允许范围内")
 
     @staticmethod

@@ -4,15 +4,21 @@
 
 import logging
 import threading
+from concurrent.futures import Future
 
 import grpc
 
-from src.config import config
+from src.config.ai import ai_config
+from src.config.pipeline import pipeline_config
 from src.kafka.producer import KafkaProducerClient
 from src.pb import crawler_pb2, crawler_pb2_grpc
 from src.repository.job_source import JobSourceRepository
-from src.service.cleaner import clean
 from src.service.log_service import LogService
+from src.service.processing_pipeline import (
+    BatchProcessingResult,
+    BatchSubmissionCancelled,
+    RecordProcessingPipeline,
+)
 from src.service.Zhi_Lian_crawler import JobRecord, ZhaopinCrawler, _parse_publish_date
 from src.utils.snowflake import snowflake
 
@@ -22,13 +28,21 @@ logger = logging.getLogger(__name__)
 class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
     """CrawlerService gRPC 实现（真实爬虫 + 后台异步）"""
 
-    def __init__(self, db: JobSourceRepository, producer: KafkaProducerClient,
-                 log_service: LogService, max_documents: int):
+    def __init__(
+        self,
+        db: JobSourceRepository,
+        producer: KafkaProducerClient,
+        log_service: LogService,
+        pipeline: RecordProcessingPipeline,
+        crawler: ZhaopinCrawler,
+        max_documents: int,
+    ):
         self._db = db
         self._producer = producer
         self._log = log_service
+        self._pipeline = pipeline
         self._max_documents = max_documents
-        self._crawler = ZhaopinCrawler(config.crawler_progress_dir)
+        self._crawler = crawler
         # 采集互斥锁：同一时间只允许一个采集任务
         self._lock = threading.Lock()
         # 停止信号（StopCrawl 设置，后台线程检查）
@@ -73,9 +87,12 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
         # 4) 启动后台爬取线程（爬取参数由 ADMIN 前端传参）
         categories = list(request.categories) if request.categories else None
         max_documents = request.max_documents or self._max_documents
-        # 约束：单分类最大条数上限 1000（防止一次性爬取过多）
-        if max_documents > 1000:
-            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "max_documents must be <= 1000")
+        # 使用服务内部配置限制单次任务规模，防止一次性爬取过多。
+        if max_documents > self._max_documents:
+            context.abort(
+                grpc.StatusCode.INVALID_ARGUMENT,
+                f"max_documents must be <= {self._max_documents}",
+            )
         self._worker = threading.Thread(
             target=self._crawl_worker,
             args=(trace_id, log_ctx, categories, max_documents, self._stop_event),
@@ -90,89 +107,113 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
     # ============================================================
     # 后台爬取 worker
     # ============================================================
-    # 公共处理流程：落库 → 清洗 → 标记 SUCCESS → Kafka 发送
+    # 公共处理流程：AI+落库 与清洗并行 → 状态更新 → Kafka 异步发送
     # 爬虫（_crawl_worker）与模拟注入（IngestData）共用
     # ============================================================
     def _process_records(self, records: list, log_ctx: dict) -> list:
-        """处理一批记录：写 job_sources → 清洗 → 标记 SUCCESS → Kafka 发送
+        """同步等待一批记录完成，供 IngestData 复用异步流水线。
 
         返回清洗后的记录列表。
         """
-        # 写入 job_sources（每条记录独立 trace_id，clean_status=PENDING）
-        if records:
-            self._db.insert_job_sources(records)
-
-        # 清洗
-        cleaned = clean(records)
-
-        # 清洗成功：批量将各条 clean_status → SUCCESS
-        trace_ids = [r.trace_id for r in records if r.trace_id]
-        if trace_ids:
-            self._db.mark_clean_success(trace_ids)
-
-        # 发送采集完成事件到 data-source（topic=baigon.crawler.document.ingested）
-        if cleaned:
-            self._producer.send_document_ingested(
-                document_count=len(cleaned),
-                documents=cleaned,
-                # 透传操作者用户上下文（gateway 从 JWT 解析）
-                user_id=log_ctx["user_id"],
-                user_name=log_ctx["user_name"],
-                user_ip=log_ctx["user_ip"],
-            )
-        return cleaned
+        result = self._pipeline.process_sync(
+            records,
+            log_ctx,
+            kafka_timeout_seconds=pipeline_config.kafka_delivery_timeout_seconds,
+        )
+        return result.cleaned
 
     def _crawl_worker(self, trace_id: int, log_ctx: dict, categories: list[str] | None,
                       max_documents: int, stop_event: threading.Event) -> None:
         """后台线程：爬取 → 公共处理流程"""
-        records: list = []
+        records: list[JobRecord] = []
+        batch_futures: list[Future] = []
         try:
+            def _submit_batch(batch: list[JobRecord]) -> None:
+                """爬虫线程的批次回调：有界队列满时背压，停止后取消未开始批次。"""
+                try:
+                    future = self._pipeline.submit(batch, log_ctx, stop_event)
+                    batch_futures.append(future)
+                except BatchSubmissionCancelled:
+                    self._crawler.release_records(batch)
+                    logger.info("停止后取消未开始批次（%d 条）", len(batch))
+                except Exception:
+                    self._crawler.release_records(batch)
+                    raise
+
             # 1) 爬取（真实爬虫 DrissionPage）
             records = self._crawler.run(
                 categories=categories,
                 max_documents=max_documents,
                 stop_event=stop_event,
+                on_batch=_submit_batch,
+                batch_size=ai_config.embedding_batch_size,
             )
             if stop_event.is_set():
-                # 用户主动停止：已抓数据照常入库
-                logger.info("收到停止信号，已抓 %d 条，开始落库", len(records))
+                logger.info("收到停止信号，开始等待已进入流水线的小批次安全结束")
 
-            # 2-5) 公共处理：落库 → 清洗 → 标记 SUCCESS → Kafka
-            cleaned = self._process_records(records, log_ctx)
+            # 2) 等待已经进入流水线的批次；Kafka 在 DB/clean 屏障后异步发送。
+            results = self._wait_for_batches(batch_futures)
+            cleaned_count = sum(len(result.cleaned) for result in results)
+            inserted_count = sum(result.inserted for result in results)
 
-            # 6) 更新状态
+            # 3) 在任务结束前统一确认 Kafka ACK；这不会阻塞爬取下一页。
+            for result in results:
+                if result.kafka_delivery is not None:
+                    result.kafka_delivery.result(
+                        timeout=pipeline_config.kafka_delivery_timeout_seconds
+                    )
+
+            # 4) 更新状态
             with self._lock:
                 if stop_event.is_set():
-                    self._status = {"status": "stopped", "count": str(len(cleaned)), "message": "stopped by user",
-                                    "current_category": "", "progress": 0, "total_cleaned": len(cleaned)}
+                    self._status = {"status": "stopped", "count": str(inserted_count), "message": "stopped by user",
+                                    "current_category": "", "progress": 0, "total_cleaned": cleaned_count}
                 else:
-                    self._status = {"status": "success", "count": str(len(records)), "message": "",
-                                    "current_category": "", "progress": 0, "total_cleaned": len(cleaned)}
-            logger.info("采集任务完成: %d 条（trace_id=%d）", len(records), trace_id)
+                    self._status = {"status": "success", "count": str(inserted_count), "message": "",
+                                    "current_category": "", "progress": 0, "total_cleaned": cleaned_count}
+            logger.info("采集任务完成: 入库 %d 条（trace_id=%d）", inserted_count, trace_id)
 
-            # 7) 写业务日志
+            # 5) 写业务日志
             self._log.info(
-                detail=f"crawl success: {len(records)} records, cleaned {len(cleaned)}",
+                detail=f"crawl success: {inserted_count} records, cleaned {cleaned_count}",
                 **log_ctx,
             )
         except Exception as e:
             logger.exception("采集任务失败")
             with self._lock:
-                self._status = {"status": "failed", "count": "0", "message": str(e),
-                                "current_category": "", "progress": 0, "total_cleaned": 0}
-            # 清洗失败：已入库记录 clean_status → FAILED（按各自 trace_id）
-            trace_ids = [r.trace_id for r in records if r.trace_id]
-            try:
-                if trace_ids:
-                    self._db.mark_clean_failed(trace_ids)
-            except Exception:
-                pass
+                self._status["status"] = "failed"
+                self._status["message"] = str(e)
+                self._status["current_category"] = ""
+                self._status["progress"] = 0
             # 写业务日志
             self._log.error(
                 error_msg=str(e)[:2000],
                 detail="crawl failed",
                 **log_ctx,
             )
+
+    def _wait_for_batches(
+        self,
+        batch_futures: list[Future],
+    ) -> list[BatchProcessingResult]:
+        """等待全部已接收批次，并在收齐结果后统一抛出首个错误。"""
+        results: list[BatchProcessingResult] = []
+        first_error: Exception | None = None
+        for future in batch_futures:
+            try:
+                result: BatchProcessingResult = future.result()
+                results.append(result)
+                with self._lock:
+                    self._status["total_cleaned"] += len(result.cleaned)
+                    self._status["count"] = str(
+                        int(self._status["count"]) + result.inserted
+                    )
+            except Exception as exc:
+                if first_error is None:
+                    first_error = exc
+        if first_error is not None:
+            raise first_error
+        return results
 
     # ============================================================
     # 查询状态
@@ -233,12 +274,15 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
     # ============================================================
     def IngestData(self, request, context):
         """注入配置好的岗位数据，走与爬虫相同的落库/清洗/Kafka 流程"""
-        # 1) 参数校验：jobs 非空、条数 ≤ 1000（与 max_documents 同约束）
+        # 1) 参数校验：jobs 非空，且不超过服务内部任务上限。
         jobs = list(request.jobs)
         if not jobs:
             context.abort(grpc.StatusCode.INVALID_ARGUMENT, "jobs must not be empty")
-        if len(jobs) > 1000:
-            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "jobs count must be <= 1000")
+        if len(jobs) > self._max_documents:
+            context.abort(
+                grpc.StatusCode.INVALID_ARGUMENT,
+                f"jobs count must be <= {self._max_documents}",
+            )
 
         # 2) trace_id + 日志上下文（gateway 透传）
         trace_id = int(request.trace_id) if request.trace_id else snowflake.next_id()
@@ -288,13 +332,6 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
             )
         except Exception as e:
             logger.exception("模拟注入失败")
-            # 已入库记录 clean_status → FAILED（按各自 trace_id）
-            trace_ids = [r.trace_id for r in locals().get("records", []) if r.trace_id]
-            try:
-                if trace_ids:
-                    self._db.mark_clean_failed(trace_ids)
-            except Exception:
-                pass
             # 写业务日志
             self._log.error(
                 error_msg=str(e)[:2000],

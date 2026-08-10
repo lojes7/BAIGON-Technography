@@ -5,7 +5,7 @@ from typing import Any
 
 from openai import OpenAI
 
-from src.config import config
+from src.config import config, model_config
 from src.llm.exceptions import ModelConfigurationError
 
 
@@ -19,9 +19,11 @@ class SparkModel:
         base_url: str | None = None,
         client: OpenAI | Any | None = None,
     ):
-        self.model_name = model_name or config.spark_model
-        self.api_password = api_password if api_password is not None else config.spark_api_password
-        self.base_url = base_url or config.spark_base_url
+        self.model_name = model_name or model_config.spark_model
+        self.api_password = (
+            api_password if api_password is not None else config.spark_api_password
+        )
+        self.base_url = base_url or model_config.spark_base_url
         # 延迟创建客户端：服务启动无需依赖模型凭据，首次实际调用时才校验。
         self._client = client
 
@@ -32,7 +34,11 @@ class SparkModel:
         if not self.api_password:
             raise ModelConfigurationError("未配置 SPARK_API_PASSWORD")
 
-        self._client = OpenAI(api_key=self.api_password, base_url=self.base_url)
+        self._client = OpenAI(
+            api_key=self.api_password,
+            base_url=self.base_url,
+            max_retries=model_config.provider_max_retries,
+        )
         return self._client
 
     def question(

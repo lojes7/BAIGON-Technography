@@ -175,10 +175,7 @@ services:
       DB_PASSWORD: ${CRAWLER_DB_PASSWORD}
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       GRPC_PORT: 50051
-      # 爬虫进度/去重文件目录（容器卷持久化）
-      CRAWLER_PROGRESS_DIR: /app/data
-    volumes:
-      - crawlerdata:/app/data
+      AI_SERVICE_NAME: ai-service
     depends_on:
       consul:
         condition: service_healthy
@@ -239,11 +236,7 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       GRPC_PORT: 50053
       SPARK_API_PASSWORD: ${SPARK_API_PASSWORD}
-      SPARK_BASE_URL: ${SPARK_BASE_URL:-https://spark-api-open.xf-yun.com/agent/v1/}
-      SPARK_MODEL: ${SPARK_MODEL:-spark-x}
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY}
-      DASHSCOPE_BASE_URL: ${DASHSCOPE_BASE_URL:-https://ws-02585sz1ly0611yl.cn-beijing.maas.aliyuncs.com/compatible-mode/v1}
-      DASHSCOPE_EMBEDDING_MODEL: ${DASHSCOPE_EMBEDDING_MODEL:-qwen3.7-text-embedding}
     depends_on:
       consul:
         condition: service_healthy
@@ -355,4 +348,3 @@ networks:
 volumes:
   pgdata:
   miniodata:
-  crawlerdata:  # 爬虫进度/去重文件（断点续爬持久化）

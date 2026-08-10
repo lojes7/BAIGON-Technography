@@ -1,10 +1,30 @@
 # 百工谱 — ai_service 配置管理
 
 import os
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True)
+class ModelConfig:
+    """模型地址、名称与能力边界，不通过 Docker Compose 注入。"""
+
+    spark_base_url: str = "https://spark-api-open.xf-yun.com/agent/v1/"
+    spark_model: str = "Spark-X2-Flash"
+    dashscope_base_url: str = (
+        "https://ws-02585sz1ly0611yl.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+    )
+    embedding_model: str = "qwen3.7-text-embedding"
+    embedding_default_dimensions: int = 1024
+    embedding_max_dimensions: int = 4096
+    embedding_default_chunk_size: int = 20
+    embedding_max_chunk_size: int = 100
+    embedding_max_batch_size: int = 1000
+    # 当前要求模型供应商调用只执行一次，关闭 OpenAI SDK 内置重试。
+    provider_max_retries: int = 0
 
 
 class Config:
-    """从环境变量加载配置，所有敏感信息不设默认值"""
+    """加载公共配置、部署配置与密钥。"""
 
     def __init__(self):
         self.grpc_port: int = int(os.getenv("GRPC_PORT", "50053"))
@@ -34,20 +54,8 @@ class Config:
         self.spark_api_password: str = os.getenv(
             "SPARK_API_PASSWORD", os.getenv("API_PASSWORD", "")
         )
-        self.spark_base_url: str = os.getenv(
-            "SPARK_BASE_URL", "https://spark-api-open.xf-yun.com/agent/v1/"
-        )
-        self.spark_model: str = os.getenv("SPARK_MODEL", "spark-x")
-
         # 阿里云百炼 OpenAI 兼容接口（文本嵌入模型）。
         self.dashscope_api_key: str = os.getenv("DASHSCOPE_API_KEY", "")
-        self.dashscope_base_url: str = os.getenv(
-            "DASHSCOPE_BASE_URL",
-            "https://ws-02585sz1ly0611yl.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
-        )
-        self.embedding_model: str = os.getenv(
-            "DASHSCOPE_EMBEDDING_MODEL", "qwen3.7-text-embedding"
-        )
 
     @property
     def db_url(self) -> str:
@@ -58,3 +66,4 @@ class Config:
 
 
 config = Config()
+model_config = ModelConfig()

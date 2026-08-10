@@ -6,6 +6,7 @@
 import json
 import logging
 import uuid
+from concurrent.futures import Future
 from datetime import datetime, timezone
 
 from kafka import KafkaProducer
@@ -42,7 +43,12 @@ class KafkaProducerClient:
         self._producer = KafkaProducer(
             bootstrap_servers=bootstrap_servers,
             value_serializer=lambda v: json.dumps(v, ensure_ascii=False).encode("utf-8"),
-            acks="all",  # 桩阶段确保投递；性能优化留后续
+            acks="all",
+            enable_idempotence=True,
+            retries=3,
+            retry_backoff_ms=500,
+            # 开启重试时保持单连接内消息顺序，避免后批次先于前批次落盘。
+            max_in_flight_requests_per_connection=1,
         )
         self._topic = topic
         logger.info("Kafka 生产者已初始化: %s (topic=%s)", bootstrap_servers, topic)
@@ -54,7 +60,7 @@ class KafkaProducerClient:
         user_id: int = 0,
         user_name: str = "system",
         user_ip: str | None = None,
-    ) -> None:
+    ) -> Future:
         """发送文档采集完成事件
 
         事件 payload 携带每条清洗后记录的完整明细（documents 数组，
@@ -76,12 +82,33 @@ class KafkaProducerClient:
                 "documents": [_record_to_dict(d) for d in documents],
             },
         }
-        self._producer.send(self._topic, value=message)
-        self._producer.flush()  # 同步确认落盘，桩阶段保证消息不丢
-        logger.info(
-            "已发送事件 %s (count=%d)", TOPIC_DOCUMENT_INGESTED, document_count,
-        )
+        # KafkaProducer.send 本身异步；桥接成标准 Future，供任务收尾阶段统一确认。
+        delivery: Future = Future()
+        try:
+            kafka_future = self._producer.send(self._topic, value=message)
+
+            def _on_success(metadata) -> None:
+                if not delivery.done():
+                    delivery.set_result(metadata)
+                logger.info(
+                    "已发送事件 %s (count=%d)",
+                    TOPIC_DOCUMENT_INGESTED,
+                    document_count,
+                )
+
+            def _on_error(error) -> None:
+                if not delivery.done():
+                    delivery.set_exception(error)
+                logger.error("Kafka 事件发送失败: %s", error)
+
+            kafka_future.add_callback(_on_success)
+            kafka_future.add_errback(_on_error)
+        except Exception as exc:
+            delivery.set_exception(exc)
+        return delivery
 
     def close(self) -> None:
+        # 关闭前统一确认仍在缓冲区中的消息，不在每个采集批次里阻塞 flush。
+        self._producer.flush()
         self._producer.close()
         logger.info("Kafka 生产者已关闭")
