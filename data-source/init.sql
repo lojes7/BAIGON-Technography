@@ -121,5 +121,5 @@ CREATE TABLE "job_analysis_tasks" (
     "task_status" task_status,
     "review_status" review_status DEFAULT 'PENDING',
     "reviewed_at" timestamp with time zone,
-    "reviewed_by" bigint,
+    "reviewed_by" bigint
 );

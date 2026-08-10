@@ -3,8 +3,9 @@
 
 fastapi==0.115.0
 uvicorn[standard]==0.30.0
-grpcio==1.65.0
-grpcio-tools==1.65.0
+# 1.65.0 已被 PyPI 撤回（grpc/grpc#37178），使用同一修复系列的稳定版本。
+grpcio==1.65.1
+grpcio-tools==1.65.1
 protobuf==5.27.0
 python-consul==1.1.0
 kafka-python==3.0.9  # 2.0.2 在 Python 3.12 上 import 崩溃（kafka.vendor.six.moves 缺失），升级到维护版

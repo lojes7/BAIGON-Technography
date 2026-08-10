@@ -235,9 +235,6 @@ services:
       DB_PASSWORD: ${AI_DB_PASSWORD}
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       GRPC_PORT: 50053
-      APPID: ${APPID}
-      API_KEY: ${API_KEY}
-      API_SECRET: ${API_SECRET}
       SPARK_API_PASSWORD: ${SPARK_API_PASSWORD}
       SPARK_BASE_URL: ${SPARK_BASE_URL:-https://spark-api-open.xf-yun.com/agent/v1/}
       SPARK_MODEL: ${SPARK_MODEL:-spark-x}
