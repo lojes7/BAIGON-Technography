@@ -11,6 +11,7 @@ import uvicorn
 from fastapi import FastAPI
 
 from src.config import config
+from src.pb import ai_pb2_grpc
 from src.server.grpc_server import AIServicer
 from src.server.health import router as health_router
 
@@ -63,15 +64,16 @@ def create_grpc_server() -> grpc.Server:
             ("grpc.max_receive_message_length", 50 * 1024 * 1024),
         ],
     )
-    # TODO: 注册 AI service
+    ai_pb2_grpc.add_AIServiceServicer_to_server(AIServicer(), server)
     return server
 
 
 async def run_grpc_server(server: grpc.Server):
     server.add_insecure_port(f"[::]:{config.grpc_port}")
     logger.info("gRPC server 启动在端口 %d", config.grpc_port)
-    await server.start()
-    await server.wait_for_termination()
+    # grpc.server 是同步服务端，不能直接 await；放在线程中避免阻塞 FastAPI。
+    server.start()
+    await asyncio.to_thread(server.wait_for_termination)
 
 
 async def main():

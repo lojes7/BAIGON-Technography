@@ -222,7 +222,10 @@ services:
 
   # ai_service — Python AI 服务
   ai:
-    build: ./ai
+    # context 指向根目录：构建时需要 proto/ 中的接口定义（stub 在镜像内自动生成）
+    build:
+      context: .
+      dockerfile: ai/Dockerfile
     container_name: baigon-ai-service
     ports:
       - "${AI_GRPC_PORT}:50053"

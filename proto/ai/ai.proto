@@ -9,10 +9,58 @@ option java_package = "com.baigon.ai";
 option java_multiple_files = true;
 option go_package = "baigon-technography/proto/gen/ai;aipb";
 
-import "common/evidence.proto";
-
 // ==================== 服务定义 ====================
 
 service AIService {
-  // JD 结构化抽取
+  // 生成单条文本嵌入向量。
+  rpc EmbedText(EmbedTextRequest) returns (EmbedTextResponse) {}
+
+  // 批量生成文本嵌入向量，返回顺序与输入 texts 保持一致。
+  rpc BatchEmbedText(BatchEmbedTextRequest) returns (BatchEmbedTextResponse) {}
+}
+
+message EmbedTextRequest {
+  string text = 1;
+  // 0 表示使用服务默认维度（当前 Qwen 配置为 1024）。
+  uint32 dimensions = 2;
+
+  // 调用链审计字段：由 gateway 或上游服务透传。
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+message EmbedTextResponse {
+  repeated float embedding = 1;
+  uint32 dimensions = 2;
+  string model = 3;
+}
+
+message BatchEmbedTextRequest {
+  repeated string texts = 1;
+  // 0 表示使用服务默认维度（当前 Qwen 配置为 1024）。
+  uint32 dimensions = 2;
+  // 0 表示使用服务默认批大小 20。
+  uint32 chunk_size = 3;
+
+  // 调用链审计字段：由 gateway 或上游服务透传。
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+message BatchEmbedTextResponse {
+  repeated EmbeddingVector embeddings = 1;
+  uint32 dimensions = 2;
+  string model = 3;
+}
+
+message EmbeddingVector {
+  repeated float values = 1;
 }
