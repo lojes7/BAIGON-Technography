@@ -8,9 +8,10 @@ from openai import OpenAI
 from src.config import config
 from src.llm.exceptions import ModelConfigurationError
 
-
 class TextEmbedding:
     """调用百炼 OpenAI 兼容接口生成文本向量并计算相似度。"""
+
+    DEFAULT_DIMENSION = 1024
 
     def __init__(
         self,
@@ -38,7 +39,7 @@ class TextEmbedding:
     def embedding(
         self,
         text: str,
-        dimensions: int = 256,
+        dimensions: int = DEFAULT_DIMENSION,
         encoding_format: str = "float",
     ) -> np.ndarray:
         """生成单条文本向量。"""
@@ -50,7 +51,7 @@ class TextEmbedding:
     def embedding_batch(
         self,
         input_list: list[str | None],
-        dimensions: int = 256,
+        dimensions: int = DEFAULT_DIMENSION,
         encoding_format: str = "float",
         chunk_size: int = 20,
     ) -> np.ndarray:

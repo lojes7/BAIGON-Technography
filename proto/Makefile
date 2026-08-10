@@ -7,7 +7,7 @@ GEN_DIR := gen
 # 服务列表（university 已合并进 user）
 SERVICES := common crawler data_source ai occupation user file
 
-.PHONY: all clean python java go
+.PHONY: all clean python java go python-ai
 
 all: python java go
 
@@ -57,6 +57,22 @@ python-crawler: $(GEN_DIR)
 		sed -i '' 's/^from crawler import crawler_pb2 as crawler_dot_crawler__pb2/from . import crawler_pb2 as crawler_dot_crawler__pb2/' crawler_pb2_grpc.py
 	@touch ../crawler/src/pb/__init__.py
 	@echo "crawler python stub 已生成到 crawler/src/pb"
+
+# ==================== Python stub（ai 服务专用） ====================
+# 与 crawler 一致：生成物不入库，Docker 构建也会自动生成。
+python-ai: $(GEN_DIR)
+	@echo "=== 生成 ai Python gRPC stub (ai/src/pb) ==="
+	@mkdir -p $(GEN_DIR)/python-ai ../ai/src/pb
+	python -m grpc_tools.protoc \
+		-I $(PROTO_DIR) \
+		--python_out=$(GEN_DIR)/python-ai \
+		--grpc_python_out=$(GEN_DIR)/python-ai \
+		$(PROTO_DIR)/ai/ai.proto
+	@cp $(GEN_DIR)/python-ai/ai/ai_pb2.py $(GEN_DIR)/python-ai/ai/ai_pb2_grpc.py ../ai/src/pb/
+	@cd ../ai/src/pb && \
+		sed -i '' 's/^from ai import ai_pb2 as ai_dot_ai__pb2/from . import ai_pb2 as ai_dot_ai__pb2/' ai_pb2_grpc.py
+	@touch ../ai/src/pb/__init__.py
+	@echo "ai python stub 已生成到 ai/src/pb"
 
 # ==================== Java stub ====================
 java: $(GEN_DIR)
