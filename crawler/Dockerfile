@@ -2,6 +2,10 @@
 
 FROM python:3.12-slim
 
+# 国内网络默认走镜像站；其他网络可通过 --build-arg APT_MIRROR/PIP_INDEX_URL 覆盖。
+ARG APT_MIRROR=mirrors.aliyun.com
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+
 WORKDIR /app
 
 # 安装系统依赖：psycopg2 编译 + DrissionPage 浏览器（chromium）+ 中文字体（防反爬检测）

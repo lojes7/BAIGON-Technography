@@ -24,13 +24,30 @@ class Config:
             "KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"
         )
 
-        # LLM — 从 .env 注入，不设默认值
+        # 旧版星火 WebSocket 凭据，暂时保留以兼容既有部署配置。
         self.llm_appid: str = os.getenv("APPID", "")
         self.llm_api_key: str = os.getenv("API_KEY", "")
         self.llm_api_secret: str = os.getenv("API_SECRET", "")
-        self.llm_dashscope_api_key: str = os.getenv("DASHSCOPE_API_KEY", "")
-        self.llm_base_url: str = os.getenv("LLM_BASE_URL", "")
-        self.llm_model: str = os.getenv("LLM_MODEL", "")
+
+        # 讯飞星火 OpenAI 兼容接口：优先使用更明确的 SPARK_API_PASSWORD，
+        # 同时兼容早期使用的 API_PASSWORD，方便存量环境平滑迁移。
+        self.spark_api_password: str = os.getenv(
+            "SPARK_API_PASSWORD", os.getenv("API_PASSWORD", "")
+        )
+        self.spark_base_url: str = os.getenv(
+            "SPARK_BASE_URL", "https://spark-api-open.xf-yun.com/agent/v1/"
+        )
+        self.spark_model: str = os.getenv("SPARK_MODEL", "spark-x")
+
+        # 阿里云百炼 OpenAI 兼容接口（文本嵌入模型）。
+        self.dashscope_api_key: str = os.getenv("DASHSCOPE_API_KEY", "")
+        self.dashscope_base_url: str = os.getenv(
+            "DASHSCOPE_BASE_URL",
+            "https://ws-02585sz1ly0611yl.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+        )
+        self.embedding_model: str = os.getenv(
+            "DASHSCOPE_EMBEDDING_MODEL", "qwen3.7-text-embedding"
+        )
 
     @property
     def db_url(self) -> str:

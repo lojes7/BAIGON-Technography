@@ -102,6 +102,8 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./crawler/init.sql:/service-init/crawler_init.sql:ro
       - ./data-source/init.sql:/service-init/data_source_init.sql:ro
+      - ./occupation/init.sql:/service-init/occupation_init.sql:ro
+      - ./occupation/data.sql:/service-init/occupation_data.sql:ro
       - ./user/init.sql:/service-init/user_init.sql:ro
       - ./user/data.sql:/service-init/user_data.sql:ro
     healthcheck:
@@ -233,10 +235,12 @@ services:
       DB_PASSWORD: ${AI_DB_PASSWORD}
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       GRPC_PORT: 50053
-      APPID: ${APPID}
-      API_KEY: ${API_KEY}
-      API_SECRET: ${API_SECRET}
+      SPARK_API_PASSWORD: ${SPARK_API_PASSWORD}
+      SPARK_BASE_URL: ${SPARK_BASE_URL:-https://spark-api-open.xf-yun.com/agent/v1/}
+      SPARK_MODEL: ${SPARK_MODEL:-spark-x}
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY}
+      DASHSCOPE_BASE_URL: ${DASHSCOPE_BASE_URL:-https://ws-02585sz1ly0611yl.cn-beijing.maas.aliyuncs.com/compatible-mode/v1}
+      DASHSCOPE_EMBEDDING_MODEL: ${DASHSCOPE_EMBEDDING_MODEL:-qwen3.7-text-embedding}
     depends_on:
       consul:
         condition: service_healthy
