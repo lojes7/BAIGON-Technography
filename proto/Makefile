@@ -5,7 +5,7 @@ PROTO_DIR := .
 GEN_DIR := gen
 
 # 服务列表（university 已合并进 user）
-SERVICES := common crawler data_source ai occupation user file
+SERVICES := common crawler data_source ai occupation user
 
 .PHONY: all clean python java go python-ai
 
@@ -28,8 +28,7 @@ python: $(GEN_DIR)
 		$(PROTO_DIR)/ai/*.proto \
 		$(PROTO_DIR)/occupation/*.proto \
 		$(PROTO_DIR)/user/*.proto \
-		$(PROTO_DIR)/university/*.proto \
-		$(PROTO_DIR)/file/*.proto
+		$(PROTO_DIR)/university/*.proto
 	# 修复 import 路径
 	@for f in $$(find $(GEN_DIR)/python -name '*_pb2_grpc.py'); do \
 		sed -i '' 's/import common_pb2/from . import common_pb2/' $$f 2>/dev/null || true; \
@@ -90,8 +89,7 @@ java: $(GEN_DIR)
 		$(PROTO_DIR)/ai/*.proto \
 		$(PROTO_DIR)/occupation/*.proto \
 		$(PROTO_DIR)/user/*.proto \
-		$(PROTO_DIR)/university/*.proto \
-		$(PROTO_DIR)/file/*.proto
+		$(PROTO_DIR)/university/*.proto
 
 # ==================== Go stub ====================
 # 目前只有 gateway（Go）消费 stub，直接生成到 gateway/pb/ 下

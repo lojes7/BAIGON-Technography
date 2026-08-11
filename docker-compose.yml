@@ -93,10 +93,6 @@ services:
       USER_DB_USER: ${USER_DB_USER}
       USER_DB_PASSWORD: ${USER_DB_PASSWORD}
 
-      # file_service
-      FILE_DB_NAME: ${FILE_DB_NAME}
-      FILE_DB_USER: ${FILE_DB_USER}
-      FILE_DB_PASSWORD: ${FILE_DB_PASSWORD}
     volumes:
       - ./docker/postgres/init.sh:/docker-entrypoint-initdb.d/01-init.sh:ro
       - pgdata:/var/lib/postgresql/data
@@ -114,7 +110,7 @@ services:
     networks:
       - baigon-net
 
-  # MinIO — 文件存储（兼容 S3）
+  # MinIO — 通用对象存储基础设施
   minio:
     image: minio/minio:latest
     container_name: baigon-minio
@@ -304,38 +300,6 @@ services:
       postgres:
         condition: service_healthy
       kafka:
-        condition: service_healthy
-    networks:
-      - baigon-net
-
-  # file_service — 文件服务
-  file:
-    build: ./file
-    container_name: baigon-file-service
-    ports:
-      - "${FILE_GRPC_PORT}:50057"
-    environment:
-      CONSUL_HOST: consul
-      CONSUL_PORT: 8500
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: ${FILE_DB_NAME}
-      DB_USER: ${FILE_DB_USER}
-      DB_PASSWORD: ${FILE_DB_PASSWORD}
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      GRPC_PORT: 50057
-      SERVER_PORT: 8085
-      MINIO_ENDPOINT: http://minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
-    depends_on:
-      consul:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-      minio:
         condition: service_healthy
     networks:
       - baigon-net
