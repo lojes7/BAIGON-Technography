@@ -18,7 +18,7 @@ import (
 // loginRequest 登录请求体
 type loginRequest struct {
 	Uid      string `json:"uid" example:"admin"`       // 登录账号
-	Password string `json:"password" example:"123456"`  // 密码
+	Password string `json:"password" example:"123456"` // 密码
 }
 
 // LoginHandler 处理用户登录，网关 REST → gRPC 调用 user-service
@@ -63,9 +63,8 @@ func LoginHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			Password: req.Password,
 		})
 		if err != nil {
-			// 复用公共 gRPC 状态码映射（见 common.go）
-			code := grpcErrorToHTTP(err)
-			response.Error(c, code, code)
+			httpCode, errorCode := grpcErrorCodes(err)
+			response.Error(c, httpCode, errorCode)
 			return
 		}
 

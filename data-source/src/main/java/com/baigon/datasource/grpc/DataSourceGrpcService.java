@@ -17,9 +17,10 @@ import com.baigon.datasource.ReviewJobRequest;
 import com.baigon.datasource.ReviewJobResponse;
 import com.baigon.datasource.SourceJobDetail;
 import com.baigon.datasource.entity.CleanedJobSource;
+import com.baigon.datasource.entity.ReviewedCleanedJobSource;
+import com.baigon.datasource.error.ApiException;
 import com.baigon.datasource.service.CleanedJobSourceService;
 import com.baigon.datasource.service.LogService;
-import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -94,10 +95,12 @@ public class DataSourceGrpcService extends DataSourceServiceGrpc.DataSourceServi
             responseObserver.onCompleted();
         } catch (IllegalArgumentException e) {
             // review_status 枚举不合法
-            responseObserver.onError(Status.INVALID_ARGUMENT.withDescription(e.getMessage()).asRuntimeException());
+            responseObserver.onError(ApiException.grpcException(
+                    ApiException.ErrorCode.BAD_REQUEST, e.getMessage()));
         } catch (Exception e) {
             log.error("分页查询清洗数据失败", e);
-            responseObserver.onError(Status.INTERNAL.withDescription("server error").asRuntimeException());
+            responseObserver.onError(ApiException.grpcException(
+                    ApiException.ErrorCode.INTERNAL_ERROR, "server error"));
         }
     }
 
@@ -108,7 +111,8 @@ public class DataSourceGrpcService extends DataSourceServiceGrpc.DataSourceServi
         try {
             Optional<CleanedJobSource> opt = cleanedJobSourceService.findById(request.getId());
             if (opt.isEmpty()) {
-                responseObserver.onError(Status.NOT_FOUND.withDescription("job not found").asRuntimeException());
+                responseObserver.onError(ApiException.grpcException(
+                        ApiException.ErrorCode.NOT_FOUND, "job not found"));
                 return;
             }
             CleanedJobSource job = opt.get();
@@ -122,7 +126,8 @@ public class DataSourceGrpcService extends DataSourceServiceGrpc.DataSourceServi
                     "get cleaned job detail: " + job.getJobName());
         } catch (Exception e) {
             log.error("查询清洗数据详情失败", e);
-            responseObserver.onError(Status.INTERNAL.withDescription("server error").asRuntimeException());
+            responseObserver.onError(ApiException.grpcException(
+                    ApiException.ErrorCode.INTERNAL_ERROR, "server error"));
         }
     }
 
@@ -133,7 +138,8 @@ public class DataSourceGrpcService extends DataSourceServiceGrpc.DataSourceServi
         try {
             Optional<CleanedJobSource> opt = cleanedJobSourceService.findById(request.getId());
             if (opt.isEmpty()) {
-                responseObserver.onError(Status.NOT_FOUND.withDescription("job not found").asRuntimeException());
+                responseObserver.onError(ApiException.grpcException(
+                        ApiException.ErrorCode.NOT_FOUND, "job not found"));
                 return;
             }
             CleanedJobSource job = opt.get();
@@ -142,8 +148,8 @@ public class DataSourceGrpcService extends DataSourceServiceGrpc.DataSourceServi
             GetJobSourceByTraceIdResponse crawlerResp =
                     crawlerGrpcClient.getJobSourceByTraceId(job.getTraceId());
             if (crawlerResp == null) {
-                responseObserver.onError(Status.UNAVAILABLE
-                        .withDescription("crawler service unavailable").asRuntimeException());
+                responseObserver.onError(ApiException.grpcException(
+                        ApiException.ErrorCode.SERVICE_UNAVAILABLE, "crawler service unavailable"));
                 return;
             }
 
@@ -176,7 +182,8 @@ public class DataSourceGrpcService extends DataSourceServiceGrpc.DataSourceServi
                     "get source job: " + source.getJobName());
         } catch (Exception e) {
             log.error("查询原始记录失败", e);
-            responseObserver.onError(Status.INTERNAL.withDescription("server error").asRuntimeException());
+            responseObserver.onError(ApiException.grpcException(
+                    ApiException.ErrorCode.INTERNAL_ERROR, "server error"));
         }
     }
 
@@ -185,19 +192,20 @@ public class DataSourceGrpcService extends DataSourceServiceGrpc.DataSourceServi
     public void reviewJob(ReviewJobRequest request,
                           StreamObserver<ReviewJobResponse> responseObserver) {
         try {
-            String action = switch (request.getAction()) {
-                case APPROVE -> "APPROVE";
-                case REJECT -> "REJECT";
-                case APPROVE_WITH_EDIT -> "APPROVE_WITH_EDIT";
+            CleanedJobSourceService.ReviewAction action = switch (request.getAction()) {
+                case APPROVE -> CleanedJobSourceService.ReviewAction.APPROVE;
+                case REJECT -> CleanedJobSourceService.ReviewAction.REJECT;
+                case APPROVE_WITH_EDIT -> CleanedJobSourceService.ReviewAction.APPROVE_WITH_EDIT;
                 case UNRECOGNIZED -> throw new IllegalArgumentException("unknown review action");
             };
             CleanedJobSource edited = request.hasEdited() ? toEntity(request.getEdited()) : null;
 
-            Optional<CleanedJobSource> opt = cleanedJobSourceService.review(
+            Optional<CleanedJobSourceService.ReviewResult> opt = cleanedJobSourceService.review(
                     request.getId(), action, edited,
                     request.getUserId(), orDefault(request.getUserName(), "system"));
             if (opt.isEmpty()) {
-                responseObserver.onError(Status.NOT_FOUND.withDescription("job not found").asRuntimeException());
+                responseObserver.onError(ApiException.grpcException(
+                        ApiException.ErrorCode.NOT_FOUND, "job not found"));
                 return;
             }
 
@@ -205,11 +213,15 @@ public class DataSourceGrpcService extends DataSourceServiceGrpc.DataSourceServi
                     .setJob(toDetail(opt.get()))
                     .build());
             responseObserver.onCompleted();
+        } catch (ApiException e) {
+            responseObserver.onError(e.asGrpcException());
         } catch (IllegalArgumentException e) {
-            responseObserver.onError(Status.INVALID_ARGUMENT.withDescription(e.getMessage()).asRuntimeException());
+            responseObserver.onError(ApiException.grpcException(
+                    ApiException.ErrorCode.BAD_REQUEST, e.getMessage()));
         } catch (Exception e) {
             log.error("人工复核失败", e);
-            responseObserver.onError(Status.INTERNAL.withDescription("server error").asRuntimeException());
+            responseObserver.onError(ApiException.grpcException(
+                    ApiException.ErrorCode.INTERNAL_ERROR, "server error"));
         }
     }
 
@@ -238,6 +250,32 @@ public class DataSourceGrpcService extends DataSourceServiceGrpc.DataSourceServi
                 .setReviewStatus(job.getReviewStatus() != null ? job.getReviewStatus().name() : "")
                 .setReviewedAt(job.getReviewedAt() != null ? job.getReviewedAt().toString() : "")
                 .setReviewedBy(job.getReviewedBy() != null ? job.getReviewedBy() : 0)
+                .build();
+    }
+
+    /** 审核响应：保留 cleaned_job_sources 的标识与审核状态，业务字段返回最终审核版本。 */
+    private CleanedJobDetail toDetail(CleanedJobSourceService.ReviewResult result) {
+        CleanedJobDetail.Builder builder = toDetail(result.source()).toBuilder();
+        ReviewedCleanedJobSource approved = result.approvedVersion();
+        if (approved == null) {
+            return builder.build();
+        }
+        return builder
+                .setPublishDate(approved.getPublishDate() != null ? approved.getPublishDate().toString() : "")
+                .setSourcePlatform(orEmpty(approved.getSourcePlatform()))
+                .setSourceUrl(orEmpty(approved.getSourceUrl()))
+                .setCity(orEmpty(approved.getCity()))
+                .setTags(orEmpty(approved.getTags()))
+                .setMajor(orEmpty(approved.getMajor()))
+                .setNature(orEmpty(approved.getNature()))
+                .setSalary(orEmpty(approved.getSalary()))
+                .setJobName(orEmpty(approved.getJobName()))
+                .setCompanyName(orEmpty(approved.getCompanyName()))
+                .setCompanySize(orEmpty(approved.getCompanySize()))
+                .setProvince(orEmpty(approved.getProvince()))
+                .setEducation(orEmpty(approved.getEducation()))
+                .setExperience(orEmpty(approved.getExperience()))
+                .setJobDescription(orEmpty(approved.getJobDescription()))
                 .build();
     }
 

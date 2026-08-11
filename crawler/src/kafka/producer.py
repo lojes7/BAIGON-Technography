@@ -22,8 +22,8 @@ TOPIC_DOCUMENT_INGESTED = "baigon.crawler.document.ingested"
 # review_status 等审核列由 data-source 管理，默认 PENDING）。
 # trace_id 每条记录独立，data-source 据此关联原始记录。
 _PAYLOAD_FIELDS = [
-    "trace_id", "publish_date", "source_platform", "source_url", "city", "tags",
-    "major", "nature", "salary", "job_name", "company_name",
+    "trace_id", "job_number", "publish_date", "source_platform", "source_url", "city",
+    "tags", "major", "nature", "salary", "job_name", "company_name",
     "company_size", "province", "education", "experience", "job_description",
 ]
 

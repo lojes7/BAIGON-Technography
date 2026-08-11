@@ -136,6 +136,8 @@ CREATE TABLE "jobs" (
     "name" varchar(64) NOT NULL,
     "occupation_id" bigint REFERENCES "occupations" ("id"),
     "trace_id" bigint,
+    "job_number" varchar(128),
+    -- 以下为岗位信息数据
     "publish_date" timestamp with time zone, -- 可空：爬虫解析失败时诚实存 NULL
     "source_platform" varchar(32) NOT NULL,
     "source_url" varchar(512),

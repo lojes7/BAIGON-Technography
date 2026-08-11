@@ -37,6 +37,8 @@
     "user_ip": "127.0.0.1",
     "documents": [
       {
+        "trace_id": 123456789,
+        "job_number": "CC123456789J00000000000",
         "publish_date": "2025-01-01T00:00:00+00:00",
         "source_platform": "拉勾",
         "source_url": "...",
@@ -60,10 +62,12 @@
 
 ### 落库逻辑
 
-1. 解析事件信封,取 `payload.user_id/user_name/user_ip`(操作者用户上下文)与顶层 `trace_id`
-2. 遍历 `payload.documents[]`,每条转 `CleanedJobSource` 实体(`publish_date` ISO → `OffsetDateTime`)
+1. 解析事件信封，取 `payload.user_id/user_name/user_ip`（操作者用户上下文）
+2. 遍历 `payload.documents[]`，取每条独立的 `trace_id`，并转为 `CleanedJobSource` 实体（`publish_date` ISO → `OffsetDateTime`）
 3. 调用 `CleanedJobSourceService.saveCleaned()`,雪花 ID 生成主键、`review_status` 默认 `PENDING`、写入 logs 表审计
 4. 单条失败不影响其他条(逐条独立);整体解析失败记录 ERROR 日志不重试(桩阶段)
+
+`cleaned_job_sources` 和 `reviewed_cleaned_job_sources` 均保留 `job_number` 列及实体映射，仅供服务层关联岗位使用；它不进入 ADMIN 人工复核字段，也不通过 gRPC/REST 接口返回。
 
 ## gRPC 接口
 
@@ -107,16 +111,25 @@
 
 请求:`id` + `action`(`APPROVE` 通过 / `REJECT` 拒绝 / `APPROVE_WITH_EDIT` 修改后通过)+ `edited`(修改后字段,仅 EDIT 用)
 
-行为:通过 → `review_status=PASSED` + `reviewed_at/reviewed_by`;拒绝 → `REJECTED`;修改后通过 → 应用 edited 业务字段后 `PASSED`。
+审核在一个数据库事务内执行，并通过 `SELECT ... FOR UPDATE` 对目标记录加行级写锁。取得锁后再次检查 `review_status`：只有 `PENDING` 可以继续；其他状态返回业务错误码 `40301`。
+
+| action | `cleaned_job_sources` | `reviewed_cleaned_job_sources` |
+|--------|-----------------------|--------------------------------|
+| `APPROVE` | 仅更新 `review_status=PASSED`、`reviewed_at/reviewed_by` | 保存原业务数据的审核结果 |
+| `REJECT` | 仅更新 `review_status=REJECTED`、`reviewed_at/reviewed_by` | 不写入 |
+| `APPROVE_WITH_EDIT` | 仅更新审核参数，原业务字段保持不变 | 保存合并 `edited` 字段后的版本 |
+
+审核结果使用新的雪花主键，但必须原样复制来源记录的 `trace_id`，保证同一业务链路可追踪。状态更新与审核结果插入在同一事务中，任一步失败时全部回滚。
 
 ## 错误码（gRPC → HTTP）
 
-| gRPC Status | HTTP | 场景 |
-|-------------|------|------|
-| `INVALID_ARGUMENT` | 400 | 参数错误 / review_status 枚举不合法 |
-| `NOT_FOUND` | 404 | 记录不存在 |
-| `UNAVAILABLE` | 503 | crawler-service 不可用 |
-| `INTERNAL` | 500 | 服务内部错误 |
+| gRPC Status | HTTP | 响应 `code` | 场景 |
+|-------------|------|---------------|------|
+| `INVALID_ARGUMENT` | 400 | 400 | 参数错误 / review_status 枚举不合法 |
+| `FAILED_PRECONDITION` | 403 | **40301** | 目标记录已经不是 `PENDING`，已被其他审核人处理 |
+| `NOT_FOUND` | 404 | 404 | 记录不存在 |
+| `UNAVAILABLE` | 503 | 503 | crawler-service 不可用 |
+| `INTERNAL` | 500 | 500 | 服务内部错误 |
 
 ## 调用方约束
 

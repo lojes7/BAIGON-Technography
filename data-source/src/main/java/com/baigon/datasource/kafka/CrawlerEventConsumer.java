@@ -72,6 +72,8 @@ public class CrawlerEventConsumer {
         CleanedJobSource job = new CleanedJobSource();
         job.setPublishDate(parseDateTime(doc.path("publish_date").asText()));
         job.setSourcePlatform(doc.path("source_platform").asText());
+        // job_number 只在服务内部流转，不进入 ADMIN 复核字段或对外 gRPC 响应。
+        job.setJobNumber(nullIfEmpty(doc.path("job_number").asText()));
         job.setSourceUrl(nullIfEmpty(doc.path("source_url").asText()));
         job.setCity(nullIfEmpty(doc.path("city").asText()));
         job.setTags(nullIfEmpty(doc.path("tags").asText()));

@@ -21,11 +21,16 @@ public class ReviewedCleanedJobSource {
     @Column(name = "trace_id")
     private Long traceId;
 
-    @Column(name = "publish_date", nullable = false)
+    /** 发布日期可空：上游解析失败时不伪造时间。 */
+    @Column(name = "publish_date")
     private OffsetDateTime publishDate;
 
     @Column(name = "source_platform", nullable = false)
     private String sourcePlatform;
+
+    /** 来源平台内的岗位业务编号（仅服务层使用，不对外返回） */
+    @Column(name = "job_number")
+    private String jobNumber;
 
     @Column(name = "source_url")
     private String sourceUrl;
@@ -97,6 +102,9 @@ public class ReviewedCleanedJobSource {
 
     public String getSourcePlatform() { return sourcePlatform; }
     public void setSourcePlatform(String sourcePlatform) { this.sourcePlatform = sourcePlatform; }
+
+    public String getJobNumber() { return jobNumber; }
+    public void setJobNumber(String jobNumber) { this.jobNumber = jobNumber; }
 
     public String getSourceUrl() { return sourceUrl; }
     public void setSourceUrl(String sourceUrl) { this.sourceUrl = sourceUrl; }

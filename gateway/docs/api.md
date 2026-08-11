@@ -8,11 +8,12 @@
 // 成功
 { "code": 200, "data": { ... } }
 
-// 失败（不携带消息）
+// 失败（不携带消息；code 可以是业务错误码）
 { "code": 401 }
 ```
 
-- `code` 始终与 HTTP 状态码一致
+- 没有自定义业务错误码时，`code` 与 HTTP 状态码一致
+- 有自定义业务错误码时，HTTP 状态码表达错误类别，`code` 返回业务错误码（例如 HTTP 403 + `40301`）
 - 成功时 `code` 恒为 200，业务数据放在 `data` 中
 - 失败时仅有 `code` 字段，无 `error` 消息
 
@@ -85,7 +86,7 @@ Go + Gin 网关，负责：
 
 **错误响应**
 
-所有错误响应遵循统一格式 `{"code": <HTTP状态码>}`，**不携带消息**：
+所有错误响应遵循统一格式 `{"code": <标准或业务错误码>}`，**不携带消息**：
 
 ```json
 {
@@ -196,17 +197,23 @@ Consul 健康探测端点，**不需要认证**。
 
 #### POST /api/auth/data-source/{id}/review — 复核通过
 
-将记录标记为 `PASSED`，写入 `reviewed_at/reviewed_by`。
+在事务中锁定目标记录，将 `cleaned_job_sources` 标记为 `PASSED`、写入 `reviewed_at/reviewed_by`，并把原业务数据写入 `reviewed_cleaned_job_sources`。审核结果沿用来源记录的 `trace_id`。
 
 #### DELETE /api/auth/data-source/{id}/review — 复核拒绝
 
-将记录标记为 `REJECTED`。
+将 `cleaned_job_sources` 标记为 `REJECTED`，不写入 `reviewed_cleaned_job_sources`。
 
 #### PUT /api/auth/data-source/{id}/review — 修改后通过复核
 
-请求体携带修改后的字段（jobName / companyName / salary / city / education / experience / jobDescription），应用后标记为 `PASSED`。
+请求体携带修改后的字段（jobName / companyName / salary / city / education / experience / jobDescription）。`cleaned_job_sources` 只更新审核参数，原业务字段保持不变；合并编辑后的版本写入 `reviewed_cleaned_job_sources`，并沿用来源记录的 `trace_id`。
 
-**错误响应**：400 参数错误 / 401 未认证 / 403 非 ADMIN·DATA_REVIEWER / 404 记录不存在 / 503 服务不可用。
+三个审核端点都使用数据库行级悲观锁。并发请求取得锁后如果发现状态已经不是 `PENDING`，返回 HTTP 403：
+
+```json
+{ "code": 40301 }
+```
+
+其他错误响应：400 参数错误 / 401 未认证 / 403 且 `code=403` 表示非 ADMIN·DATA_REVIEWER / 404 记录不存在 / 503 服务不可用。
 
 ---
 
@@ -244,15 +251,17 @@ RequestID (trace_id 雪花 ID)
 
 ## 错误码总览
 
-| HTTP 状态码 | 含义 |
-|------------|------|
-| 200 | 成功 |
-| 400 | 请求参数错误 |
-| 401 | 未认证 — Token 缺失、无效或过期；或账号密码错误 |
-| 403 | 无权限 — 账号被锁定 |
-| 429 | 请求过于频繁（限流器启用时） |
-| 500 | 服务内部错误 |
-| 503 | 后端服务不可用 |
+| HTTP 状态码 | 响应 `code` | 含义 |
+|------------|---------------|------|
+| 200 | 200 | 成功 |
+| 400 | 400 | 请求参数错误 |
+| 401 | 401 | 未认证 — Token 缺失、无效或过期；或账号密码错误 |
+| 403 | 403 | 无权限 — 账号被锁定或角色不符合要求 |
+| 403 | **40301** | 审核记录已被其他审核人处理 |
+| 404 | 404 | 记录不存在 |
+| 429 | 429 | 请求过于频繁（限流器启用时） |
+| 500 | 500 | 服务内部错误 |
+| 503 | 503 | 后端服务不可用 |
 
 ## 调用方约束
 

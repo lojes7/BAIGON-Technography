@@ -77,8 +77,8 @@ func StartCrawlHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			MaxDocuments:  int32(req.MaxDocuments),
 		})
 		if err != nil {
-			code := grpcErrorToHTTP(err)
-			response.Error(c, code, code)
+			httpCode, errorCode := grpcErrorCodes(err)
+			response.Error(c, httpCode, errorCode)
 			return
 		}
 
@@ -124,8 +124,8 @@ func GetCrawlStatusHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			RequestUrl:    c.Request.URL.Path,
 		})
 		if err != nil {
-			code := grpcErrorToHTTP(err)
-			response.Error(c, code, code)
+			httpCode, errorCode := grpcErrorCodes(err)
+			response.Error(c, httpCode, errorCode)
 			return
 		}
 
@@ -172,8 +172,8 @@ func StopCrawlHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			RequestUrl:    c.Request.URL.Path,
 		})
 		if err != nil {
-			code := grpcErrorToHTTP(err)
-			response.Error(c, code, code)
+			httpCode, errorCode := grpcErrorCodes(err)
+			response.Error(c, httpCode, errorCode)
 			return
 		}
 
@@ -274,8 +274,8 @@ func IngestDataHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			RequestUrl:    c.Request.URL.Path,
 		})
 		if err != nil {
-			code := grpcErrorToHTTP(err)
-			response.Error(c, code, code)
+			httpCode, errorCode := grpcErrorCodes(err)
+			response.Error(c, httpCode, errorCode)
 			return
 		}
 

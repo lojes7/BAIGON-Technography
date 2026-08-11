@@ -64,6 +64,7 @@ CREATE TABLE "cleaned_job_sources" (
   "trace_id" bigint,
   "publish_date" timestamp with time zone, -- 可空：爬虫解析失败时诚实存 NULL
   "source_platform" varchar(32) NOT NULL,
+  "job_number" varchar(128), -- 服务内部使用的来源平台岗位编号，不对外返回
   "source_url" varchar(512),
   "city" varchar(64),
   "tags" text,
@@ -92,6 +93,7 @@ CREATE TABLE "reviewed_cleaned_job_sources" (
     "trace_id" bigint,
     "publish_date" timestamp with time zone, -- 可空：爬虫解析失败时诚实存 NULL
     "source_platform" varchar(32) NOT NULL,
+    "job_number" varchar(128), -- 服务内部使用的来源平台岗位编号，不对外返回
     "source_url" varchar(512),
     "city" varchar(64), 
     "tags" text,

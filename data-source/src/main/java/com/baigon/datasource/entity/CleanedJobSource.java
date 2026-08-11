@@ -34,6 +34,10 @@ public class CleanedJobSource {
     @Column(name = "source_platform", nullable = false)
     private String sourcePlatform;
 
+    /** 来源平台内的岗位业务编号（仅服务层使用，不参与人工复核且不对外返回） */
+    @Column(name = "job_number")
+    private String jobNumber;
+
     /** 来源 URL */
     @Column(name = "source_url")
     private String sourceUrl;
@@ -131,6 +135,9 @@ public class CleanedJobSource {
 
     public String getSourcePlatform() { return sourcePlatform; }
     public void setSourcePlatform(String sourcePlatform) { this.sourcePlatform = sourcePlatform; }
+
+    public String getJobNumber() { return jobNumber; }
+    public void setJobNumber(String jobNumber) { this.jobNumber = jobNumber; }
 
     public String getSourceUrl() { return sourceUrl; }
     public void setSourceUrl(String sourceUrl) { this.sourceUrl = sourceUrl; }

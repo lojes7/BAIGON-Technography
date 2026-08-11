@@ -3,9 +3,11 @@
 package com.baigon.datasource.repository;
 
 import com.baigon.datasource.entity.CleanedJobSource;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -21,6 +23,11 @@ public interface CleanedJobSourceRepository extends JpaRepository<CleanedJobSour
     /** 按主键查询未删除的清洗数据（软删除过滤） */
     @Query("SELECT c FROM CleanedJobSource c WHERE c.id = :id AND c.deletedAt IS NULL")
     Optional<CleanedJobSource> findByIdNotDeleted(@Param("id") Long id);
+
+    /** 审核专用查询：锁定目标行，直到审核事务提交或回滚。 */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT c FROM CleanedJobSource c WHERE c.id = :id AND c.deletedAt IS NULL")
+    Optional<CleanedJobSource> findByIdForReview(@Param("id") Long id);
 
     // ==================== 动态筛选（复核状态 + 发布时间范围，均可选） ====================
 

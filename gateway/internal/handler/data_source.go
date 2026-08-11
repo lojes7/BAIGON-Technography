@@ -14,6 +14,8 @@ import (
 	datasourcepb "baigon-technography/gateway/pb/datasourcepb"
 
 	"github.com/gin-gonic/gin"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 )
 
 // listCleanedJobsRequest 分页列表请求体（用户确认用 POST + body）
@@ -82,8 +84,8 @@ func ListCleanedJobsHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			RequestUrl:      c.Request.URL.Path,
 		})
 		if err != nil {
-			code := grpcErrorToHTTP(err)
-			response.Error(c, code, code)
+			httpCode, errorCode := grpcErrorCodes(err)
+			response.Error(c, httpCode, errorCode)
 			return
 		}
 
@@ -137,8 +139,8 @@ func GetCleanedJobHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			RequestUrl:    c.Request.URL.Path,
 		})
 		if err != nil {
-			code := grpcErrorToHTTP(err)
-			response.Error(c, code, code)
+			httpCode, errorCode := grpcErrorCodes(err)
+			response.Error(c, httpCode, errorCode)
 			return
 		}
 
@@ -187,8 +189,8 @@ func GetSourceJobHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			RequestUrl:    c.Request.URL.Path,
 		})
 		if err != nil {
-			code := grpcErrorToHTTP(err)
-			response.Error(c, code, code)
+			httpCode, errorCode := grpcErrorCodes(err)
+			response.Error(c, httpCode, errorCode)
 			return
 		}
 
@@ -198,14 +200,14 @@ func GetSourceJobHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 
 // ApproveReviewHandler 复核通过
 // @Summary      复核通过
-// @Description  将 cleaned_job_sources 记录标记为复核通过（PASSED）
+// @Description  将 cleaned_job_sources 标记为 PASSED，并把原业务数据保存到 reviewed_cleaned_job_sources
 // @Tags         数据治理
 // @Produce      json
 // @Security     Bearer
 // @Param        id   path      int  true  "cleaned_job_sources.id"
 // @Success      200  {object}  response.SuccessBody  "复核后记录"
 // @Failure      401  {object}  response.ErrorBody    "未认证"
-// @Failure      403  {object}  response.ErrorBody    "非 ADMIN / DATA_REVIEWER"
+// @Failure      403  {object}  response.ErrorBody    "无权限(code=403)或记录已被其他审核人处理(code=40301)"
 // @Failure      404  {object}  response.ErrorBody    "记录不存在"
 // @Failure      503  {object}  response.ErrorBody    "服务不可用"
 // @Router       /api/auth/data-source/{id}/review [post]
@@ -215,14 +217,14 @@ func ApproveReviewHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 
 // RejectReviewHandler 复核拒绝
 // @Summary      复核拒绝
-// @Description  将 cleaned_job_sources 记录标记为复核拒绝（REJECTED）
+// @Description  将 cleaned_job_sources 标记为 REJECTED，不写入 reviewed_cleaned_job_sources
 // @Tags         数据治理
 // @Produce      json
 // @Security     Bearer
 // @Param        id   path      int  true  "cleaned_job_sources.id"
 // @Success      200  {object}  response.SuccessBody  "复核后记录"
 // @Failure      401  {object}  response.ErrorBody    "未认证"
-// @Failure      403  {object}  response.ErrorBody    "非 ADMIN / DATA_REVIEWER"
+// @Failure      403  {object}  response.ErrorBody    "无权限(code=403)或记录已被其他审核人处理(code=40301)"
 // @Failure      404  {object}  response.ErrorBody    "记录不存在"
 // @Failure      503  {object}  response.ErrorBody    "服务不可用"
 // @Router       /api/auth/data-source/{id}/review [delete]
@@ -232,7 +234,7 @@ func RejectReviewHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 
 // EditReviewHandler 修改后通过复核
 // @Summary      修改后通过复核
-// @Description  修改部分字段后将 cleaned_job_sources 记录标记为复核通过（PASSED）
+// @Description  cleaned_job_sources 只更新审核参数；编辑后的版本保存到 reviewed_cleaned_job_sources
 // @Tags         数据治理
 // @Accept       json
 // @Produce      json
@@ -242,7 +244,7 @@ func RejectReviewHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 // @Success      200  {object}  response.SuccessBody  "复核后记录"
 // @Failure      400  {object}  response.ErrorBody    "请求体格式错误"
 // @Failure      401  {object}  response.ErrorBody    "未认证"
-// @Failure      403  {object}  response.ErrorBody    "非 ADMIN / DATA_REVIEWER"
+// @Failure      403  {object}  response.ErrorBody    "无权限(code=403)或记录已被其他审核人处理(code=40301)"
 // @Failure      404  {object}  response.ErrorBody    "记录不存在"
 // @Failure      503  {object}  response.ErrorBody    "服务不可用"
 // @Router       /api/auth/data-source/{id}/review [put]
@@ -269,6 +271,7 @@ func EditReviewHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 		defer cancel()
 
 		// 审计字段（gateway 透传用户上下文，供后端写 logs 表）
+		var trailers metadata.MD
 		resp, err := datasourcepb.NewDataSourceServiceClient(conn).ReviewJob(ctx, &datasourcepb.ReviewJobRequest{
 			Id:     id,
 			Action: datasourcepb.ReviewAction_APPROVE_WITH_EDIT,
@@ -287,10 +290,10 @@ func EditReviewHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			UserIp:        c.ClientIP(),
 			RequestMethod: c.Request.Method,
 			RequestUrl:    c.Request.URL.Path,
-		})
+		}, grpc.Trailer(&trailers))
 		if err != nil {
-			code := grpcErrorToHTTP(err)
-			response.Error(c, code, code)
+			httpCode, errorCode := grpcErrorCodes(err, trailers)
+			response.Error(c, httpCode, errorCode)
 			return
 		}
 
@@ -317,6 +320,7 @@ func reviewActionHandler(pool *grpcpool.GrpcClientPool, action datasourcepb.Revi
 		defer cancel()
 
 		// 审计字段（gateway 透传用户上下文，供后端写 logs 表）
+		var trailers metadata.MD
 		resp, err := datasourcepb.NewDataSourceServiceClient(conn).ReviewJob(ctx, &datasourcepb.ReviewJobRequest{
 			Id:            id,
 			Action:        action,
@@ -326,10 +330,10 @@ func reviewActionHandler(pool *grpcpool.GrpcClientPool, action datasourcepb.Revi
 			UserIp:        c.ClientIP(),
 			RequestMethod: c.Request.Method,
 			RequestUrl:    c.Request.URL.Path,
-		})
+		}, grpc.Trailer(&trailers))
 		if err != nil {
-			code := grpcErrorToHTTP(err)
-			response.Error(c, code, code)
+			httpCode, errorCode := grpcErrorCodes(err, trailers)
+			response.Error(c, httpCode, errorCode)
 			return
 		}
 
