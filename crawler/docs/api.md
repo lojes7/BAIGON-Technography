@@ -5,9 +5,10 @@
 多源数据采集服务。核心:
 
 - **真实爬虫**:DrissionPage(Chromium 自动化)爬智联招聘,监听 `search/positions` 网络接口拿 JSON
-- **增量检测**:每次任务所有分类从第 1 页开始;跨分类去重文件 `seen_numbers.txt`(job_number 稳定 ID 集合)保证不重复——去重集合即增量基线,集合里没有的就是新职位
+- **增量检测**:每次任务所有分类从第 1 页开始;从 `job_sources` 加载 `(source_platform, job_number)` 作为去重基线，并使用任务内存集合避免跨页、跨分类重复
 - **后台异步**:`Crawl` 启动后台线程立即返回;`GetCrawlStatus` 查进度;`StopCrawl` 立即停止
-- **清洗链路**:爬取 → 写 job_sources(PENDING)→ 清洗 → SUCCESS → Kafka 事件发 data-source
+- **并发处理链路**:按 20 条分批；“Qwen 向量 + 写 job_sources”与清洗并行，两者成功后再异步发送 Kafka
+- **嵌入容错**:AI 不可用时岗位仍会入库，向量状态直接置 FAILED 并记录 ERROR 业务日志，当前不自动重试
 - **每条记录独立 trace_id**:爬虫生成时赋雪花 ID,不批量共享(job_sources 有 trace_id 唯一索引)
 - **发布时间诚实处理**:解析失败存 NULL,不伪造当前时间
 
@@ -15,10 +16,13 @@
 
 | 文件 | 内容 |
 |------|------|
-| `job_list.py` | 分类 → 智联搜索 URL（16 个岗位分类） |
+| `Zhi_Lian.py` | 分类 → 智联搜索 URL（16 个岗位分类） |
 | `city_mapping.py` | 城市 → 省份映射 + get_province() |
+| `ai.py` | AI 超时、向量维度、批次大小，以及暂时停用的重试参数 |
+| `crawl.py` | 采集任务内部限制 |
+| `pipeline.py` | 流水线并发数与 Kafka 确认超时 |
 
-改分类/城市映射不动爬虫代码。爬取参数（categories / max_documents）由 ADMIN 前端传参。
+内部调优参数由上述配置文件管理，不通过 Docker Compose 注入。Compose 只保留数据库、Kafka、Consul、端口、服务发现名称和持久化目录等公共/部署变量。改分类/城市映射不动爬虫代码；爬取参数（categories / max_documents）由 ADMIN 前端传参。
 
 ## gRPC 接口
 
@@ -70,7 +74,7 @@
 | **Full Method** | `/baigon.crawler.CrawlerService/StopCrawl` |
 | **对应 REST** | `DELETE /api/auth/crawl` |
 
-设置停止信号,后台线程**立即中断**(不等当前页爬完):翻页/请求前检查、CDP fetch 用短超时(6s)后检查。已抓到的数据照常入库不丢,然后状态置 `stopped`。
+设置停止信号后接口立即返回 `stopping`：爬虫停止接收新批次，尚未进入流水线的批次取消；已经进入 AI/数据库事务的小批次会安全完成或回滚，随后状态置 `stopped`。流水线有界并发默认为 2，因此停止时不会积压无限批次。
 
 ### IngestData — 模拟采集（注入配置数据）
 
@@ -79,7 +83,7 @@
 | **Full Method** | `/baigon.crawler.CrawlerService/IngestData` |
 | **对应 REST** | `POST /api/auth/crawl/ingest`（仅 ADMIN） |
 
-不真爬,由 ADMIN 提交配置好的岗位数据,**走与爬虫完全相同的流程**:写 job_sources → 清洗 → Kafka → data-source 落库。
+不真爬,由 ADMIN 提交配置好的岗位数据,**走与爬虫完全相同的流程**:Qwen 向量与清洗并行 → 写 job_sources → Kafka → data-source 落库。
 
 **请求 — IngestDataRequest**
 
@@ -87,7 +91,7 @@
 |------|------|------|------|
 | `jobs` | repeated IngestedJob | 是 | 注入的岗位数据（1~1000 条） |
 
-`IngestedJob` 字段与爬虫产出的 JobRecord 完全一致:publish_date(ISO,可空)/ source_platform / source_url / city / tags / major / nature / salary / job_name / company_name / company_size / province / education / experience / job_description。
+`IngestedJob` 接收以下岗位内容字段:publish_date(ISO,可空)/ source_platform / source_url / city / tags / major / nature / salary / job_name / company_name / company_size / province / education / experience / job_description。`job_number` 由真实爬虫从来源平台获取，模拟注入记录默认留空。
 
 **响应**:`count`(注入并清洗条数)/ `trace_id` / `status`(success)。
 
@@ -113,15 +117,33 @@
 | `companySize` | company_size |
 | `propertyName` | nature |
 | 描述（列表 DESC_FIELDS 或 CDP 详情页兜底） | job_description |
+| `job_description` 的 Qwen 嵌入 | job_description_vector（1024 维） |
 | 详情页技能标签 | tags |
 | `firstPublishTime` | publish_date |
+| `number` | job_number |
 | 详情 URL | source_url |
 | 固定 | source_platform = "智联招聘" |
 
 ### 关键文件
 
-- `src/service/zhaopin_crawler.py` — 爬虫核心（迁移自 demo）
-- 去重文件目录:`CRAWLER_PROGRESS_DIR`（默认 ./data，容器卷持久化，跨任务生效）
+- `src/service/Zhi_Lian_crawler.py` — 爬虫核心（迁移自 demo）
+- 岗位稳定编号保存在 `job_sources.job_number`，通过普通联合索引 `idx_job_sources_platform_job_number` 加速查询；该索引不唯一，为后续岗位更新或版本历史保留空间
+- 已有数据库升级时执行 `crawler/migrations/001_add_job_number.sql`，脚本会从智联详情 URL 回填历史岗位编号
+
+### 嵌入失败处理
+
+`job_sources` 使用以下字段记录嵌入结果：
+
+| 字段 | 说明 |
+|------|------|
+| `embedding_status` | PENDING / SUCCESS / FAILED |
+| `embedding_attempts` | 已执行的 AI 调用次数 |
+| `embedding_next_retry_at` | 为后续重试设计预留；当前始终写 NULL |
+| `embedding_error` | 本次失败原因 |
+
+有 JD 的岗位只调用一次 AI：成功时写向量并标记 SUCCESS；AI 调用或向量写库失败时保留原始岗位、向量写 NULL、状态直接标记 FAILED，并向 `logs` 表写 ERROR 日志。JD 为空的岗位无需生成向量，直接标记 SUCCESS。失败不会阻断并行清洗与后续 Kafka 发送，也不会触发任何后台重试。
+
+`src/config/ai.py` 仍保留重试间隔 300 秒、初始退避 300 秒、最大退避 1800 秒、最多 2 次和领取超时 300 秒等参数，供后续重新设计时使用；当前代码没有 worker、任务领取或状态回写逻辑。
 
 ## 错误码（gRPC → HTTP）
 

@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from src.config import model_config
 from src.llm.embedding_model import TextEmbedding
 from src.llm.spark_model import SparkModel
 
@@ -45,7 +46,7 @@ class ModelAdapterTest(unittest.TestCase):
         answer = model.question("系统提示", "用户问题", enable_web_search=True)
 
         self.assertEqual(answer, "模型回答")
-        self.assertEqual(completions.request["model"], "spark-x")
+        self.assertEqual(completions.request["model"], model_config.spark_model)
         self.assertEqual(completions.request["messages"][0]["role"], "system")
         self.assertEqual(completions.request["tools"][0]["type"], "web_search")
 

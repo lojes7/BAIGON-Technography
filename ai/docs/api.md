@@ -4,12 +4,12 @@
 
 AI 服务已接入以下内部模型适配器，供后续 gRPC Handler 调用：
 
-| 能力 | 适配器 | 环境变量 |
-| --- | --- | --- |
-| 对话与结构化抽取 | `src.llm.SparkModel` | `SPARK_API_PASSWORD`、`SPARK_MODEL` |
-| 文本嵌入与相似度 | `src.llm.TextEmbedding` | `DASHSCOPE_API_KEY`、`DASHSCOPE_EMBEDDING_MODEL` |
+| 能力 | 适配器 | 部署密钥 | 内部配置 |
+| --- | --- | --- | --- |
+| 对话与结构化抽取 | `src.llm.SparkModel` | `SPARK_API_PASSWORD` | `src/config.py` |
+| 文本嵌入与相似度 | `src.llm.TextEmbedding` | `DASHSCOPE_API_KEY` | `src/config.py` |
 
-`src.service.AIModelService` 是两项能力的统一业务入口。模型客户端采用延迟初始化：健康检查不会校验凭据，首次模型调用时才会验证对应环境变量。
+`src.service.AIModelService` 是两项能力的统一业务入口。模型名称、模型地址、向量维度与批次限制是服务内部参数，统一放在 `src/config.py`，不由 Docker Compose 注入；API 密钥仍由部署环境提供。模型客户端采用延迟初始化：健康检查不会校验凭据，首次模型调用时才会验证对应环境变量。
 
 ## gRPC 接口
 
@@ -37,4 +37,4 @@ AI 服务已接入以下内部模型适配器，供后续 gRPC Handler 调用：
 
 ## 调用方约束
 
-调用方应把相同的 `dimensions` 用于建库、写入和检索；否则向量库会拒绝维度不一致的向量。模型名由 `DASHSCOPE_EMBEDDING_MODEL` 统一配置，不能在单次 RPC 请求中任意切换。
+调用方应把相同的 `dimensions` 用于建库、写入和检索；否则向量库会拒绝维度不一致的向量。模型名由 `src/config.py` 统一配置，不能在单次 RPC 请求中任意切换。

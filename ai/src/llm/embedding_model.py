@@ -5,13 +5,14 @@ from typing import Any
 import numpy as np
 from openai import OpenAI
 
-from src.config import config
+from src.config import config, model_config
 from src.llm.exceptions import ModelConfigurationError
+
 
 class TextEmbedding:
     """调用百炼 OpenAI 兼容接口生成文本向量并计算相似度。"""
 
-    DEFAULT_DIMENSION = 1024
+    DEFAULT_DIMENSION = model_config.embedding_default_dimensions
 
     def __init__(
         self,
@@ -20,9 +21,9 @@ class TextEmbedding:
         base_url: str | None = None,
         client: OpenAI | Any | None = None,
     ):
-        self.model_name = model_name or config.embedding_model
+        self.model_name = model_name or model_config.embedding_model
         self.api_key = api_key if api_key is not None else config.dashscope_api_key
-        self.base_url = base_url or config.dashscope_base_url
+        self.base_url = base_url or model_config.dashscope_base_url
         # 与对话模型一致，延迟连接可让无凭据的健康检查正常工作。
         self._client = client
 
@@ -33,7 +34,11 @@ class TextEmbedding:
         if not self.api_key:
             raise ModelConfigurationError("未配置 DASHSCOPE_API_KEY")
 
-        self._client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+        self._client = OpenAI(
+            api_key=self.api_key,
+            base_url=self.base_url,
+            max_retries=model_config.provider_max_retries,
+        )
         return self._client
 
     def embedding(
@@ -53,7 +58,7 @@ class TextEmbedding:
         input_list: list[str | None],
         dimensions: int = DEFAULT_DIMENSION,
         encoding_format: str = "float",
-        chunk_size: int = 20,
+        chunk_size: int = model_config.embedding_default_chunk_size,
     ) -> np.ndarray:
         """分批生成向量，返回顺序严格与输入文本顺序一致。"""
         if dimensions <= 0:
@@ -66,7 +71,10 @@ class TextEmbedding:
         all_embeddings: list[list[float]] = []
         for start in range(0, len(input_list), chunk_size):
             # 保持输入与结果一一对应，None 统一转为空文本。
-            texts = ["" if text is None else str(text) for text in input_list[start : start + chunk_size]]
+            texts = [
+                "" if text is None else str(text)
+                for text in input_list[start : start + chunk_size]
+            ]
             all_embeddings.extend(self._create_embeddings(texts, dimensions, encoding_format))
 
         return np.asarray(all_embeddings, dtype=float)
@@ -105,4 +113,9 @@ class TextEmbedding:
         """计算一个向量与矩阵每一行向量的余弦相似度。"""
         dot = matrix @ vec
         denominator = np.linalg.norm(vec) * np.linalg.norm(matrix, axis=1)
-        return np.divide(dot, denominator, out=np.zeros_like(dot, dtype=float), where=denominator != 0)
+        return np.divide(
+            dot,
+            denominator,
+            out=np.zeros_like(dot, dtype=float),
+            where=denominator != 0,
+        )

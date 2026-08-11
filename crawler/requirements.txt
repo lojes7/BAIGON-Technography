@@ -11,6 +11,7 @@ python-consul==1.1.0
 kafka-python==3.0.9  # 2.0.2 在 Python 3.12 上 import 崩溃（kafka.vendor.six.moves 缺失），升级到维护版
 sqlalchemy==2.0.32  # ORM，同步驱动 psycopg2
 psycopg2-binary==2.9.9
+pgvector==0.3.2  # PostgreSQL vector(1024) 的 SQLAlchemy/psycopg2 映射
 httpx==0.27.0
 beautifulsoup4==4.12.3
 lxml==5.3.0
