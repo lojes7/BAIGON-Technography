@@ -32,6 +32,11 @@ spring:
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       group-id: data-source-service
   cloud:
+    discovery:
+      client:
+        health-indicator:
+          # Actuator 健康检查只探测 Consul 可用性，不读取完整服务目录。
+          use-services-query: false
     consul:
       host: ${CONSUL_HOST:localhost}
       port: ${CONSUL_PORT:8500}
