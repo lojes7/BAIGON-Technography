@@ -38,13 +38,19 @@ spring:
       discovery:
         instance-id: ${spring.application.name}-${random.value}
         service-name: occupation-service
-        port: ${GRPC_PORT:50055}  # 注册端口 = gRPC 端口（gateway 经 Consul 发现后直连 gRPC）
+        port: ${GRPC_PORT:50054}  # 注册端口必须与实际 gRPC 端口一致
         health-check-url: http://${HOSTNAME:localhost}:${server.port}/actuator/health
         health-check-interval: 10s
 
 grpc:
   server:
     port: ${GRPC_PORT:50054}
+
+ai:
+  service-name: ${AI_SERVICE_NAME:ai-service}
+  dimensions: ${AI_EMBEDDING_DIMENSIONS:1024}
+  batch-size: ${AI_EMBEDDING_BATCH_SIZE:20}
+  timeout-seconds: ${AI_GRPC_TIMEOUT_SECONDS:30}
 
 management:
   endpoints:

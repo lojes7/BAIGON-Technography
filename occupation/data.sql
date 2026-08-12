@@ -1,17 +1,11 @@
 -- 此文件由 scripts/generate_seed_sql.py 自动生成，请勿手动编辑。
 -- 数据源：discipline_categories.csv、major_categories.csv、majors.csv、dadian.json。
 
+-- 仅用于 init.sql 建表后的首次初始化，不负责增量同步或变更追踪。
+
 BEGIN;
 
-CREATE TEMP TABLE seed_discipline_categories (id bigint, code varchar(16), name varchar(64)) ON COMMIT DROP;
-CREATE TEMP TABLE seed_major_categories (id bigint, code varchar(16), name varchar(64), discipline_category_id bigint) ON COMMIT DROP;
-CREATE TEMP TABLE seed_majors (id bigint, code varchar(16), name varchar(64), major_category_id bigint) ON COMMIT DROP;
-CREATE TEMP TABLE seed_occupation_major_categories (id bigint, code varchar(16), name varchar(64), description text) ON COMMIT DROP;
-CREATE TEMP TABLE seed_occupation_sub_categories (id bigint, code varchar(16), name varchar(64), occupation_major_category_id bigint, description text) ON COMMIT DROP;
-CREATE TEMP TABLE seed_occupation_categories (id bigint, code varchar(16), name varchar(64), occupation_sub_category_id bigint, description text) ON COMMIT DROP;
-CREATE TEMP TABLE seed_occupations (id bigint, code varchar(16), name varchar(64), occupation_category_id bigint, description text) ON COMMIT DROP;
-
-COPY seed_discipline_categories (id, code, name) FROM STDIN WITH (FORMAT csv, NULL '\N');
+COPY discipline_categories (id, code, name) FROM STDIN WITH (FORMAT csv, NULL '\N');
 1,01,哲学
 2,02,经济学
 3,03,法学
@@ -26,7 +20,7 @@ COPY seed_discipline_categories (id, code, name) FROM STDIN WITH (FORMAT csv, NU
 12,13,艺术学
 \.
 
-COPY seed_major_categories (id, code, name, discipline_category_id) FROM STDIN WITH (FORMAT csv, NULL '\N');
+COPY major_categories (id, code, name, discipline_category_id) FROM STDIN WITH (FORMAT csv, NULL '\N');
 1,0101,哲学类,1
 2,0201,经济学类,2
 3,0202,财政学类,2
@@ -122,7 +116,7 @@ COPY seed_major_categories (id, code, name, discipline_category_id) FROM STDIN W
 93,1305,设计学类,12
 \.
 
-COPY seed_majors (id, code, name, major_category_id) FROM STDIN WITH (FORMAT csv, NULL '\N');
+COPY majors (id, code, name, major_category_id) FROM STDIN WITH (FORMAT csv, NULL '\N');
 1,010101,哲学,1
 2,010102,逻辑学,1
 3,010103K,宗教学,1
@@ -970,7 +964,7 @@ COPY seed_majors (id, code, name, major_category_id) FROM STDIN WITH (FORMAT csv
 845,130515TK,游戏艺术设计,93
 \.
 
-COPY seed_occupation_major_categories (id, code, name, description) FROM STDIN WITH (FORMAT csv, NULL '\N');
+COPY occupation_major_categories (id, code, name, description) FROM STDIN WITH (FORMAT csv, NULL '\N');
 1,1,党的机关、国家机关、群众团体和社会组织、企事业单位负责人,在中国共产党机关， 国家机关， 民主党派和工商联， 人民团体和群众团体、社会组织，基层群众自治组织及其工作机构， 企业、事业单位中担任领导职务并具有决策、管理职权的人员。
 2,2,专业技术人员,从事科学研究和专业技术工作的人员。
 3,3,办事人员和有关人员,在公共管理和社会组织机构中， 从事行政业务、行政事务、行政执法和仲裁、安全保卫、消防和应急救援等工作的人员。
@@ -980,7 +974,7 @@ COPY seed_occupation_major_categories (id, code, name, description) FROM STDIN W
 7,7,军队人员,军队人员。
 \.
 
-COPY seed_occupation_sub_categories (id, code, name, occupation_major_category_id, description) FROM STDIN WITH (FORMAT csv, NULL '\N');
+COPY occupation_sub_categories (id, code, name, occupation_major_category_id, description) FROM STDIN WITH (FORMAT csv, NULL '\N');
 1,1-01,中国共产党机关负责人,1,在中国共产党中央和地方各级机关及其工作机构中， 担任领导职务的人员。
 2,1-02,国家机关负责人,1,在各级人民代表大会常务委员会、国家行政机关、人民政协及其工作机构， 人民法院和人民检察院中， 担任领导职务， 具有决策和管理职权的人员。
 3,1-03,民主党派和工商联负责人,1,在中国国民党革命委员会、中国民主同盟、中国民主建国会、中国民主促进会、中国农工民主党、中国致公党、九三学社、台湾民主自治同盟和中华全国工商业联合会各级组织机构中， 担任领导职务， 具有决策和管理职权的人员。
@@ -1056,7 +1050,7 @@ COPY seed_occupation_sub_categories (id, code, name, occupation_major_category_i
 73,7-04,文职人员,7,文职人员。
 \.
 
-COPY seed_occupation_categories (id, code, name, occupation_sub_category_id, description) FROM STDIN WITH (FORMAT csv, NULL '\N');
+COPY occupation_categories (id, code, name, occupation_sub_category_id, description) FROM STDIN WITH (FORMAT csv, NULL '\N');
 1,1-01-00,中国共产党机关负责人,1,在中国共产党中央和地方各级机关以及基层组织中， 担任领导职务的人员。
 2,1-02-01,国家权力机关负责人,2,在各级人民代表大会常务委员会及其工作机构中， 担任领导职务并具有决策、管理职权的人员。
 3,1-02-02,国家行政机关负责人,2,在各级国家行政机关及其工作机构中，担任领导职务并具有决策、管理职权的人员。主要工作任务： 1.领导所属各部门的工作， 召集和主持本级行政机关会议；2.签署有关法规、政策、请示、报告、命令等重要文件；3.处理其他日常工作。
@@ -1439,7 +1433,7 @@ COPY seed_occupation_categories (id, code, name, occupation_sub_category_id, des
 380,7-04-00,文职人员,73,文职人员。
 \.
 
-COPY seed_occupations (id, code, name, occupation_category_id, description) FROM STDIN WITH (FORMAT csv, NULL '\N');
+COPY occupations (id, code, name, occupation_category_id, description) FROM STDIN WITH (FORMAT csv, NULL '\N');
 1,1-01-00-01,中国共产党机关负责人,1,在中国共产党中央和地方各级机关及其工作机构中， 担任领导职务的人员。
 2,1-01-00-02,中国共产党基层组织负责人,1,在企业、农村、机关、学校、科研院所、街道社区、社会组织等基层单位中国共产党组织中， 担任领导职务的人员。
 3,1-02-01-00,国家权力机关负责人,2,在各级人民代表大会常务委员会及其工作机构中， 担任领导职务并具有决策、管理职权的人员。主要工作任务： 1.常务委员会负责人主要处理常务委员会的重要日常工作；2.工作机构负责人主要为常务委员会会议和人民代表大会会议服务。
@@ -3076,41 +3070,5 @@ COPY seed_occupations (id, code, name, occupation_category_id, description) FROM
 1634,7-03-00-00,义务兵,379,义务兵。
 1635,7-04-00-00,文职人员,380,文职人员。
 \.
-
-INSERT INTO discipline_categories (id, code, name)
-SELECT id, code, name FROM seed_discipline_categories
-ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, updated_at = now();
-
-INSERT INTO major_categories (id, code, name, discipline_category_id)
-SELECT id, code, name, discipline_category_id FROM seed_major_categories
-ON CONFLICT (code) DO UPDATE SET
-  name = EXCLUDED.name, discipline_category_id = EXCLUDED.discipline_category_id, updated_at = now();
-
-INSERT INTO majors (id, code, name, major_category_id)
-SELECT id, code, name, major_category_id FROM seed_majors
-ON CONFLICT (code) DO UPDATE SET
-  name = EXCLUDED.name, major_category_id = EXCLUDED.major_category_id, updated_at = now();
-
-INSERT INTO occupation_major_categories (id, code, name, description)
-SELECT id, code, name, description FROM seed_occupation_major_categories
-ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description, updated_at = now();
-
-INSERT INTO occupation_sub_categories (id, code, name, occupation_major_category_id, description)
-SELECT id, code, name, occupation_major_category_id, description FROM seed_occupation_sub_categories
-ON CONFLICT (code) DO UPDATE SET
-  name = EXCLUDED.name, occupation_major_category_id = EXCLUDED.occupation_major_category_id,
-  description = EXCLUDED.description, updated_at = now();
-
-INSERT INTO occupation_categories (id, code, name, occupation_sub_category_id, description)
-SELECT id, code, name, occupation_sub_category_id, description FROM seed_occupation_categories
-ON CONFLICT (code) DO UPDATE SET
-  name = EXCLUDED.name, occupation_sub_category_id = EXCLUDED.occupation_sub_category_id,
-  description = EXCLUDED.description, updated_at = now();
-
-INSERT INTO occupations (id, code, name, occupation_category_id, description)
-SELECT id, code, name, occupation_category_id, description FROM seed_occupations
-ON CONFLICT (code) DO UPDATE SET
-  name = EXCLUDED.name, occupation_category_id = EXCLUDED.occupation_category_id,
-  description = EXCLUDED.description, updated_at = now();
 
 COMMIT;

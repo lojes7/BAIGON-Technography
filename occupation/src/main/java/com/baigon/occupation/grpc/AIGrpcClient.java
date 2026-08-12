@@ -1,0 +1,179 @@
+// 百工谱 — ai-service 文本向量化 gRPC 客户端
+package com.baigon.occupation.grpc;
+
+import com.baigon.ai.AIServiceGrpc;
+import com.baigon.ai.BatchEmbedTextRequest;
+import com.baigon.ai.BatchEmbedTextResponse;
+import com.baigon.ai.EmbeddingVector;
+import com.baigon.occupation.service.AuditContext;
+import com.google.common.util.concurrent.ListenableFuture;
+import io.grpc.ManagedChannel;
+import io.grpc.ManagedChannelBuilder;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.client.ServiceInstance;
+import org.springframework.cloud.client.discovery.DiscoveryClient;
+import org.springframework.stereotype.Component;
+
+import jakarta.annotation.PreDestroy;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+
+/** 通过 Consul 发现 ai-service；一次业务批次只发起一次 AI 请求，不自动重试。 */
+@Component
+public class AIGrpcClient {
+
+    private final DiscoveryClient discoveryClient;
+    private final String serviceName;
+    private final int dimensions;
+    private final int configuredBatchSize;
+    private final long timeoutSeconds;
+
+    private final Object channelLock = new Object();
+    private ManagedChannel channel;
+    private String channelTarget = "";
+
+    public AIGrpcClient(DiscoveryClient discoveryClient,
+                        @Value("${ai.service-name:ai-service}") String serviceName,
+                        @Value("${ai.dimensions:1024}") int dimensions,
+                        @Value("${ai.batch-size:20}") int configuredBatchSize,
+                        @Value("${ai.timeout-seconds:30}") long timeoutSeconds) {
+        if (dimensions != 1024) {
+            throw new IllegalArgumentException("ai.dimensions must match vector(1024)");
+        }
+        if (configuredBatchSize < 1 || configuredBatchSize > 100) {
+            throw new IllegalArgumentException("ai.batch-size must be between 1 and 100");
+        }
+        if (timeoutSeconds <= 0) {
+            throw new IllegalArgumentException("ai.timeout-seconds must be > 0");
+        }
+        this.discoveryClient = discoveryClient;
+        this.serviceName = serviceName;
+        this.dimensions = dimensions;
+        this.configuredBatchSize = configuredBatchSize;
+        this.timeoutSeconds = timeoutSeconds;
+    }
+
+    public int getConfiguredBatchSize() {
+        return configuredBatchSize;
+    }
+
+    /** 创建可取消的异步调用，Stop 接口可立即向当前 gRPC 请求发送取消信号。 */
+    public EmbeddingCall startBatch(List<String> texts, AuditContext audit) {
+        if (texts == null || texts.isEmpty()) {
+            throw new IllegalArgumentException("embedding texts must not be empty");
+        }
+        String target = discoverTarget();
+        ManagedChannel activeChannel = channelFor(target);
+        BatchEmbedTextRequest request = BatchEmbedTextRequest.newBuilder()
+                .addAllTexts(texts)
+                .setDimensions(dimensions)
+                .setChunkSize(Math.min(texts.size(), configuredBatchSize))
+                .setTraceId(audit.traceId() == null ? "" : String.valueOf(audit.traceId()))
+                .setUserId(audit.userId())
+                .setUserName(audit.userName())
+                .setUserIp(audit.userIp())
+                .setRequestMethod(audit.requestMethod())
+                .setRequestUrl(audit.requestUrl())
+                .build();
+
+        ListenableFuture<BatchEmbedTextResponse> future = AIServiceGrpc.newFutureStub(activeChannel)
+                .withDeadlineAfter(timeoutSeconds, TimeUnit.SECONDS)
+                .batchEmbedText(request);
+        return new EmbeddingCall(future, texts.size(), dimensions);
+    }
+
+    private String discoverTarget() {
+        List<ServiceInstance> instances = discoveryClient.getInstances(serviceName);
+        if (instances == null || instances.isEmpty()) {
+            throw new IllegalStateException("Consul 中没有健康的 " + serviceName + " 实例");
+        }
+        ServiceInstance instance = instances.get(0);
+        return instance.getHost() + ":" + instance.getPort();
+    }
+
+    private ManagedChannel channelFor(String target) {
+        synchronized (channelLock) {
+            if (channel != null && !channel.isShutdown() && target.equals(channelTarget)) {
+                return channel;
+            }
+            closeChannel();
+            channelTarget = target;
+            channel = ManagedChannelBuilder.forTarget(target).usePlaintext().build();
+            return channel;
+        }
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        synchronized (channelLock) {
+            closeChannel();
+        }
+    }
+
+    private void closeChannel() {
+        if (channel != null) {
+            channel.shutdownNow();
+        }
+        channel = null;
+        channelTarget = "";
+    }
+
+    public static final class EmbeddingCall {
+        private final ListenableFuture<BatchEmbedTextResponse> future;
+        private final int expectedCount;
+        private final int expectedDimensions;
+
+        private EmbeddingCall(ListenableFuture<BatchEmbedTextResponse> future,
+                              int expectedCount,
+                              int expectedDimensions) {
+            this.future = future;
+            this.expectedCount = expectedCount;
+            this.expectedDimensions = expectedDimensions;
+        }
+
+        public List<List<Float>> await() throws Exception {
+            try {
+                BatchEmbedTextResponse response = future.get();
+                if (response.getDimensions() != expectedDimensions) {
+                    throw new IllegalStateException("AI 返回向量维度不匹配");
+                }
+                if (response.getEmbeddingsCount() != expectedCount) {
+                    throw new IllegalStateException("AI 返回向量数量不匹配");
+                }
+                List<List<Float>> vectors = new ArrayList<>(expectedCount);
+                for (EmbeddingVector embedding : response.getEmbeddingsList()) {
+                    List<Float> values = List.copyOf(embedding.getValuesList());
+                    validateVector(values, expectedDimensions);
+                    vectors.add(values);
+                }
+                return vectors;
+            } catch (CancellationException exception) {
+                throw exception;
+            } catch (ExecutionException exception) {
+                Throwable cause = exception.getCause();
+                if (cause instanceof Exception checked) {
+                    throw checked;
+                }
+                throw new IllegalStateException("AI gRPC 调用失败", cause);
+            }
+        }
+
+        public void cancel() {
+            future.cancel(true);
+        }
+
+        private static void validateVector(List<Float> vector, int dimensions) {
+            if (vector.size() != dimensions) {
+                throw new IllegalStateException("AI 返回单条向量维度不匹配");
+            }
+            for (Float value : vector) {
+                if (value == null || !Float.isFinite(value)) {
+                    throw new IllegalStateException("AI 返回向量包含非法浮点值");
+                }
+            }
+        }
+    }
+}

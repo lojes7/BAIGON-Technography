@@ -4,14 +4,78 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
+
+	occupationpb "baigon-technography/gateway/pb/occupationpb"
 
 	"github.com/gin-gonic/gin"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
+
+// embeddableCatalogItems 显式保留 is_embed=false，避免 protobuf 的 omitempty 丢字段。
+func embeddableCatalogItems(items []*occupationpb.EmbeddableCatalogItem) []gin.H {
+	result := make([]gin.H, 0, len(items))
+	for _, item := range items {
+		result = append(result, gin.H{
+			"id": item.GetId(), "code": item.GetCode(), "name": item.GetName(),
+			"is_embed": item.GetIsEmbed(),
+		})
+	}
+	return result
+}
+
+// embeddingTaskData 将两类任务的统一状态映射成稳定的前端字段。
+func embeddingTaskData(status *occupationpb.EmbeddingTaskStatus) gin.H {
+	return gin.H{
+		"status": status.GetStatus(), "traceId": status.GetTraceId(), "total": status.GetTotal(),
+		"processed": status.GetProcessed(), "succeeded": status.GetSucceeded(), "failed": status.GetFailed(),
+		"message": status.GetMessage(), "startedAt": status.GetStartedAt(), "finishedAt": status.GetFinishedAt(),
+	}
+}
+
+// catalogPageQuery 目录列表统一分页搜索参数。
+type catalogPageQuery struct {
+	Page     int32
+	PageSize int32
+	Keyword  string
+}
+
+// parseCatalogPageQuery 解析 page/pageSize/keyword，并限制单页最多 100 条。
+func parseCatalogPageQuery(c *gin.Context) (catalogPageQuery, error) {
+	page := 0
+	pageSize := 20
+	var err error
+	if value := c.Query("page"); value != "" {
+		page, err = strconv.Atoi(value)
+		if err != nil || page < 0 {
+			return catalogPageQuery{}, fmt.Errorf("invalid page")
+		}
+	}
+	if value := c.Query("pageSize"); value != "" {
+		pageSize, err = strconv.Atoi(value)
+		if err != nil || pageSize < 1 || pageSize > 100 {
+			return catalogPageQuery{}, fmt.Errorf("invalid pageSize")
+		}
+	}
+	return catalogPageQuery{
+		Page:     int32(page),
+		PageSize: int32(pageSize),
+		Keyword:  c.Query("keyword"),
+	}, nil
+}
+
+// positiveQueryID 解析目录父级 ID，所有级联查询都要求正整数。
+func positiveQueryID(c *gin.Context, name string) (int64, error) {
+	value, err := strconv.ParseInt(c.Query(name), 10, 64)
+	if err != nil || value <= 0 {
+		return 0, fmt.Errorf("invalid %s", name)
+	}
+	return value, nil
+}
 
 const grpcErrorCodeTrailer = "baigon-error-code"
 

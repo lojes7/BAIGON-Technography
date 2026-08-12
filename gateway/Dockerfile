@@ -30,19 +30,22 @@ RUN mkdir -p /app/gateway/pb \
     --go_opt=Mcommon/evidence.proto=baigon-technography/gateway/pb/commonpb \
     --go_opt=Mcrawler/crawler.proto=baigon-technography/gateway/pb/crawlerpb \
     --go_opt=Mdata_source/data_source.proto=baigon-technography/gateway/pb/datasourcepb \
+    --go_opt=Moccupation/occupation.proto=baigon-technography/gateway/pb/occupationpb \
     --go-grpc_opt=Muser/user.proto=baigon-technography/gateway/pb/userpb \
     --go-grpc_opt=Mcommon/evidence.proto=baigon-technography/gateway/pb/commonpb \
     --go-grpc_opt=Mcrawler/crawler.proto=baigon-technography/gateway/pb/crawlerpb \
     --go-grpc_opt=Mdata_source/data_source.proto=baigon-technography/gateway/pb/datasourcepb \
+    --go-grpc_opt=Moccupation/occupation.proto=baigon-technography/gateway/pb/occupationpb \
     /app/proto/common/*.proto /app/proto/user/*.proto \
-    /app/proto/crawler/*.proto /app/proto/data_source/*.proto \
+    /app/proto/crawler/*.proto /app/proto/data_source/*.proto /app/proto/occupation/*.proto \
     # source_relative 输出到 pb/user 等子目录，mv 对齐包名目录。
     # 注意：必须先 rm 旧目标再 mv——目标已存在时 mv 会嵌套成 userpb/user/，导致 go build 找不到包
-    && rm -rf /app/gateway/pb/userpb /app/gateway/pb/commonpb /app/gateway/pb/crawlerpb /app/gateway/pb/datasourcepb \
+    && rm -rf /app/gateway/pb/userpb /app/gateway/pb/commonpb /app/gateway/pb/crawlerpb /app/gateway/pb/datasourcepb /app/gateway/pb/occupationpb \
     && mv /app/gateway/pb/user /app/gateway/pb/userpb \
     && mv /app/gateway/pb/common /app/gateway/pb/commonpb \
     && mv /app/gateway/pb/crawler /app/gateway/pb/crawlerpb \
-    && mv /app/gateway/pb/data_source /app/gateway/pb/datasourcepb
+    && mv /app/gateway/pb/data_source /app/gateway/pb/datasourcepb \
+    && mv /app/gateway/pb/occupation /app/gateway/pb/occupationpb
 
 # 生成 Swagger 文档（main.go blank import 了 docs 包，必须在 go build 前生成）
 RUN swag init -g cmd/main.go -o docs/

@@ -217,6 +217,32 @@ Consul 健康探测端点，**不需要认证**。
 
 ---
 
+## 专业与职业向量化管理（仅 ADMIN）
+
+所有接口位于 `/api/auth/occupation`。七个目录列表均为 GET 分页搜索，统一支持 `page`（从 0 开始）、`pageSize`（默认 20，最大 100）和 `keyword`（名称或编码）。
+
+| 路径 | 额外查询参数 |
+|---|---|
+| `/discipline-categories` | 无 |
+| `/major-categories` | `disciplineCategoryId` |
+| `/majors` | `majorCategoryId` |
+| `/occupation-major-categories` | 无 |
+| `/occupation-sub-categories` | `occupationMajorCategoryId` |
+| `/occupation-categories` | `occupationSubCategoryId` |
+| `/occupations` | `occupationCategoryId` |
+
+`majors` 和 `occupations` 的每一项都包含 `is_embed`，包括值为 `false` 时也不会省略。
+
+任务管理接口：
+
+- `GET /embedding/progress`：返回专业与职业各自的 `embedded/total`。
+- `POST/GET/DELETE /majors/embedding`：启动、查询、停止专业名称向量化。
+- `POST/GET/DELETE /occupations/embedding`：启动、查询、停止职业名称向量化。
+
+专业与职业任务可以并行，同类型重复启动返回 HTTP 403。任务状态为 `idle/running/stopping/success/failed/stopped`；任务状态只保存在进程内，记录级 `embedding_status` 与向量持久化在数据库。
+
+---
+
 ## 认证说明
 
 鉴权中间件按**路由组**挂载，无全局白名单机制：

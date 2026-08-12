@@ -1,5 +1,5 @@
 // 百工谱 — occupation_service 接口定义
-// 岗位演化分析、新岗位涌现检测、动态岗位能力图谱
+// 专业与职业目录查询、名称向量化任务管理
 
 syntax = "proto3";
 
@@ -9,4 +9,116 @@ option java_package = "com.baigon.occupation";
 option java_multiple_files = true;
 option go_package = "baigon-technography/proto/gen/occupation;occupation";
 
-import "common/evidence.proto";
+service OccupationService {
+  // 七级专业/职业目录分页查询。
+  rpc ListDisciplineCategories (CatalogListRequest) returns (CatalogListResponse) {}
+  rpc ListMajorCategories (ChildCatalogListRequest) returns (CatalogListResponse) {}
+  rpc ListMajors (ChildCatalogListRequest) returns (EmbeddableCatalogListResponse) {}
+  rpc ListOccupationMajorCategories (CatalogListRequest) returns (CatalogListResponse) {}
+  rpc ListOccupationSubCategories (ChildCatalogListRequest) returns (CatalogListResponse) {}
+  rpc ListOccupationCategories (ChildCatalogListRequest) returns (CatalogListResponse) {}
+  rpc ListOccupations (ChildCatalogListRequest) returns (EmbeddableCatalogListResponse) {}
+
+  // 专业与职业名称向量化进度。
+  rpc GetEmbeddingProgress (EmbeddingTaskRequest) returns (GetEmbeddingProgressResponse) {}
+
+  // 专业名称向量化后台任务。
+  rpc StartMajorEmbedding (EmbeddingTaskRequest) returns (EmbeddingTaskStatus) {}
+  rpc GetMajorEmbeddingStatus (EmbeddingTaskRequest) returns (EmbeddingTaskStatus) {}
+  rpc StopMajorEmbedding (EmbeddingTaskRequest) returns (EmbeddingTaskStatus) {}
+
+  // 职业名称向量化后台任务。
+  rpc StartOccupationEmbedding (EmbeddingTaskRequest) returns (EmbeddingTaskStatus) {}
+  rpc GetOccupationEmbeddingStatus (EmbeddingTaskRequest) returns (EmbeddingTaskStatus) {}
+  rpc StopOccupationEmbedding (EmbeddingTaskRequest) returns (EmbeddingTaskStatus) {}
+}
+
+// 根目录分页查询；page 从 0 开始，page_size 默认 20、最大 100。
+message CatalogListRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string keyword = 3;
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+// 子目录分页查询，parent_id 为前端当前选中的父级 ID。
+message ChildCatalogListRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string keyword = 3;
+  int64 parent_id = 4;
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+message CatalogItem {
+  int64 id = 1;
+  string code = 2;
+  string name = 3;
+}
+
+message EmbeddableCatalogItem {
+  int64 id = 1;
+  string code = 2;
+  string name = 3;
+  // 严格由 embedding_status == SUCCESS 判断。
+  bool is_embed = 4;
+}
+
+message CatalogListResponse {
+  repeated CatalogItem items = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message EmbeddableCatalogListResponse {
+  repeated EmbeddableCatalogItem items = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+// 无业务参数的任务接口仍携带完整审计上下文。
+message EmbeddingTaskRequest {
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+message EmbeddingProgress {
+  int64 embedded = 1;
+  int64 total = 2;
+}
+
+message GetEmbeddingProgressResponse {
+  EmbeddingProgress majors = 1;
+  EmbeddingProgress occupations = 2;
+}
+
+// 任务运行态只在进程内保存，不复用数据库 task_status 枚举。
+message EmbeddingTaskStatus {
+  string status = 1; // idle/running/stopping/success/failed/stopped
+  string trace_id = 2;
+  int64 total = 3;
+  int64 processed = 4;
+  int64 succeeded = 5;
+  int64 failed = 6;
+  string message = 7;
+  string started_at = 8;
+  string finished_at = 9;
+}

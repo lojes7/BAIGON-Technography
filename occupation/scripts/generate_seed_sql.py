@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""将职业与专业源数据转换为 PostgreSQL 可重复执行的批量导入 SQL。"""
+"""将职业与专业源数据转换为 PostgreSQL 初始化数据 SQL。"""
 
 from __future__ import annotations
 
-import argparse
 import csv
 import json
 import sys
@@ -95,7 +94,7 @@ def write_copy_block(
 
 
 def write_sql(output: TextIO) -> dict[str, int]:
-    """构建临时表、COPY 数据块与幂等 upsert 语句。"""
+    """按外键依赖顺序生成仅供空库初始化使用的 COPY 数据块。"""
     disciplines = read_csv("discipline_categories.csv")
     major_categories = read_csv("major_categories.csv")
     majors = read_csv("majors.csv")
@@ -165,25 +164,19 @@ def write_sql(output: TextIO) -> dict[str, int]:
     output.write(
         "-- 此文件由 scripts/generate_seed_sql.py 自动生成，请勿手动编辑。\n"
         "-- 数据源：discipline_categories.csv、major_categories.csv、majors.csv、dadian.json。\n\n"
+        "-- 仅用于 init.sql 建表后的首次初始化，不负责增量同步或变更追踪。\n\n"
         "BEGIN;\n\n"
-        "CREATE TEMP TABLE seed_discipline_categories (id bigint, code varchar(16), name varchar(64)) ON COMMIT DROP;\n"
-        "CREATE TEMP TABLE seed_major_categories (id bigint, code varchar(16), name varchar(64), discipline_category_id bigint) ON COMMIT DROP;\n"
-        "CREATE TEMP TABLE seed_majors (id bigint, code varchar(16), name varchar(64), major_category_id bigint) ON COMMIT DROP;\n"
-        "CREATE TEMP TABLE seed_occupation_major_categories (id bigint, code varchar(16), name varchar(64), description text) ON COMMIT DROP;\n"
-        "CREATE TEMP TABLE seed_occupation_sub_categories (id bigint, code varchar(16), name varchar(64), occupation_major_category_id bigint, description text) ON COMMIT DROP;\n"
-        "CREATE TEMP TABLE seed_occupation_categories (id bigint, code varchar(16), name varchar(64), occupation_sub_category_id bigint, description text) ON COMMIT DROP;\n"
-        "CREATE TEMP TABLE seed_occupations (id bigint, code varchar(16), name varchar(64), occupation_category_id bigint, description text) ON COMMIT DROP;\n\n"
     )
 
     write_copy_block(
         output,
-        "seed_discipline_categories",
+        "discipline_categories",
         ["id", "code", "name"],
         ((row["id"], row["code"], row["name"]) for row in discipline_rows),
     )
     write_copy_block(
         output,
-        "seed_major_categories",
+        "major_categories",
         ["id", "code", "name", "discipline_category_id"],
         (
             (row["id"], row["code"], row["name"], row["discipline_category_id"])
@@ -192,7 +185,7 @@ def write_sql(output: TextIO) -> dict[str, int]:
     )
     write_copy_block(
         output,
-        "seed_majors",
+        "majors",
         ["id", "code", "name", "major_category_id"],
         (
             (row["id"], row["code"], row["name"], row["major_category_id"])
@@ -201,13 +194,13 @@ def write_sql(output: TextIO) -> dict[str, int]:
     )
     write_copy_block(
         output,
-        "seed_occupation_major_categories",
+        "occupation_major_categories",
         ["id", "code", "name", "description"],
         ((row["id"], row["code"], row["name"], row["description"]) for row in occupation_rows[1]),
     )
     write_copy_block(
         output,
-        "seed_occupation_sub_categories",
+        "occupation_sub_categories",
         ["id", "code", "name", "occupation_major_category_id", "description"],
         (
             (row["id"], row["code"], row["name"], row["parent_id"], row["description"])
@@ -216,7 +209,7 @@ def write_sql(output: TextIO) -> dict[str, int]:
     )
     write_copy_block(
         output,
-        "seed_occupation_categories",
+        "occupation_categories",
         ["id", "code", "name", "occupation_sub_category_id", "description"],
         (
             (row["id"], row["code"], row["name"], row["parent_id"], row["description"])
@@ -225,7 +218,7 @@ def write_sql(output: TextIO) -> dict[str, int]:
     )
     write_copy_block(
         output,
-        "seed_occupations",
+        "occupations",
         ["id", "code", "name", "occupation_category_id", "description"],
         (
             (row["id"], row["code"], row["name"], row["parent_id"], row["description"])
@@ -233,38 +226,7 @@ def write_sql(output: TextIO) -> dict[str, int]:
         ),
     )
 
-    output.write(
-        "INSERT INTO discipline_categories (id, code, name)\n"
-        "SELECT id, code, name FROM seed_discipline_categories\n"
-        "ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, updated_at = now();\n\n"
-        "INSERT INTO major_categories (id, code, name, discipline_category_id)\n"
-        "SELECT id, code, name, discipline_category_id FROM seed_major_categories\n"
-        "ON CONFLICT (code) DO UPDATE SET\n"
-        "  name = EXCLUDED.name, discipline_category_id = EXCLUDED.discipline_category_id, updated_at = now();\n\n"
-        "INSERT INTO majors (id, code, name, major_category_id)\n"
-        "SELECT id, code, name, major_category_id FROM seed_majors\n"
-        "ON CONFLICT (code) DO UPDATE SET\n"
-        "  name = EXCLUDED.name, major_category_id = EXCLUDED.major_category_id, updated_at = now();\n\n"
-        "INSERT INTO occupation_major_categories (id, code, name, description)\n"
-        "SELECT id, code, name, description FROM seed_occupation_major_categories\n"
-        "ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description, updated_at = now();\n\n"
-        "INSERT INTO occupation_sub_categories (id, code, name, occupation_major_category_id, description)\n"
-        "SELECT id, code, name, occupation_major_category_id, description FROM seed_occupation_sub_categories\n"
-        "ON CONFLICT (code) DO UPDATE SET\n"
-        "  name = EXCLUDED.name, occupation_major_category_id = EXCLUDED.occupation_major_category_id,\n"
-        "  description = EXCLUDED.description, updated_at = now();\n\n"
-        "INSERT INTO occupation_categories (id, code, name, occupation_sub_category_id, description)\n"
-        "SELECT id, code, name, occupation_sub_category_id, description FROM seed_occupation_categories\n"
-        "ON CONFLICT (code) DO UPDATE SET\n"
-        "  name = EXCLUDED.name, occupation_sub_category_id = EXCLUDED.occupation_sub_category_id,\n"
-        "  description = EXCLUDED.description, updated_at = now();\n\n"
-        "INSERT INTO occupations (id, code, name, occupation_category_id, description)\n"
-        "SELECT id, code, name, occupation_category_id, description FROM seed_occupations\n"
-        "ON CONFLICT (code) DO UPDATE SET\n"
-        "  name = EXCLUDED.name, occupation_category_id = EXCLUDED.occupation_category_id,\n"
-        "  description = EXCLUDED.description, updated_at = now();\n\n"
-        "COMMIT;\n"
-    )
+    output.write("COMMIT;\n")
 
     return {
         "discipline_categories": len(discipline_rows),
@@ -278,21 +240,12 @@ def write_sql(output: TextIO) -> dict[str, int]:
 
 
 def main() -> None:
-    """生成 data.sql，并在控制台输出已校验的记录数。"""
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--output",
-        type=Path,
-        default=ROOT_DIR / "data.sql",
-        help="生成的 SQL 文件路径（默认 occupation/data.sql）",
-    )
-    args = parser.parse_args()
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-
-    with args.output.open("w", encoding="utf-8", newline="") as output:
+    """固定生成 occupation/data.sql，并在控制台输出已校验的记录数。"""
+    output_path = ROOT_DIR / "data.sql"
+    with output_path.open("w", encoding="utf-8", newline="") as output:
         counts = write_sql(output)
 
-    print("已生成批量导入 SQL：", args.output)
+    print("已生成初始化 SQL：", output_path)
     print("；".join(f"{table}={count}" for table, count in counts.items()))
 
 

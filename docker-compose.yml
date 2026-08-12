@@ -245,7 +245,10 @@ services:
 
   # occupation_service — Java 岗位分析服务
   occupation:
-    build: ./occupation
+    # context 指向根目录：构建时需要 proto/ 中的 occupation 与 ai 接口定义
+    build:
+      context: .
+      dockerfile: occupation/Dockerfile
     container_name: baigon-occupation-service
     ports:
       - "${OCCUPATION_GRPC_PORT}:50054"
@@ -259,6 +262,7 @@ services:
       DB_USER: ${OCCUPATION_DB_USER}
       DB_PASSWORD: ${OCCUPATION_DB_PASSWORD}
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      AI_SERVICE_NAME: ai-service
       GRPC_PORT: 50054
       SERVER_PORT: 8082
     depends_on:
