@@ -133,6 +133,17 @@ services:
 
   # ==================== 业务服务 ====================
 
+  frontend:
+    build: ./frontend
+    container_name: baigon-frontend
+    ports:
+      - "${FRONTEND_PORT}:80"
+    depends_on:
+      gateway:
+        condition: service_started
+    networks:
+      - baigon-net
+
   # gateway_service — Go + GIN 网关
   gateway:
     build:
