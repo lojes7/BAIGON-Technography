@@ -55,3 +55,9 @@ node_modules/
 
 # Logs
 *.log
+/occupation/scripts/generate_seed_sql.py
+/occupation/2026-undergraduate-major-lists.pdf
+/occupation/dadian.json
+/occupation/discipline_categories.csv
+/occupation/major_categories.csv
+/occupation/majors.csv

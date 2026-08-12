@@ -41,6 +41,9 @@ spring:
         port: ${GRPC_PORT:50055}  # 注册端口 = gRPC 端口（gateway 经 Consul 发现后直连 gRPC）
         health-check-url: http://${HOSTNAME:localhost}:${server.port}/actuator/health
         health-check-interval: 10s
+        # 本服务按需调用 DiscoveryClient，不需要轮询完整目录；同时避免旧客户端使用已弃用的 token 查询参数。
+        catalog-services-watch:
+          enabled: false
 
 grpc:
   server:
