@@ -2,14 +2,13 @@
 
 FROM python:3.12-slim
 
-# 国内网络默认走镜像站；其他网络可通过 --build-arg APT_MIRROR/PIP_INDEX_URL 覆盖。
-ARG APT_MIRROR=mirrors.aliyun.com
-ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
-
 WORKDIR /app
 
 # 安装系统依赖：psycopg2 编译 + DrissionPage 浏览器（chromium）+ 中文字体（防反爬检测）
-RUN apt-get update && apt-get install -y --no-install-recommends \
+ARG APT_MIRROR=https://mirrors.tuna.tsinghua.edu.cn
+COPY docker/apt/configure_china_mirror.sh /usr/local/bin/configure-apt-mirror
+RUN APT_MIRROR="${APT_MIRROR}" sh /usr/local/bin/configure-apt-mirror \
+    && apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
     chromium \
@@ -18,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # 安装 Python 依赖（含 grpcio-tools，构建期生成 stub 用）
 COPY crawler/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple --no-cache-dir -r requirements.txt
 
 # 生成 python gRPC stub（在镜像内完成，部署免手动 make python-crawler）
 COPY proto/ /app/proto/

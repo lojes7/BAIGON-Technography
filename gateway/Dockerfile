@@ -7,7 +7,10 @@ FROM golang:1.26-trixie AS builder
 WORKDIR /app
 
 # 安装 protoc + Go 插件 + swag（构建期生成 gRPC stub / Swagger 文档用）
-RUN apt-get update && apt-get install -y --no-install-recommends protobuf-compiler \
+ARG APT_MIRROR=https://mirrors.tuna.tsinghua.edu.cn
+COPY docker/apt/configure_china_mirror.sh /usr/local/bin/configure-apt-mirror
+RUN APT_MIRROR="${APT_MIRROR}" sh /usr/local/bin/configure-apt-mirror \
+    && apt-get update && apt-get install -y --no-install-recommends protobuf-compiler \
     && go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11 \
     && go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1 \
     && go install github.com/swaggo/swag/cmd/swag@v1.16.6 \
