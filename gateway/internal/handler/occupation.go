@@ -4,6 +4,7 @@ package handler
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"time"
 
 	"baigon-technography/gateway/internal/grpcpool"
@@ -642,5 +643,158 @@ func StopOccupationEmbeddingHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFu
 			return
 		}
 		response.Success(c, embeddingTaskData(resp))
+	}
+}
+
+// ListJobAnalysisTasksHandler 分页查询岗位分析审核任务。
+// @Summary      分页查询岗位分析任务
+// @Tags         岗位分析审核
+// @Produce      json
+// @Security     Bearer
+// @Param        page query int false "页码，从 0 开始"
+// @Param        pageSize query int false "每页条数，默认 20，最大 100"
+// @Param        reviewStatus query string false "PENDING / PASSED / REJECTED"
+// @Success      200 {object} response.SuccessBody
+// @Failure      400 {object} response.ErrorBody
+// @Failure      401 {object} response.ErrorBody
+// @Failure      403 {object} response.ErrorBody
+// @Router       /api/auth/occupation/job-analysis [get]
+func ListJobAnalysisTasksHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		query, err := parseCatalogPageQuery(c)
+		if err != nil {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+		conn, err := pool.GetConn("occupation-service")
+		if err != nil {
+			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+		var trailer metadata.MD
+		resp, err := occupationpb.NewOccupationServiceClient(conn).ListJobAnalysisTasks(
+			ctx,
+			&occupationpb.ListJobAnalysisTasksRequest{
+				Page: query.Page, PageSize: query.PageSize, ReviewStatus: c.Query("reviewStatus"),
+				TraceId: c.GetString("trace_id"), UserId: userIDFromContext(c),
+				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
+				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
+			},
+			grpc.Trailer(&trailer),
+		)
+		if err != nil {
+			httpCode, errorCode := grpcErrorCodes(err, trailer)
+			response.Error(c, httpCode, errorCode)
+			return
+		}
+		response.Success(c, gin.H{
+			"items": resp.GetItems(), "total": resp.GetTotal(),
+			"page": resp.GetPage(), "pageSize": resp.GetPageSize(),
+		})
+	}
+}
+
+// GetJobAnalysisTaskHandler 查询岗位分析任务及 AI 候选。
+// @Summary      查询岗位分析任务详情
+// @Tags         岗位分析审核
+// @Produce      json
+// @Security     Bearer
+// @Param        id path int true "job_analysis_tasks.id"
+// @Success      200 {object} response.SuccessBody
+// @Failure      400 {object} response.ErrorBody
+// @Failure      401 {object} response.ErrorBody
+// @Failure      403 {object} response.ErrorBody
+// @Failure      404 {object} response.ErrorBody
+// @Router       /api/auth/occupation/job-analysis/{id} [get]
+func GetJobAnalysisTaskHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+		if err != nil || id <= 0 {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+		conn, err := pool.GetConn("occupation-service")
+		if err != nil {
+			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+		var trailer metadata.MD
+		resp, err := occupationpb.NewOccupationServiceClient(conn).GetJobAnalysisTask(
+			ctx,
+			&occupationpb.GetJobAnalysisTaskRequest{
+				Id: id, TraceId: c.GetString("trace_id"), UserId: userIDFromContext(c),
+				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
+				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
+			},
+			grpc.Trailer(&trailer),
+		)
+		if err != nil {
+			httpCode, errorCode := grpcErrorCodes(err, trailer)
+			response.Error(c, httpCode, errorCode)
+			return
+		}
+		response.Success(c, gin.H{"analysis": resp.GetAnalysis()})
+	}
+}
+
+type reviewJobAnalysisRequest struct {
+	OccupationID int64 `json:"occupationId" binding:"required"`
+}
+
+// ReviewJobAnalysisTaskHandler 从 occupations 中指定最终职业。
+// @Summary      审核岗位分析并指定职业
+// @Description  occupationId 可指向 occupations 表中的任意有效职业，不受 AI 候选限制
+// @Tags         岗位分析审核
+// @Accept       json
+// @Produce      json
+// @Security     Bearer
+// @Param        id path int true "job_analysis_tasks.id"
+// @Param        request body reviewJobAnalysisRequest true "最终职业"
+// @Success      200 {object} response.SuccessBody
+// @Failure      400 {object} response.ErrorBody
+// @Failure      401 {object} response.ErrorBody
+// @Failure      403 {object} response.ErrorBody
+// @Failure      404 {object} response.ErrorBody
+// @Router       /api/auth/occupation/job-analysis/{id}/review [put]
+func ReviewJobAnalysisTaskHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+		if err != nil || id <= 0 {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+		var request reviewJobAnalysisRequest
+		if err := c.ShouldBindJSON(&request); err != nil || request.OccupationID <= 0 {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+		conn, err := pool.GetConn("occupation-service")
+		if err != nil {
+			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+		var trailer metadata.MD
+		resp, err := occupationpb.NewOccupationServiceClient(conn).ReviewJobAnalysisTask(
+			ctx,
+			&occupationpb.ReviewJobAnalysisTaskRequest{
+				Id: id, OccupationId: request.OccupationID,
+				TraceId: c.GetString("trace_id"), UserId: userIDFromContext(c),
+				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
+				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
+			},
+			grpc.Trailer(&trailer),
+		)
+		if err != nil {
+			httpCode, errorCode := grpcErrorCodes(err, trailer)
+			response.Error(c, httpCode, errorCode)
+			return
+		}
+		response.Success(c, gin.H{"analysis": resp.GetAnalysis()})
 	}
 }

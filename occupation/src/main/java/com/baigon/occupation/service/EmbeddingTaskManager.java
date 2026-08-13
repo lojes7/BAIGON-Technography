@@ -4,9 +4,11 @@ package com.baigon.occupation.service;
 import cn.hutool.core.lang.Snowflake;
 import com.baigon.occupation.grpc.AIGrpcClient;
 import com.baigon.occupation.grpc.AIGrpcClient.EmbeddingCall;
+import com.baigon.occupation.error.ApiException;
 import com.baigon.occupation.service.EmbeddingDataService.EmbeddingCandidate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
@@ -36,7 +38,7 @@ public class EmbeddingTaskManager {
                                 AIGrpcClient aiClient,
                                 LogService logService,
                                 Snowflake snowflake,
-                                ExecutorService embeddingExecutor) {
+                                @Qualifier("embeddingExecutor") ExecutorService embeddingExecutor) {
         this.dataServices = new EnumMap<>(EmbeddingResource.class);
         for (EmbeddingDataService dataService : dataServices) {
             EmbeddingDataService previous = this.dataServices.put(dataService.resource(), dataService);
@@ -198,7 +200,9 @@ public class EmbeddingTaskManager {
 
         synchronized void begin(String newTraceId) {
             if ("running".equals(status) || "stopping".equals(status)) {
-                throw new TaskAlreadyRunningException("an embedding task of the same type is already running");
+                throw new ApiException(
+                        ApiException.ErrorCode.TASK_ALREADY_RUNNING,
+                        "an embedding task of the same type is already running");
             }
             status = "running";
             traceId = newTraceId;

@@ -1,5 +1,5 @@
-# 百工谱 — occupation_service
-# build context 为仓库根目录，以便在镜像内编译 proto。
+# 百工谱 — occupation 合并服务
+# build context 为仓库根目录，以便在镜像内编译 data-source、occupation、crawler 与 ai proto。
 
 FROM maven:3.9-eclipse-temurin-21 AS builder
 WORKDIR /app

@@ -1,7 +1,7 @@
 // 百工谱 — 专业名称向量化数据业务层
 package com.baigon.occupation.service.major;
 
-import com.baigon.occupation.entity.EmbeddingStatus;
+import com.baigon.occupation.entity.TaskStatus;
 import com.baigon.occupation.repository.major.MajorRepository;
 import com.baigon.occupation.service.EmbeddingDataService;
 import com.baigon.occupation.service.EmbeddingResource;
@@ -28,7 +28,7 @@ public class MajorEmbeddingDataService implements EmbeddingDataService {
     @Override
     @Transactional(readOnly = true)
     public List<EmbeddingCandidate> findCandidates() {
-        return repository.findByDeletedAtIsNullAndEmbeddingStatusNotOrderByIdAsc(EmbeddingStatus.SUCCESS)
+        return repository.findByDeletedAtIsNullAndEmbeddingStatusNotOrderByIdAsc(TaskStatus.SUCCESS)
                 .stream()
                 .map(item -> new EmbeddingCandidate(item.getId(), item.getName()))
                 .toList();
@@ -62,7 +62,7 @@ public class MajorEmbeddingDataService implements EmbeddingDataService {
     @Transactional(readOnly = true)
     public Progress getProgress() {
         return new Progress(
-                repository.countByDeletedAtIsNullAndEmbeddingStatus(EmbeddingStatus.SUCCESS),
+                repository.countByDeletedAtIsNullAndEmbeddingStatus(TaskStatus.SUCCESS),
                 repository.countByDeletedAtIsNull());
     }
 

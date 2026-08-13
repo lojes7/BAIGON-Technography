@@ -59,7 +59,7 @@ ai:
   dimensions: ${AI_EMBEDDING_DIMENSIONS:1024}
   batch-size: ${AI_EMBEDDING_BATCH_SIZE:20}
   timeout-seconds: ${AI_GRPC_TIMEOUT_SECONDS:30}
-
+  
 management:
   endpoints:
     web:
@@ -73,3 +73,7 @@ logging:
   level:
     com.baigon: DEBUG
     org.springframework.cloud.consul: INFO
+
+job-analysis:
+  # AI 候选仅供审核参考，最终可选择 occupations 中任意有效职业。
+  candidate-limit: 5

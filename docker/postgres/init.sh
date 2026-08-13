@@ -19,23 +19,6 @@ GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO "${CRAWLER_DB_USER}";
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO "${CRAWLER_DB_USER}";
 SQL
 
-# data_source_service
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<SQL
-CREATE DATABASE "${DATA_SOURCE_DB_NAME}";
-CREATE USER "${DATA_SOURCE_DB_USER}" WITH PASSWORD '${DATA_SOURCE_DB_PASSWORD}';
-GRANT ALL PRIVILEGES ON DATABASE "${DATA_SOURCE_DB_NAME}" TO "${DATA_SOURCE_DB_USER}";
-\c "${DATA_SOURCE_DB_NAME}"
-ALTER DATABASE "${DATA_SOURCE_DB_NAME}" SET timezone TO 'Asia/Shanghai';
-CREATE EXTENSION IF NOT EXISTS vector;
-GRANT ALL ON SCHEMA public TO "${DATA_SOURCE_DB_USER}";
-
-\i ./service-init/data_source_init.sql
-
--- 表由 postgres 用户创建，需将表与序列权限授予服务用户
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO "${DATA_SOURCE_DB_USER}";
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO "${DATA_SOURCE_DB_USER}";
-SQL
-
 # occupation_service
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<SQL
 CREATE DATABASE "${OCCUPATION_DB_NAME}";
@@ -46,8 +29,8 @@ ALTER DATABASE "${OCCUPATION_DB_NAME}" SET timezone TO 'Asia/Shanghai';
 CREATE EXTENSION IF NOT EXISTS vector;
 GRANT ALL ON SCHEMA public TO "${OCCUPATION_DB_USER}";
 
-\i ./service-init/occupation_init.sql
-\i ./service-init/occupation_data.sql
+\i ./service-init/occupation/init.sql
+\i ./service-init/occupation/data.sql
 
 -- 表由 postgres 用户创建，需将表与序列权限授予服务用户
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO "${OCCUPATION_DB_USER}";

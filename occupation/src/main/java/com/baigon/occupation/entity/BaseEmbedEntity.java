@@ -17,7 +17,7 @@ public abstract class BaseEmbedEntity extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(name = "embedding_status", nullable = false, columnDefinition = "task_status")
-    private EmbeddingStatus embeddingStatus = EmbeddingStatus.PENDING;
+    private TaskStatus embeddingStatus = TaskStatus.PENDING;
 
     @Column(name = "embedding_attempts", nullable = false)
     private Integer embeddingAttempts = 0;
@@ -28,8 +28,8 @@ public abstract class BaseEmbedEntity extends BaseEntity {
     @Column(name = "embedding_error")
     private String embeddingError;
 
-    public EmbeddingStatus getEmbeddingStatus() { return embeddingStatus; }
-    public void setEmbeddingStatus(EmbeddingStatus embeddingStatus) { this.embeddingStatus = embeddingStatus; }
+    public TaskStatus getEmbeddingStatus() { return embeddingStatus; }
+    public void setEmbeddingStatus(TaskStatus embeddingStatus) { this.embeddingStatus = embeddingStatus; }
     public Integer getEmbeddingAttempts() { return embeddingAttempts; }
     public void setEmbeddingAttempts(Integer embeddingAttempts) { this.embeddingAttempts = embeddingAttempts; }
     public OffsetDateTime getEmbeddingNextRetryAt() { return embeddingNextRetryAt; }

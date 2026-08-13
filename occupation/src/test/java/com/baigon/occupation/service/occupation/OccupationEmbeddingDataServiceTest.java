@@ -1,7 +1,7 @@
 // 百工谱 — 职业向量化进度测试
 package com.baigon.occupation.service.occupation;
 
-import com.baigon.occupation.entity.EmbeddingStatus;
+import com.baigon.occupation.entity.TaskStatus;
 import com.baigon.occupation.repository.occupation.OccupationRepository;
 import com.baigon.occupation.service.EmbeddingDataService;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,7 +25,7 @@ class OccupationEmbeddingDataServiceTest {
     @Test
     void progressUsesSuccessStatusAsEmbeddedCount() {
         when(repository.countByDeletedAtIsNull()).thenReturn(1635L);
-        when(repository.countByDeletedAtIsNullAndEmbeddingStatus(EmbeddingStatus.SUCCESS))
+        when(repository.countByDeletedAtIsNullAndEmbeddingStatus(TaskStatus.SUCCESS))
                 .thenReturn(180L);
 
         EmbeddingDataService.Progress progress = service.getProgress();

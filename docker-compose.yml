@@ -67,11 +67,6 @@ services:
       AI_DB_USER: ${AI_DB_USER}
       AI_DB_PASSWORD: ${AI_DB_PASSWORD}
 
-      # data_source_service
-      DATA_SOURCE_DB_NAME: ${DATA_SOURCE_DB_NAME}
-      DATA_SOURCE_DB_USER: ${DATA_SOURCE_DB_USER}
-      DATA_SOURCE_DB_PASSWORD: ${DATA_SOURCE_DB_PASSWORD}
-
       # occupation_service
       OCCUPATION_DB_NAME: ${OCCUPATION_DB_NAME}
       OCCUPATION_DB_USER: ${OCCUPATION_DB_USER}
@@ -86,9 +81,9 @@ services:
       - ./docker/postgres/init.sh:/docker-entrypoint-initdb.d/01-init.sh:ro
       - pgdata:/var/lib/postgresql/data
       - ./crawler/init.sql:/service-init/crawler_init.sql:ro
-      - ./data-source/init.sql:/service-init/data_source_init.sql:ro
-      - ./occupation/init.sql:/service-init/occupation_init.sql:ro
-      - ./occupation/data.sql:/service-init/occupation_data.sql:ro
+      - ./occupation/init.sql:/service-init/occupation/init.sql:ro
+      - ./occupation/data.sql:/service-init/occupation/data.sql:ro
+      - ./occupation/sql:/service-init/occupation/sql:ro
       - ./user/init.sql:/service-init/user_init.sql:ro
       - ./user/data.sql:/service-init/user_data.sql:ro
     healthcheck:
@@ -182,37 +177,6 @@ services:
     networks:
       - baigon-net
 
-  # data_source_service — Java 数据治理服务
-  # context 指向根目录：构建时需要 proto/ 中的接口定义
-  data-source:
-    build:
-      context: .
-      dockerfile: data-source/Dockerfile
-    container_name: baigon-data-source-service
-    ports:
-      - "${DATA_SOURCE_GRPC_PORT}:50052"
-    environment:
-      CONSUL_HOST: consul
-      CONSUL_PORT: 8500
-      SNOWFLAKE_WORKER_ID: ${SNOWFLAKE_WORKER_ID_DATA_SOURCE}
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: ${DATA_SOURCE_DB_NAME}
-      DB_USER: ${DATA_SOURCE_DB_USER}
-      DB_PASSWORD: ${DATA_SOURCE_DB_PASSWORD}
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      GRPC_PORT: 50052
-      SERVER_PORT: 8081
-    depends_on:
-      consul:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-    networks:
-      - baigon-net
-
   # ai_service — Python AI 服务
   ai:
     # context 指向根目录：构建时需要 proto/ 中的接口定义（stub 在镜像内自动生成）
@@ -243,9 +207,9 @@ services:
     networks:
       - baigon-net
 
-  # occupation_service — Java 岗位分析服务
+  # occupation_service — Java 数据治理、职业目录与岗位分析合并服务
   occupation:
-    # context 指向根目录：构建时需要 proto/ 中的 occupation 与 ai 接口定义
+    # context 指向根目录：构建时需要 data-source、occupation、crawler 与 ai 接口定义
     build:
       context: .
       dockerfile: occupation/Dockerfile

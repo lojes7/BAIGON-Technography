@@ -11,7 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// RegisterDataSourceRoutes 注册 data-source 相关路由
+// RegisterDataSourceRoutes 注册数据治理相关路由
 func RegisterDataSourceRoutes(api *gin.RouterGroup, pool *grpcpool.GrpcClientPool, jwtSecret string) {
 	// ========= 受保护端点（需登录 + ADMIN / DATA_REVIEWER 角色） ===========
 	auth := api.Group("/auth")

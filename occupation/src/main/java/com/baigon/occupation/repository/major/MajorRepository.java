@@ -1,7 +1,7 @@
 // 百工谱 — 专业数据访问层
 package com.baigon.occupation.repository.major;
 
-import com.baigon.occupation.entity.EmbeddingStatus;
+import com.baigon.occupation.entity.TaskStatus;
 import com.baigon.occupation.entity.major.Major;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -26,11 +26,11 @@ public interface MajorRepository extends JpaRepository<Major, Long> {
                        @Param("keyword") String keyword,
                        Pageable pageable);
 
-    List<Major> findByDeletedAtIsNullAndEmbeddingStatusNotOrderByIdAsc(EmbeddingStatus status);
+    List<Major> findByDeletedAtIsNullAndEmbeddingStatusNotOrderByIdAsc(TaskStatus status);
 
     long countByDeletedAtIsNull();
 
-    long countByDeletedAtIsNullAndEmbeddingStatus(EmbeddingStatus status);
+    long countByDeletedAtIsNullAndEmbeddingStatus(TaskStatus status);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(value = """

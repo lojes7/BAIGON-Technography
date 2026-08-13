@@ -11,8 +11,17 @@ import com.baigon.occupation.EmbeddingProgress;
 import com.baigon.occupation.EmbeddingTaskRequest;
 import com.baigon.occupation.EmbeddingTaskStatus;
 import com.baigon.occupation.GetEmbeddingProgressResponse;
+import com.baigon.occupation.GetJobAnalysisTaskRequest;
+import com.baigon.occupation.GetJobAnalysisTaskResponse;
+import com.baigon.occupation.JobAnalysisCandidate;
+import com.baigon.occupation.JobAnalysisTaskDetail;
+import com.baigon.occupation.JobAnalysisTaskSummary;
+import com.baigon.occupation.ListJobAnalysisTasksRequest;
+import com.baigon.occupation.ListJobAnalysisTasksResponse;
 import com.baigon.occupation.OccupationServiceGrpc;
-import com.baigon.occupation.entity.EmbeddingStatus;
+import com.baigon.occupation.ReviewJobAnalysisTaskRequest;
+import com.baigon.occupation.entity.TaskStatus;
+import com.baigon.occupation.entity.jobanalysis.JobAnalysisTask;
 import com.baigon.occupation.error.ApiException;
 import com.baigon.occupation.service.AuditContext;
 import com.baigon.occupation.service.EmbeddingDataService;
@@ -20,7 +29,8 @@ import com.baigon.occupation.service.EmbeddingResource;
 import com.baigon.occupation.service.EmbeddingTaskManager;
 import com.baigon.occupation.service.EmbeddingTaskSnapshot;
 import com.baigon.occupation.service.LogService;
-import com.baigon.occupation.service.TaskAlreadyRunningException;
+import com.baigon.occupation.service.jobanalysis.JobAnalysisQueryService;
+import com.baigon.occupation.service.jobanalysis.JobAnalysisReviewService;
 import com.baigon.occupation.service.major.MajorCatalogService;
 import com.baigon.occupation.service.occupation.OccupationCatalogService;
 import io.grpc.stub.StreamObserver;
@@ -40,15 +50,21 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
     private final MajorCatalogService majorCatalogService;
     private final OccupationCatalogService occupationCatalogService;
     private final EmbeddingTaskManager taskManager;
+    private final JobAnalysisQueryService jobAnalysisQueryService;
+    private final JobAnalysisReviewService jobAnalysisReviewService;
     private final LogService logService;
 
     public OccupationGrpcService(MajorCatalogService majorCatalogService,
                                  OccupationCatalogService occupationCatalogService,
                                  EmbeddingTaskManager taskManager,
+                                 JobAnalysisQueryService jobAnalysisQueryService,
+                                 JobAnalysisReviewService jobAnalysisReviewService,
                                  LogService logService) {
         this.majorCatalogService = majorCatalogService;
         this.occupationCatalogService = occupationCatalogService;
         this.taskManager = taskManager;
+        this.jobAnalysisQueryService = jobAnalysisQueryService;
+        this.jobAnalysisReviewService = jobAnalysisReviewService;
         this.logService = logService;
         logger.info("OccupationGrpcService 初始化完成");
     }
@@ -219,6 +235,77 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
         stopTask(EmbeddingResource.OCCUPATION, request, observer);
     }
 
+    @Override
+    public void listJobAnalysisTasks(ListJobAnalysisTasksRequest request,
+                                     StreamObserver<ListJobAnalysisTasksResponse> observer) {
+        AuditContext audit = audit(request);
+        try {
+            Page<JobAnalysisTask> page = jobAnalysisQueryService.list(
+                    request.getPage(), request.getPageSize(), request.getReviewStatus());
+            respond(observer, ListJobAnalysisTasksResponse.newBuilder()
+                    .addAllItems(page.getContent().stream().map(this::jobAnalysisSummary).toList())
+                    .setTotal(page.getTotalElements())
+                    .setPage(page.getNumber())
+                    .setPageSize(page.getSize())
+                    .build());
+            logService.info(audit, "list job analysis tasks: total=" + page.getTotalElements());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "list job analysis tasks failed");
+        }
+    }
+
+    @Override
+    public void getJobAnalysisTask(GetJobAnalysisTaskRequest request,
+                                   StreamObserver<GetJobAnalysisTaskResponse> observer) {
+        AuditContext audit = audit(request);
+        try {
+            var detail = jobAnalysisQueryService.detail(request.getId());
+            if (detail.isEmpty()) {
+                observer.onError(ApiException.grpcException(ApiException.ErrorCode.NOT_FOUND,
+                        "job analysis task not found"));
+                return;
+            }
+            respond(observer, GetJobAnalysisTaskResponse.newBuilder()
+                    .setAnalysis(jobAnalysisDetail(detail.get()))
+                    .build());
+            logService.info(audit, "get job analysis task: id=" + request.getId());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "get job analysis task failed");
+        }
+    }
+
+    @Override
+    public void reviewJobAnalysisTask(ReviewJobAnalysisTaskRequest request,
+                                      StreamObserver<GetJobAnalysisTaskResponse> observer) {
+        AuditContext audit = audit(request);
+        try {
+            if (request.getId() <= 0 || request.getOccupationId() <= 0) {
+                throw new IllegalArgumentException("id and occupation_id must be > 0");
+            }
+            var reviewed = jobAnalysisReviewService.review(
+                    request.getId(), request.getOccupationId(), audit);
+            if (reviewed.isEmpty()) {
+                observer.onError(ApiException.grpcException(ApiException.ErrorCode.NOT_FOUND,
+                        "job analysis task not found"));
+                return;
+            }
+            var detail = jobAnalysisQueryService.detail(request.getId()).orElseThrow();
+            respond(observer, GetJobAnalysisTaskResponse.newBuilder()
+                    .setAnalysis(jobAnalysisDetail(detail))
+                    .build());
+        } catch (ApiException exception) {
+            logger.warn("review job analysis rejected: {}", exception.getMessage());
+            logService.warning(audit, exception.getMessage());
+            observer.onError(exception.asGrpcException());
+        } catch (IllegalArgumentException exception) {
+            logger.warn("review job analysis rejected: {}", exception.getMessage());
+            logService.warning(audit, exception.getMessage());
+            observer.onError(ApiException.grpcException(ApiException.ErrorCode.BAD_REQUEST, exception.getMessage()));
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "review job analysis task failed");
+        }
+    }
+
     private void startTask(EmbeddingResource resource,
                            EmbeddingTaskRequest request,
                            StreamObserver<EmbeddingTaskStatus> observer) {
@@ -265,12 +352,12 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
     private EmbeddableCatalogItem embeddableCatalogItem(Long id,
                                                         String code,
                                                         String name,
-                                                        EmbeddingStatus status) {
+                                                        TaskStatus status) {
         return EmbeddableCatalogItem.newBuilder()
                 .setId(id)
                 .setCode(orEmpty(code))
                 .setName(orEmpty(name))
-                .setIsEmbed(status == EmbeddingStatus.SUCCESS)
+                .setIsEmbed(status == TaskStatus.SUCCESS)
                 .build();
     }
 
@@ -313,6 +400,37 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                 .build();
     }
 
+    private JobAnalysisTaskSummary jobAnalysisSummary(JobAnalysisTask task) {
+        return JobAnalysisTaskSummary.newBuilder()
+                .setId(task.getId())
+                .setJobId(task.getJobId())
+                .setTraceId(task.getTraceId())
+                .setJobName(orEmpty(task.getJobName()))
+                .setTaskStatus(task.getTaskStatus() == null ? "" : task.getTaskStatus().name())
+                .setReviewStatus(task.getReviewStatus() == null ? "" : task.getReviewStatus().name())
+                .setSelectedOccupationId(task.getSelectedOccupationId() == null ? 0 : task.getSelectedOccupationId())
+                .setModelName(orEmpty(task.getModelName()))
+                .setErrorMsg(orEmpty(task.getErrorMsg()))
+                .setAttempts(task.getAttempts() == null ? 0 : task.getAttempts())
+                .setCreatedAt(time(task.getCreatedAt()))
+                .setReviewedAt(time(task.getReviewedAt()))
+                .setReviewedBy(task.getReviewedBy() == null ? 0 : task.getReviewedBy())
+                .build();
+    }
+
+    private JobAnalysisTaskDetail jobAnalysisDetail(JobAnalysisQueryService.JobAnalysisDetail detail) {
+        return JobAnalysisTaskDetail.newBuilder()
+                .setTask(jobAnalysisSummary(detail.task()))
+                .addAllCandidates(detail.candidates().stream().map(candidate ->
+                        JobAnalysisCandidate.newBuilder()
+                                .setOccupationId(candidate.getOccupationId())
+                                .setOccupationName(orEmpty(candidate.getOccupationName()))
+                                .setRank(candidate.getRank())
+                                .setSimilarity(candidate.getSimilarity())
+                                .build()).toList())
+                .build();
+    }
+
     private AuditContext audit(CatalogListRequest request) {
         return audit(request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
                 request.getRequestMethod(), request.getRequestUrl());
@@ -324,6 +442,21 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
     }
 
     private AuditContext audit(EmbeddingTaskRequest request) {
+        return audit(request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+    }
+
+    private AuditContext audit(ListJobAnalysisTasksRequest request) {
+        return audit(request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+    }
+
+    private AuditContext audit(GetJobAnalysisTaskRequest request) {
+        return audit(request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+    }
+
+    private AuditContext audit(ReviewJobAnalysisTaskRequest request) {
         return audit(request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
                 request.getRequestMethod(), request.getRequestUrl());
     }
@@ -356,9 +489,8 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                           String detail) {
         logger.error(detail, exception);
         logService.error(audit, exception.getMessage(), detail);
-        if (exception instanceof TaskAlreadyRunningException) {
-            observer.onError(ApiException.grpcException(
-                    ApiException.ErrorCode.TASK_ALREADY_RUNNING, exception.getMessage()));
+        if (exception instanceof ApiException apiException) {
+            observer.onError(apiException.asGrpcException());
         } else if (exception instanceof IllegalArgumentException) {
             observer.onError(ApiException.grpcException(ApiException.ErrorCode.BAD_REQUEST, exception.getMessage()));
         } else {

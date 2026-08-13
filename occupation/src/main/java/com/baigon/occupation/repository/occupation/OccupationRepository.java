@@ -1,7 +1,7 @@
 // 百工谱 — 职业数据访问层
 package com.baigon.occupation.repository.occupation;
 
-import com.baigon.occupation.entity.EmbeddingStatus;
+import com.baigon.occupation.entity.TaskStatus;
 import com.baigon.occupation.entity.occupation.Occupation;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -12,6 +12,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 public interface OccupationRepository extends JpaRepository<Occupation, Long> {
 
@@ -26,11 +27,29 @@ public interface OccupationRepository extends JpaRepository<Occupation, Long> {
                             @Param("keyword") String keyword,
                             Pageable pageable);
 
-    List<Occupation> findByDeletedAtIsNullAndEmbeddingStatusNotOrderByIdAsc(EmbeddingStatus status);
+    List<Occupation> findByDeletedAtIsNullAndEmbeddingStatusNotOrderByIdAsc(TaskStatus status);
 
     long countByDeletedAtIsNull();
 
-    long countByDeletedAtIsNullAndEmbeddingStatus(EmbeddingStatus status);
+    long countByDeletedAtIsNullAndEmbeddingStatus(TaskStatus status);
+
+    Optional<Occupation> findByIdAndDeletedAtIsNull(Long id);
+
+    /** 使用 pgvector 余弦距离返回相似度最高的 Top N 职业。 */
+    @Query(value = """
+            SELECT id AS id,
+                   name AS name,
+                   1 - (name_vector <=> CAST(:vector AS vector)) AS similarity
+            FROM occupations
+            WHERE deleted_at IS NULL
+              AND name_vector IS NOT NULL
+              AND embedding_status = CAST('SUCCESS' AS task_status)
+            ORDER BY name_vector <=> CAST(:vector AS vector), id
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<OccupationCandidateProjection> findNearestByNameVector(
+            @Param("vector") String vector,
+            @Param("limit") int limit);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(value = """

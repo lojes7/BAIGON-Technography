@@ -125,6 +125,7 @@ public class AIGrpcClient {
         private final ListenableFuture<BatchEmbedTextResponse> future;
         private final int expectedCount;
         private final int expectedDimensions;
+        private String modelName = "";
 
         private EmbeddingCall(ListenableFuture<BatchEmbedTextResponse> future,
                               int expectedCount,
@@ -143,6 +144,7 @@ public class AIGrpcClient {
                 if (response.getEmbeddingsCount() != expectedCount) {
                     throw new IllegalStateException("AI 返回向量数量不匹配");
                 }
+                modelName = response.getModel();
                 List<List<Float>> vectors = new ArrayList<>(expectedCount);
                 for (EmbeddingVector embedding : response.getEmbeddingsList()) {
                     List<Float> values = List.copyOf(embedding.getValuesList());
@@ -163,6 +165,11 @@ public class AIGrpcClient {
 
         public void cancel() {
             future.cancel(true);
+        }
+
+        /** await 成功后返回本次 AI 响应中的真实模型名称。 */
+        public String modelName() {
+            return modelName;
         }
 
         private static void validateVector(List<Float> vector, int dimensions) {

@@ -7,6 +7,9 @@ import com.baigon.occupation.repository.LogRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.OffsetDateTime;
 
@@ -18,10 +21,15 @@ public class LogService {
 
     private final LogRepository repository;
     private final Snowflake snowflake;
+    private final TransactionTemplate transactionTemplate;
 
-    public LogService(LogRepository repository, Snowflake snowflake) {
+    public LogService(LogRepository repository,
+                      Snowflake snowflake,
+                      PlatformTransactionManager transactionManager) {
         this.repository = repository;
         this.snowflake = snowflake;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     public void info(AuditContext context, String detail) {
@@ -52,7 +60,8 @@ public class LogService {
             OffsetDateTime now = OffsetDateTime.now();
             entity.setCreatedAt(now);
             entity.setUpdatedAt(now);
-            repository.save(entity);
+            // 独立事务包含 flush/commit；失败不会把调用方的审核或岗位事务标记为回滚。
+            transactionTemplate.executeWithoutResult(status -> repository.save(entity));
         } catch (Exception exception) {
             // 审计不可用时不得拖垮主业务。
             logger.error("写入 occupation logs 表失败（已忽略）", exception);

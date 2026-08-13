@@ -4,6 +4,7 @@ package com.baigon.occupation.service;
 import cn.hutool.core.lang.Snowflake;
 import com.baigon.occupation.grpc.AIGrpcClient;
 import com.baigon.occupation.grpc.AIGrpcClient.EmbeddingCall;
+import com.baigon.occupation.error.ApiException;
 import com.baigon.occupation.service.EmbeddingDataService.EmbeddingCandidate;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -102,8 +103,9 @@ class EmbeddingTaskManagerTest {
 
         manager.start(EmbeddingResource.MAJOR, audit(1001L));
         assertTrue(entered.await(2, TimeUnit.SECONDS));
-        assertThrows(TaskAlreadyRunningException.class,
+        ApiException exception = assertThrows(ApiException.class,
                 () -> manager.start(EmbeddingResource.MAJOR, audit(1002L)));
+        assertEquals(ApiException.ErrorCode.TASK_ALREADY_RUNNING, exception.getErrorCode());
 
         release.countDown();
         awaitStatus(EmbeddingResource.MAJOR, "success");

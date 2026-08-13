@@ -217,9 +217,9 @@ Consul 健康探测端点，**不需要认证**。
 
 ---
 
-## 专业与职业向量化管理（仅 ADMIN）
+## 专业、职业与岗位分析管理
 
-所有接口位于 `/api/auth/occupation`。七个目录列表均为 GET 分页搜索，统一支持 `page`（从 0 开始）、`pageSize`（默认 20，最大 100）和 `keyword`（名称或编码）。
+所有接口位于 `/api/auth/occupation`。七个目录列表允许 **ADMIN / DATA_REVIEWER**，均为 GET 分页搜索，统一支持 `page`（从 0 开始）、`pageSize`（默认 20，最大 100）和 `keyword`（名称或编码）。
 
 | 路径 | 额外查询参数 |
 |---|---|
@@ -240,6 +240,14 @@ Consul 健康探测端点，**不需要认证**。
 - `POST/GET/DELETE /occupations/embedding`：启动、查询、停止职业名称向量化。
 
 专业与职业任务可以并行，同类型重复启动返回 HTTP 403。任务状态为 `idle/running/stopping/success/failed/stopped`；任务状态只保存在进程内，记录级 `embedding_status` 与向量持久化在数据库。
+
+岗位分析审核允许 **ADMIN / DATA_REVIEWER**：
+
+- `GET /job-analysis`：分页查询任务，`reviewStatus` 可选。
+- `GET /job-analysis/{id}`：返回任务与 AI 候选。
+- `PUT /job-analysis/{id}/review`：请求体 `{ "occupationId": 123 }`，可选择 occupations 中任意有效职业。
+
+岗位分析审核只确认 `jobs.occupation_id`，不修改 `reviewed_cleaned_job_sources`。
 
 ---
 

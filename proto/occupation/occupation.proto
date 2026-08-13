@@ -31,6 +31,11 @@ service OccupationService {
   rpc StartOccupationEmbedding (EmbeddingTaskRequest) returns (EmbeddingTaskStatus) {}
   rpc GetOccupationEmbeddingStatus (EmbeddingTaskRequest) returns (EmbeddingTaskStatus) {}
   rpc StopOccupationEmbedding (EmbeddingTaskRequest) returns (EmbeddingTaskStatus) {}
+
+  // 岗位分析任务查询与人工确认；最终职业不受 AI 候选范围限制。
+  rpc ListJobAnalysisTasks (ListJobAnalysisTasksRequest) returns (ListJobAnalysisTasksResponse) {}
+  rpc GetJobAnalysisTask (GetJobAnalysisTaskRequest) returns (GetJobAnalysisTaskResponse) {}
+  rpc ReviewJobAnalysisTask (ReviewJobAnalysisTaskRequest) returns (GetJobAnalysisTaskResponse) {}
 }
 
 // 根目录分页查询；page 从 0 开始，page_size 默认 20、最大 100。
@@ -121,4 +126,80 @@ message EmbeddingTaskStatus {
   string message = 7;
   string started_at = 8;
   string finished_at = 9;
+}
+
+message ListJobAnalysisTasksRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string review_status = 3; // PENDING / PASSED / REJECTED，空表示全部
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+message GetJobAnalysisTaskRequest {
+  int64 id = 1;
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+message ReviewJobAnalysisTaskRequest {
+  int64 id = 1;
+  // 可选择 occupations 表中的任意有效职业，不要求出现在 AI 候选中。
+  int64 occupation_id = 2;
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+message JobAnalysisTaskSummary {
+  int64 id = 1;
+  int64 job_id = 2;
+  int64 trace_id = 3;
+  string job_name = 4;
+  string task_status = 5;
+  string review_status = 6;
+  int64 selected_occupation_id = 7;
+  string model_name = 8;
+  string error_msg = 9;
+  int32 attempts = 10;
+  string created_at = 11;
+  string reviewed_at = 12;
+  int64 reviewed_by = 13;
+}
+
+message JobAnalysisCandidate {
+  int64 occupation_id = 1;
+  string occupation_name = 2;
+  int32 rank = 3;
+  double similarity = 4;
+}
+
+message JobAnalysisTaskDetail {
+  JobAnalysisTaskSummary task = 1;
+  repeated JobAnalysisCandidate candidates = 2;
+}
+
+message ListJobAnalysisTasksResponse {
+  repeated JobAnalysisTaskSummary items = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message GetJobAnalysisTaskResponse {
+  JobAnalysisTaskDetail analysis = 1;
 }

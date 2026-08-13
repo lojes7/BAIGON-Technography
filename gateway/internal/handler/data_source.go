@@ -1,5 +1,5 @@
-// 百工谱 — data-source 服务相关 REST handler
-// 网关 REST → gRPC 调用 data-source-service（清洗数据查询与人工复核）
+// 百工谱 — 数据治理 REST handler
+// 网关 REST → gRPC 调用 occupation-service（清洗数据查询与人工复核）
 
 package handler
 
@@ -50,7 +50,7 @@ type editReviewRequest struct {
 // @Failure      400  {object}  response.ErrorBody    "请求体格式错误"
 // @Failure      401  {object}  response.ErrorBody    "未认证"
 // @Failure      403  {object}  response.ErrorBody    "非 ADMIN / DATA_REVIEWER"
-// @Failure      503  {object}  response.ErrorBody    "data-source 服务不可用"
+// @Failure      503  {object}  response.ErrorBody    "occupation 服务不可用"
 // @Router       /api/auth/data-source [post]
 func ListCleanedJobsHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -60,7 +60,7 @@ func ListCleanedJobsHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			return
 		}
 
-		conn, err := pool.GetConn("data-source-service")
+		conn, err := pool.GetConn("occupation-service")
 		if err != nil {
 			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
 			return
@@ -109,7 +109,7 @@ func ListCleanedJobsHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 // @Failure      401  {object}  response.ErrorBody    "未认证"
 // @Failure      403  {object}  response.ErrorBody    "非 ADMIN / DATA_REVIEWER"
 // @Failure      404  {object}  response.ErrorBody    "记录不存在"
-// @Failure      503  {object}  response.ErrorBody    "data-source 服务不可用"
+// @Failure      503  {object}  response.ErrorBody    "occupation 服务不可用"
 // @Router       /api/auth/data-source/{id} [get]
 func GetCleanedJobHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -119,7 +119,7 @@ func GetCleanedJobHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			return
 		}
 
-		conn, err := pool.GetConn("data-source-service")
+		conn, err := pool.GetConn("occupation-service")
 		if err != nil {
 			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
 			return
@@ -169,7 +169,7 @@ func GetSourceJobHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			return
 		}
 
-		conn, err := pool.GetConn("data-source-service")
+		conn, err := pool.GetConn("occupation-service")
 		if err != nil {
 			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
 			return
@@ -261,7 +261,7 @@ func EditReviewHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			return
 		}
 
-		conn, err := pool.GetConn("data-source-service")
+		conn, err := pool.GetConn("occupation-service")
 		if err != nil {
 			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
 			return
@@ -310,7 +310,7 @@ func reviewActionHandler(pool *grpcpool.GrpcClientPool, action datasourcepb.Revi
 			return
 		}
 
-		conn, err := pool.GetConn("data-source-service")
+		conn, err := pool.GetConn("occupation-service")
 		if err != nil {
 			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
 			return

@@ -9,29 +9,38 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// RegisterOccupationRoutes 注册专业/职业目录与向量化管理接口，全部仅限 ADMIN。
+// RegisterOccupationRoutes 注册专业/职业目录、向量化管理和岗位分析审核接口。
 func RegisterOccupationRoutes(api *gin.RouterGroup, pool *grpcpool.GrpcClientPool, jwtSecret string) {
 	auth := api.Group("/auth")
 	auth.Use(middleware.Auth(jwtSecret))
 
 	occupation := auth.Group("/occupation")
-	occupation.Use(middleware.RoleAuth("ADMIN"))
 
-	occupation.GET("/discipline-categories", handler.ListDisciplineCategoriesHandler(pool))
-	occupation.GET("/major-categories", handler.ListMajorCategoriesHandler(pool))
-	occupation.GET("/majors", handler.ListMajorsHandler(pool))
-	occupation.GET("/occupation-major-categories", handler.ListOccupationMajorCategoriesHandler(pool))
-	occupation.GET("/occupation-sub-categories", handler.ListOccupationSubCategoriesHandler(pool))
-	occupation.GET("/occupation-categories", handler.ListOccupationCategoriesHandler(pool))
-	occupation.GET("/occupations", handler.ListOccupationsHandler(pool))
+	// DATA_REVIEWER 需要浏览 occupations 全目录，最终选择不受 AI 候选限制。
+	catalog := occupation.Group("")
+	catalog.Use(middleware.RoleAuth("ADMIN", "DATA_REVIEWER"))
+	catalog.GET("/discipline-categories", handler.ListDisciplineCategoriesHandler(pool))
+	catalog.GET("/major-categories", handler.ListMajorCategoriesHandler(pool))
+	catalog.GET("/majors", handler.ListMajorsHandler(pool))
+	catalog.GET("/occupation-major-categories", handler.ListOccupationMajorCategoriesHandler(pool))
+	catalog.GET("/occupation-sub-categories", handler.ListOccupationSubCategoriesHandler(pool))
+	catalog.GET("/occupation-categories", handler.ListOccupationCategoriesHandler(pool))
+	catalog.GET("/occupations", handler.ListOccupationsHandler(pool))
 
-	occupation.GET("/embedding/progress", handler.GetOccupationEmbeddingProgressHandler(pool))
+	analysis := occupation.Group("/job-analysis")
+	analysis.Use(middleware.RoleAuth("ADMIN", "DATA_REVIEWER"))
+	analysis.GET("", handler.ListJobAnalysisTasksHandler(pool))
+	analysis.GET("/:id", handler.GetJobAnalysisTaskHandler(pool))
+	analysis.PUT("/:id/review", handler.ReviewJobAnalysisTaskHandler(pool))
 
-	occupation.POST("/majors/embedding", handler.StartMajorEmbeddingHandler(pool))
-	occupation.GET("/majors/embedding", handler.GetMajorEmbeddingStatusHandler(pool))
-	occupation.DELETE("/majors/embedding", handler.StopMajorEmbeddingHandler(pool))
+	admin := occupation.Group("")
+	admin.Use(middleware.RoleAuth("ADMIN"))
+	admin.GET("/embedding/progress", handler.GetOccupationEmbeddingProgressHandler(pool))
+	admin.POST("/majors/embedding", handler.StartMajorEmbeddingHandler(pool))
+	admin.GET("/majors/embedding", handler.GetMajorEmbeddingStatusHandler(pool))
+	admin.DELETE("/majors/embedding", handler.StopMajorEmbeddingHandler(pool))
 
-	occupation.POST("/occupations/embedding", handler.StartOccupationEmbeddingHandler(pool))
-	occupation.GET("/occupations/embedding", handler.GetOccupationEmbeddingStatusHandler(pool))
-	occupation.DELETE("/occupations/embedding", handler.StopOccupationEmbeddingHandler(pool))
+	admin.POST("/occupations/embedding", handler.StartOccupationEmbeddingHandler(pool))
+	admin.GET("/occupations/embedding", handler.GetOccupationEmbeddingStatusHandler(pool))
+	admin.DELETE("/occupations/embedding", handler.StopOccupationEmbeddingHandler(pool))
 }
