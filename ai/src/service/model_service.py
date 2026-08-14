@@ -6,6 +6,7 @@ import numpy as np
 
 from src.llm.embedding_model import TextEmbedding
 from src.llm.spark_model import SparkModel
+from src.service.job_analysis import JobAnalysisResult, analyze_job_description
 
 
 class AIModelService:
@@ -28,9 +29,9 @@ class AIModelService:
         """调用星火模型生成结构化抽取或普通文本结果。"""
         return self.chat_model.question(system_prompt, user_prompt, **options)
 
-    def embed_text(self, text: str, **options: Any) -> np.ndarray:
-        """生成单条文本向量。"""
-        return self.embedding_model.embedding(text, **options)
+    def analyze_job_description(self, jd: str) -> JobAnalysisResult:
+        """分析 JD，成功时只返回经过固定契约校验的结果。"""
+        return analyze_job_description(self.chat_model, jd)
 
     def embed_texts(self, texts: list[str | None], **options: Any) -> np.ndarray:
         """批量生成文本向量。"""

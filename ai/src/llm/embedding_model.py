@@ -41,18 +41,6 @@ class TextEmbedding:
         )
         return self._client
 
-    def embedding(
-        self,
-        text: str,
-        dimensions: int = DEFAULT_DIMENSION,
-        encoding_format: str = "float",
-    ) -> np.ndarray:
-        """生成单条文本向量。"""
-        if not isinstance(text, str):
-            raise TypeError("text 必须是字符串")
-        result = self._create_embeddings([text], dimensions, encoding_format)
-        return np.asarray(result[0], dtype=float)
-
     def embedding_batch(
         self,
         input_list: list[str | None],

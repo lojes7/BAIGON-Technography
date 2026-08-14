@@ -17,13 +17,33 @@ AI 服务已接入以下内部模型适配器，供后续 gRPC Handler 调用：
 
 | RPC | 请求 | 返回 | 说明 |
 | --- | --- | --- | --- |
+| `AnalyzeJobDescription` | 仅 `jd` | `analysis_json` | 使用星火分析学历与技能，并返回严格 JSON |
 | `EmbedText` | `text`、可选 `dimensions` | 单条 `embedding` | 为一段非空文本生成 Qwen 向量 |
 | `BatchEmbedText` | `texts`、可选 `dimensions` / `chunk_size` | `embeddings` | 批量生成向量，返回顺序严格对应输入顺序 |
 
 - `dimensions=0` 时使用服务默认值 `1024`；允许范围为 `1` 至 `4096`。
 - `chunk_size=0` 时批量请求使用默认值 `20`；允许范围为 `1` 至 `100`。
 - 单次 `BatchEmbedText` 最多接收 `1000` 条非空文本。
-- 两个请求均可携带 `trace_id` 和用户上下文字段，供调用链审计使用。
+- 两个嵌入请求均可携带 `trace_id` 和用户上下文字段，供调用链审计使用。
+
+`AnalyzeJobDescription` 与嵌入接口相互独立，请求严格只包含 `jd`。服务把 JD
+直接作为星火调用的 user prompt，并使用固定 Function Calling Schema 约束输出：
+
+```json
+{
+  "education": "Doctor",
+  "skills": [
+    {
+      "name": "JavaScript",
+      "proficiency": "Expert",
+      "evidence": "能够使用 JavaScript 构建多个 Web 应用。"
+    }
+  ]
+}
+```
+
+`proficiency` 仅允许 `Expert`、`Advanced`、`Familiar`、`Basic`。每个技能都必须
+提供非空 `evidence`；模型结果通过本地契约校验后才会序列化到 `analysis_json`。
 
 ## 实体链接流程
 
@@ -32,9 +52,33 @@ AI 服务已接入以下内部模型适配器，供后续 gRPC Handler 调用：
 | 错误码 | 含义 |
 |--------|------|
 | `INVALID_ARGUMENT` | 文本为空、批量过大、维度或分批大小非法 |
-| `FAILED_PRECONDITION` | 未配置 `DASHSCOPE_API_KEY` |
-| `INTERNAL` | Qwen 调用失败，或供应商返回的向量数量、维度异常 |
+| `FAILED_PRECONDITION` | 未配置对应接口需要的模型密钥 |
+| `INTERNAL` | 模型调用失败、JD 输出不符合契约，或向量数量/维度异常 |
 
 ## 调用方约束
 
 调用方应把相同的 `dimensions` 用于建库、写入和检索；否则向量库会拒绝维度不一致的向量。模型名由 `src/config.py` 统一配置，不能在单次 RPC 请求中任意切换。
+
+## 根目录演示程序
+
+先确保本地 AI stub 已生成且 AI 服务正在运行：
+
+```bash
+make -C proto python-ai
+```
+
+单独测试 JD 分析：
+
+```bash
+python ai_service_demo.py analyze-jd --jd-file ./sample-jd.txt
+```
+
+单独测试嵌入：
+
+```bash
+python ai_service_demo.py embed --text "Java 开发工程师"
+```
+
+演示程序默认读取根目录 `.env` 的 `AI_GRPC_PORT`（当前为 `50013`，映射到容器内
+`50053`）；需要其他地址时设置 `AI_GRPC_ADDR`。本地不经 Compose 直接启动 AI 服务时，
+可设置 `AI_GRPC_ADDR=localhost:50053`。

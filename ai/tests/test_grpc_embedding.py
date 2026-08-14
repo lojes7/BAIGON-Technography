@@ -20,14 +20,13 @@ class FakeAIModelService:
 
     embedding_model = FakeEmbeddingModel()
 
-    def embed_text(self, text, **options):
-        self.single_call = (text, options)
-        if options["dimensions"] == DEFAULT_DIMENSIONS:
-            return np.zeros(DEFAULT_DIMENSIONS, dtype=float)
-        return np.array([0.1, 0.2], dtype=float)
-
     def embed_texts(self, texts, **options):
-        self.batch_call = (texts, options)
+        self.calls = getattr(self, "calls", [])
+        self.calls.append((texts, options))
+        if len(texts) == 1:
+            if options["dimensions"] == DEFAULT_DIMENSIONS:
+                return np.zeros((1, DEFAULT_DIMENSIONS), dtype=float)
+            return np.array([[0.1, 0.2]], dtype=float)
         return np.array([[0.1, 0.2], [0.3, 0.4]], dtype=float)
 
 
@@ -48,7 +47,8 @@ class GrpcEmbeddingTest(unittest.TestCase):
         self.assertAlmostEqual(response.embedding[1], 0.2, places=6)
         self.assertEqual(response.dimensions, 2)
         self.assertEqual(response.model, "qwen3.7-text-embedding")
-        self.assertEqual(self.service.single_call[0], "后端开发工程师")
+        self.assertEqual(self.service.calls[0][0], ["后端开发工程师"])
+        self.assertEqual(self.service.calls[0][1]["chunk_size"], 1)
 
     def test_embed_text_uses_1024_dimensions_by_default(self):
         response = self.servicer.EmbedText(
@@ -59,7 +59,7 @@ class GrpcEmbeddingTest(unittest.TestCase):
         self.assertEqual(DEFAULT_DIMENSIONS, 1024)
         self.assertEqual(response.dimensions, 1024)
         self.assertEqual(len(response.embedding), 1024)
-        self.assertEqual(self.service.single_call[1]["dimensions"], 1024)
+        self.assertEqual(self.service.calls[0][1]["dimensions"], 1024)
 
     def test_batch_embed_text_preserves_order(self):
         response = self.servicer.BatchEmbedText(
@@ -78,7 +78,10 @@ class GrpcEmbeddingTest(unittest.TestCase):
         for actual, expected in zip(vectors, expected_vectors, strict=True):
             for actual_value, expected_value in zip(actual, expected, strict=True):
                 self.assertAlmostEqual(actual_value, expected_value, places=6)
-        self.assertEqual(self.service.batch_call[0], ["后端开发工程师", "数据分析师"])
+        self.assertEqual(
+            self.service.calls[0][0],
+            ["后端开发工程师", "数据分析师"],
+        )
 
 
 if __name__ == "__main__":

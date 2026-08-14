@@ -9,7 +9,8 @@ class ModelConfig:
     """模型地址、名称与能力边界，不通过 Docker Compose 注入。"""
 
     spark_base_url: str = "https://spark-api-open.xf-yun.com/agent/v1/"
-    spark_model: str = "Spark-X2-Flash"
+    # X2-Flash 是产品名称，OpenAI 兼容接口要求 model 参数固定传 spark-x。
+    spark_model: str = "spark-x"
     dashscope_base_url: str = (
         "https://ws-02585sz1ly0611yl.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
     )

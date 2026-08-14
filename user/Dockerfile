@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.7
-
 # 百工谱 — user_service
 # 注意：build context 是仓库根目录（见 docker-compose.yml），以便读取 proto/ 接口定义
 

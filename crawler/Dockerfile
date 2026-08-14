@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.7
-
 # 百工谱 — crawler_service
 
 FROM python:3.12-slim

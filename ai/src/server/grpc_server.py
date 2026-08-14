@@ -8,6 +8,7 @@ import grpc
 from src.config import model_config
 from src.llm.exceptions import ModelConfigurationError
 from src.pb import ai_pb2, ai_pb2_grpc
+from src.service.job_analysis import MAX_JD_LENGTH
 from src.service.model_service import AIModelService
 
 logger = logging.getLogger(__name__)
@@ -20,11 +21,32 @@ MAX_CHUNK_SIZE = model_config.embedding_max_chunk_size
 
 
 class AIServicer(ai_pb2_grpc.AIServiceServicer):
-    """AIService gRPC 实现：当前提供 Qwen 文本向量能力。"""
+    """AIService gRPC 实现：提供星火 JD 分析和 Qwen 文本向量能力。"""
 
     def __init__(self, model_service: AIModelService | Any | None = None):
         # 支持注入,在不调用外部模型的情况下测试 Handler。
         self.model_service = model_service or AIModelService()
+
+    def AnalyzeJobDescription(self, request, context):
+        """调用星火分析 JD；请求只接收 jd 一个业务参数。"""
+        jd = request.jd.strip()
+        if not jd:
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "jd 不能为空")
+        if len(jd) > MAX_JD_LENGTH:
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "jd 长度超过上限")
+
+        try:
+            analysis = self.model_service.analyze_job_description(jd)
+            logger.info("AnalyzeJobDescription 完成: jd_length=%d", len(jd))
+            return ai_pb2.AnalyzeJobDescriptionResponse(
+                analysis_json=analysis.model_dump_json(),
+            )
+        except ModelConfigurationError:
+            logger.exception("AnalyzeJobDescription 失败：星火模型未配置")
+            context.abort(grpc.StatusCode.FAILED_PRECONDITION, "星火模型未配置")
+        except Exception:
+            logger.exception("AnalyzeJobDescription 失败")
+            context.abort(grpc.StatusCode.INTERNAL, "JD 分析服务暂不可用")
 
     def EmbedText(self, request, context):
         """调用 Qwen 生成单条文本的嵌入向量。"""
@@ -36,8 +58,14 @@ class AIServicer(ai_pb2_grpc.AIServiceServicer):
         self._validate_dimensions(dimensions, context)
 
         try:
-            vector = self.model_service.embed_text(text, dimensions=dimensions)
-            values = self._vector_values(vector)
+            matrix = self.model_service.embed_texts(
+                [text],
+                dimensions=dimensions,
+                chunk_size=1,
+            )
+            if len(matrix) != 1:
+                raise RuntimeError("单条嵌入接口返回数量异常")
+            values = self._vector_values(matrix[0])
             self._validate_vector_dimensions(values, dimensions)
             logger.info("EmbedText 完成: trace_id=%s, dimensions=%d", request.trace_id, dimensions)
             return ai_pb2.EmbedTextResponse(

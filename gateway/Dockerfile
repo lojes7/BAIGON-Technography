@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.7
-
 # 百工谱 — gateway_service
 # 注意：build context 是仓库根目录（见 docker-compose.yml），以便读取 proto/ 接口定义。
 # gRPC stub 在构建阶段自动生成，部署无需手动 make go。

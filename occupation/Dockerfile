@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.7
-
 # 百工谱 — occupation 合并服务
 # build context 为仓库根目录，以便在镜像内编译 data-source、occupation、crawler 与 ai proto。
 

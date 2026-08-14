@@ -12,11 +12,22 @@ option go_package = "baigon-technography/proto/gen/ai;aipb";
 // ==================== 服务定义 ====================
 
 service AIService {
+  // 使用星火模型分析单条 JD，返回经过严格校验的 JSON。
+  rpc AnalyzeJobDescription(AnalyzeJobDescriptionRequest) returns (AnalyzeJobDescriptionResponse) {}
+
   // 生成单条文本嵌入向量。
   rpc EmbedText(EmbedTextRequest) returns (EmbedTextResponse) {}
 
   // 批量生成文本嵌入向量，返回顺序与输入 texts 保持一致。
   rpc BatchEmbedText(BatchEmbedTextRequest) returns (BatchEmbedTextResponse) {}
+}
+
+message AnalyzeJobDescriptionRequest {
+  string jd = 1;
+}
+
+message AnalyzeJobDescriptionResponse {
+  string analysis_json = 1;
 }
 
 message EmbedTextRequest {
