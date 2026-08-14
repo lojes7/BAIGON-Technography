@@ -12,41 +12,42 @@ JOB_ANALYSIS_SYSTEM_PROMPT = """
 你是严谨的岗位描述（JD）分析器。请只分析用户消息中的 JD，并调用指定函数提交结果。
 
 输出要求：
-1. education 表示 JD 明确要求的最低学历，使用简洁的英文学历名称；未说明时返回 Unspecified。
-2. skills 只包含 JD 中有文字依据的专业或技术技能，不得凭空补充技能。
-3. 每个技能必须给出 name、proficiency 和 evidence，evidence 必须引用或忠实概括 JD 中的依据。
-4. 同一技能只返回一次；不要把学历、工作年限、岗位职责或泛化性格描述当作技能。
-5. proficiency 只能按以下标准选择：
+1. skills 必须完整覆盖 JD 中明确提到的每一项技能，不得遗漏，也不得凭空补充。
+2. 技能不限于专业技术：编程语言、框架、工具和软件、办公软件、设备操作、业务知识、方法论、语言能力、沟通协作及管理能力等，只要 JD 将其表述为任职能力或工作中需要使用的能力，都应抽取。例如“能够使用 MS Word”应抽取为一项技能。
+3. 职责描述中的技能同样必须抽取；若一句话同时提到多个不同技能或工具，应拆成多项，不要合并成一个笼统名称。同一技能的重复表述则只返回一次。
+4. 每个 name 优先使用简洁的中文技能名称。技术或产品专名可保留，例如“RAG”做为一个技术专有名词，可以使用英文。
+5. 每个技能必须给出 name、proficiency 和 evidence，evidence 必须直接填写 JD 原文片段，不得概括，不得在首尾添加字符。
+6. 不要把学历、工作年限、岗位名称、工作地点、薪资福利或单纯的性格形容词当作技能。
+7. proficiency 只能按以下标准选择：
    - Expert：JD 明确要求精通、专家级、深度掌握，或能够主导架构及复杂项目。
    - Advanced：JD 明确要求熟练掌握、独立完成生产级工作，或具有丰富实践经验。
    - Familiar：JD 明确要求熟悉、具有使用经验，或能够在工作中应用。
    - Basic：JD 仅要求了解、基础知识，或只提到技能名称而没有熟练度依据。
-6. JD 未包含任何可识别技能时返回空 skills 数组。
-7. 不要输出解释、Markdown 或普通正文，只能调用指定函数。
+8. JD 未包含任何可识别技能时返回空 skills 数组。
+9. 不要输出 education 或其他字段；不要输出解释、Markdown 或普通正文，只能调用指定函数。
 """.strip()
 
 JOB_ANALYSIS_RESPONSE_FUNCTION = {
     "name": "submit_job_description_analysis",
-    "description": "提交严格结构化的岗位学历与技能分析结果。",
+    "description": "提交完整且经过结构化的岗位技能分析结果。",
     "parameters": {
         "type": "object",
         "additionalProperties": False,
-        "required": ["education", "skills"],
+        "required": ["skills"],
         "properties": {
-            "education": {
-                "type": "string",
-                "minLength": 1,
-                "description": "JD 的最低学历要求；未说明时为 Unspecified。",
-            },
             "skills": {
                 "type": "array",
-                "maxItems": 100,
+                "description": "JD 中明确提到的全部技能；不同技能分别列出，不得遗漏。",
                 "items": {
                     "type": "object",
                     "additionalProperties": False,
                     "required": ["name", "proficiency", "evidence"],
                     "properties": {
-                        "name": {"type": "string", "minLength": 1},
+                        "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "优先中文技能名称；技术或产品专名可保留英文。",
+                        },
                         "proficiency": {
                             "type": "string",
                             "enum": ["Expert", "Advanced", "Familiar", "Basic"],
@@ -75,8 +76,7 @@ class JobAnalysisResult(BaseModel):
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    education: str = Field(min_length=1, max_length=100)
-    skills: list[SkillAnalysis] = Field(max_length=100)
+    skills: list[SkillAnalysis]
 
     @model_validator(mode="after")
     def validate_unique_skills(self) -> "JobAnalysisResult":

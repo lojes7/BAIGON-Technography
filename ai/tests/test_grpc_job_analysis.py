@@ -1,6 +1,5 @@
 """AnalyzeJobDescription gRPC Handler 测试。"""
 
-import json
 import unittest
 
 import grpc
@@ -28,12 +27,16 @@ class FakeAIModelService:
         self.jd = jd
         return JobAnalysisResult.model_validate(
             {
-                "education": "Doctor",
                 "skills": [
                     {
-                        "name": "JavaScript",
+                        "name": "JavaScript Web 开发",
                         "proficiency": "Expert",
                         "evidence": "能够使用 JavaScript 构建多个 Web 应用。",
+                    },
+                    {
+                        "name": "微软 Word 文档处理",
+                        "proficiency": "Familiar",
+                        "evidence": "能够使用 MS Word 编写项目文档。",
                     }
                 ],
             }
@@ -54,15 +57,24 @@ class GrpcJobAnalysisTest(unittest.TestCase):
 
         self.assertEqual(field_names, ["jd"])
 
-    def test_analyze_job_description_returns_validated_json(self):
+    def test_response_contract_returns_skill_object_list(self):
+        field_names = [
+            field.name
+            for field in ai_pb2.AnalyzeJobDescriptionResponse.DESCRIPTOR.fields
+        ]
+
+        self.assertEqual(field_names, ["skills"])
+
+    def test_analyze_job_description_returns_validated_skill_objects(self):
         response = self.servicer.AnalyzeJobDescription(
             ai_pb2.AnalyzeJobDescriptionRequest(jd="  JD 原文  "),
             self.context,
         )
 
-        result = json.loads(response.analysis_json)
-        self.assertEqual(result["education"], "Doctor")
-        self.assertEqual(result["skills"][0]["proficiency"], "Expert")
+        self.assertEqual(len(response.skills), 2)
+        self.assertEqual(response.skills[0].name, "JavaScript Web 开发")
+        self.assertEqual(response.skills[0].proficiency, "Expert")
+        self.assertEqual(response.skills[1].name, "微软 Word 文档处理")
         self.assertEqual(self.service.jd, "JD 原文")
 
     def test_analyze_job_description_rejects_empty_jd(self):

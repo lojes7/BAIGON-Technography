@@ -17,7 +17,7 @@ AI 服务已接入以下内部模型适配器，供后续 gRPC Handler 调用：
 
 | RPC | 请求 | 返回 | 说明 |
 | --- | --- | --- | --- |
-| `AnalyzeJobDescription` | 仅 `jd` | `analysis_json` | 使用星火分析学历与技能，并返回严格 JSON |
+| `AnalyzeJobDescription` | 仅 `jd` | `skills` 对象列表 | 使用星火完整抽取技能，并返回强类型对象 |
 | `EmbedText` | `text`、可选 `dimensions` | 单条 `embedding` | 为一段非空文本生成 Qwen 向量 |
 | `BatchEmbedText` | `texts`、可选 `dimensions` / `chunk_size` | `embeddings` | 批量生成向量，返回顺序严格对应输入顺序 |
 
@@ -27,23 +27,32 @@ AI 服务已接入以下内部模型适配器，供后续 gRPC Handler 调用：
 - 两个嵌入请求均可携带 `trace_id` 和用户上下文字段，供调用链审计使用。
 
 `AnalyzeJobDescription` 与嵌入接口相互独立，请求严格只包含 `jd`。服务把 JD
-直接作为星火调用的 user prompt，并使用固定 Function Calling Schema 约束输出：
+直接作为星火调用的 user prompt，并使用固定 Function Calling Schema 约束模型输出。
+模型返回的 JSON 先由 Pydantic 解析并校验，gRPC 层再将结果映射为
+`repeated AnalyzedSkill skills`，不会向调用方返回 JSON 字符串：
 
 ```json
 {
-  "education": "Doctor",
   "skills": [
     {
-      "name": "JavaScript",
+      "name": "JavaScript Web 开发",
       "proficiency": "Expert",
       "evidence": "能够使用 JavaScript 构建多个 Web 应用。"
+    },
+    {
+      "name": "微软 Word 文档处理",
+      "proficiency": "Familiar",
+      "evidence": "能够使用 MS Word 编写项目文档。"
     }
   ]
 }
 ```
 
 `proficiency` 仅允许 `Expert`、`Advanced`、`Familiar`、`Basic`。每个技能都必须
-提供非空 `evidence`；模型结果通过本地契约校验后才会序列化到 `analysis_json`。
+提供非空 `evidence`；`name` 优先使用中文，RAG 等技术或产品专名允许保留英文。
+专业技术、办公软件、设备操作、业务知识、
+方法论、语言、沟通协作和管理能力等均属于技能；同一句中的不同技能会拆分返回，
+职责中的技能也不会忽略。学历不属于本接口的输出。
 
 ## 实体链接流程
 

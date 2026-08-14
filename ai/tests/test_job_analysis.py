@@ -6,6 +6,10 @@ import unittest
 from pydantic import ValidationError
 
 from src.service.job_analysis import analyze_job_description
+from src.service.job_analysis.analyzer import (
+    JOB_ANALYSIS_RESPONSE_FUNCTION,
+    JOB_ANALYSIS_SYSTEM_PROMPT,
+)
 
 
 class FakeSparkModel:
@@ -24,12 +28,16 @@ class JobAnalysisTest(unittest.TestCase):
     def test_analyze_job_description_uses_jd_as_user_prompt(self):
         model = FakeSparkModel(
             {
-                "education": "Bachelor",
                 "skills": [
                     {
-                        "name": "Java",
+                        "name": "Java 编程",
                         "proficiency": "Advanced",
                         "evidence": "熟练掌握 Java 并能独立开发生产系统。",
+                    },
+                    {
+                        "name": "微软 Word 文档处理",
+                        "proficiency": "Familiar",
+                        "evidence": "能够使用 MS Word 编写项目文档。",
                     }
                 ],
             }
@@ -37,7 +45,8 @@ class JobAnalysisTest(unittest.TestCase):
 
         result = analyze_job_description(model, "  招聘 Java 工程师  ")
 
-        self.assertEqual(result.education, "Bachelor")
+        self.assertEqual(len(result.skills), 2)
+        self.assertEqual(result.skills[1].name, "微软 Word 文档处理")
         self.assertEqual(result.skills[0].proficiency, "Advanced")
         self.assertEqual(model.call[1], "招聘 Java 工程师")
         self.assertEqual(model.call[2]["temperature"], 0.1)
@@ -49,10 +58,9 @@ class JobAnalysisTest(unittest.TestCase):
     def test_analyze_job_description_rejects_invalid_proficiency(self):
         model = FakeSparkModel(
             {
-                "education": "Master",
                 "skills": [
                     {
-                        "name": "RAG",
+                        "name": "RAG 检索增强生成",
                         "proficiency": "Proficient",
                         "evidence": "熟悉 RAG。",
                     }
@@ -66,8 +74,7 @@ class JobAnalysisTest(unittest.TestCase):
     def test_analyze_job_description_requires_evidence(self):
         model = FakeSparkModel(
             {
-                "education": "Unspecified",
-                "skills": [{"name": "Python", "proficiency": "Basic"}],
+                "skills": [{"name": "Python 编程", "proficiency": "Basic"}],
             }
         )
 
@@ -77,9 +84,8 @@ class JobAnalysisTest(unittest.TestCase):
     def test_analyze_job_description_rejects_extra_fields(self):
         model = FakeSparkModel(
             {
-                "education": "Unspecified",
                 "skills": [],
-                "summary": "不允许出现的字段",
+                "education": "Bachelor",
             }
         )
 
@@ -89,10 +95,9 @@ class JobAnalysisTest(unittest.TestCase):
     def test_analyze_job_description_rejects_duplicate_skills(self):
         model = FakeSparkModel(
             {
-                "education": "Unspecified",
                 "skills": [
-                    {"name": "Java", "proficiency": "Basic", "evidence": "了解 Java"},
-                    {"name": "java", "proficiency": "Advanced", "evidence": "熟练使用 Java"},
+                    {"name": "Java 编程", "proficiency": "Basic", "evidence": "了解 Java"},
+                    {"name": "java 编程", "proficiency": "Advanced", "evidence": "熟练使用 Java"},
                 ],
             }
         )
@@ -100,8 +105,34 @@ class JobAnalysisTest(unittest.TestCase):
         with self.assertRaisesRegex(ValidationError, "重复技能"):
             analyze_job_description(model, "了解并熟练使用 Java")
 
+    def test_analyze_job_description_accepts_english_technical_term(self):
+        model = FakeSparkModel(
+            {
+                "skills": [
+                    {
+                        "name": "RAG",
+                        "proficiency": "Familiar",
+                        "evidence": "熟悉 RAG。",
+                    }
+                ]
+            }
+        )
+
+        result = analyze_job_description(model, "熟悉 RAG")
+
+        self.assertEqual(result.skills[0].name, "RAG")
+
+    def test_analysis_schema_contains_only_complete_skill_list(self):
+        parameters = JOB_ANALYSIS_RESPONSE_FUNCTION["parameters"]
+
+        self.assertEqual(parameters["required"], ["skills"])
+        self.assertEqual(list(parameters["properties"]), ["skills"])
+        self.assertNotIn("maxItems", parameters["properties"]["skills"])
+        self.assertIn("MS Word", JOB_ANALYSIS_SYSTEM_PROMPT)
+        self.assertIn("不得遗漏", JOB_ANALYSIS_SYSTEM_PROMPT)
+
     def test_analyze_job_description_rejects_empty_jd(self):
-        model = FakeSparkModel({"education": "Unspecified", "skills": []})
+        model = FakeSparkModel({"skills": []})
 
         with self.assertRaisesRegex(ValueError, "jd 不能为空"):
             analyze_job_description(model, "   ")

@@ -39,7 +39,14 @@ class AIServicer(ai_pb2_grpc.AIServiceServicer):
             analysis = self.model_service.analyze_job_description(jd)
             logger.info("AnalyzeJobDescription 完成: jd_length=%d", len(jd))
             return ai_pb2.AnalyzeJobDescriptionResponse(
-                analysis_json=analysis.model_dump_json(),
+                skills=[
+                    ai_pb2.AnalyzedSkill(
+                        name=skill.name,
+                        proficiency=skill.proficiency,
+                        evidence=skill.evidence,
+                    )
+                    for skill in analysis.skills
+                ],
             )
         except ModelConfigurationError:
             logger.exception("AnalyzeJobDescription 失败：星火模型未配置")

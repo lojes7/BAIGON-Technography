@@ -11,7 +11,6 @@ COPY proto/crawler/ ./proto/crawler/
 COPY proto/ai/ ./proto/ai/
 COPY occupation/src/ ./src/
 
-# Maven 缓存独立于源码层；源码或 proto 变化时不再重新下载全部依赖。
 RUN mvn --settings /app/maven-settings.xml package \
     -DskipTests -Dproto.root=proto -B -ntp
 
