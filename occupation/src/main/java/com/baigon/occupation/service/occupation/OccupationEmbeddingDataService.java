@@ -4,7 +4,7 @@ package com.baigon.occupation.service.occupation;
 import com.baigon.occupation.entity.TaskStatus;
 import com.baigon.occupation.repository.occupation.OccupationRepository;
 import com.baigon.occupation.service.EmbeddingDataService;
-import com.baigon.occupation.service.EmbeddingResource;
+import com.baigon.occupation.service.EmbeddingTaskManager.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,8 +20,8 @@ public class OccupationEmbeddingDataService implements EmbeddingDataService {
     }
 
     @Override
-    public EmbeddingResource resource() {
-        return EmbeddingResource.OCCUPATION;
+    public Resource resource() {
+        return Resource.OCCUPATION;
     }
 
     /** 启动时固定本轮候选快照，避免 FAILED 批次在同一轮被无限重复处理。 */

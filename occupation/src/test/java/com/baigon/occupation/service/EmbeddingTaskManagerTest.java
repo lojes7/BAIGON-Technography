@@ -6,6 +6,7 @@ import com.baigon.occupation.grpc.AIGrpcClient;
 import com.baigon.occupation.grpc.AIGrpcClient.EmbeddingCall;
 import com.baigon.occupation.error.ApiException;
 import com.baigon.occupation.service.EmbeddingDataService.EmbeddingCandidate;
+import com.baigon.occupation.service.EmbeddingTaskManager.Resource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -41,8 +42,8 @@ class EmbeddingTaskManagerTest {
     void setUp() {
         majorDataService = mock(EmbeddingDataService.class);
         occupationDataService = mock(EmbeddingDataService.class);
-        when(majorDataService.resource()).thenReturn(EmbeddingResource.MAJOR);
-        when(occupationDataService.resource()).thenReturn(EmbeddingResource.OCCUPATION);
+        when(majorDataService.resource()).thenReturn(Resource.MAJOR);
+        when(occupationDataService.resource()).thenReturn(Resource.OCCUPATION);
         aiClient = mock(AIGrpcClient.class);
         logService = mock(LogService.class);
         Snowflake snowflake = mock(Snowflake.class);
@@ -77,16 +78,16 @@ class EmbeddingTaskManagerTest {
         when(aiClient.startBatch(anyList(), any(AuditContext.class)))
                 .thenReturn(majorCall, occupationCall);
 
-        manager.start(EmbeddingResource.MAJOR, audit(1001L));
-        manager.start(EmbeddingResource.OCCUPATION, audit(1002L));
+        manager.start(Resource.MAJOR, audit(1001L));
+        manager.start(Resource.OCCUPATION, audit(1002L));
 
         assertTrue(entered.await(2, TimeUnit.SECONDS), "两类任务应同时进入 AI 调用");
-        assertEquals("running", manager.getStatus(EmbeddingResource.MAJOR).status());
-        assertEquals("running", manager.getStatus(EmbeddingResource.OCCUPATION).status());
+        assertEquals("running", manager.getStatus(Resource.MAJOR).status());
+        assertEquals("running", manager.getStatus(Resource.OCCUPATION).status());
         release.countDown();
 
-        awaitStatus(EmbeddingResource.MAJOR, "success");
-        awaitStatus(EmbeddingResource.OCCUPATION, "success");
+        awaitStatus(Resource.MAJOR, "success");
+        awaitStatus(Resource.OCCUPATION, "success");
         verify(majorDataService).markSuccess(anyList(), anyList());
         verify(occupationDataService).markSuccess(anyList(), anyList());
     }
@@ -101,14 +102,14 @@ class EmbeddingTaskManagerTest {
         when(call.await()).thenAnswer(ignored -> awaitAndReturn(entered, release));
         when(aiClient.startBatch(anyList(), any(AuditContext.class))).thenReturn(call);
 
-        manager.start(EmbeddingResource.MAJOR, audit(1001L));
+        manager.start(Resource.MAJOR, audit(1001L));
         assertTrue(entered.await(2, TimeUnit.SECONDS));
         ApiException exception = assertThrows(ApiException.class,
-                () -> manager.start(EmbeddingResource.MAJOR, audit(1002L)));
+                () -> manager.start(Resource.MAJOR, audit(1002L)));
         assertEquals(ApiException.ErrorCode.TASK_ALREADY_RUNNING, exception.getErrorCode());
 
         release.countDown();
-        awaitStatus(EmbeddingResource.MAJOR, "success");
+        awaitStatus(Resource.MAJOR, "success");
     }
 
     @Test
@@ -124,8 +125,8 @@ class EmbeddingTaskManagerTest {
         when(aiClient.startBatch(anyList(), any(AuditContext.class)))
                 .thenReturn(failedCall, successCall);
 
-        manager.start(EmbeddingResource.MAJOR, audit(1001L));
-        EmbeddingTaskSnapshot snapshot = awaitStatus(EmbeddingResource.MAJOR, "failed");
+        manager.start(Resource.MAJOR, audit(1001L));
+        EmbeddingTaskSnapshot snapshot = awaitStatus(Resource.MAJOR, "failed");
 
         assertEquals(3, snapshot.processed());
         assertEquals(1, snapshot.succeeded());
@@ -154,13 +155,13 @@ class EmbeddingTaskManagerTest {
         }).when(call).cancel();
         when(aiClient.startBatch(anyList(), any(AuditContext.class))).thenReturn(call);
 
-        manager.start(EmbeddingResource.MAJOR, audit(1001L));
+        manager.start(Resource.MAJOR, audit(1001L));
         assertTrue(entered.await(2, TimeUnit.SECONDS));
-        String stopStatus = manager.stop(EmbeddingResource.MAJOR, audit(2001L)).status();
+        String stopStatus = manager.stop(Resource.MAJOR, audit(2001L)).status();
         // 取消非常快时，后台线程可能在 Stop 响应取快照前已经完成收尾。
         assertTrue("stopping".equals(stopStatus) || "stopped".equals(stopStatus));
 
-        EmbeddingTaskSnapshot snapshot = awaitStatus(EmbeddingResource.MAJOR, "stopped");
+        EmbeddingTaskSnapshot snapshot = awaitStatus(Resource.MAJOR, "stopped");
         assertEquals(0, snapshot.processed());
         verify(call).cancel();
     }
@@ -172,7 +173,7 @@ class EmbeddingTaskManagerTest {
         return List.of(List.of(0.1F));
     }
 
-    private EmbeddingTaskSnapshot awaitStatus(EmbeddingResource resource,
+    private EmbeddingTaskSnapshot awaitStatus(Resource resource,
                                               String expected) throws InterruptedException {
         long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
         EmbeddingTaskSnapshot snapshot;

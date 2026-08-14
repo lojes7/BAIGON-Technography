@@ -1,16 +1,21 @@
+# syntax=docker/dockerfile:1.7
+
 # 百工谱 — occupation 合并服务
 # build context 为仓库根目录，以便在镜像内编译 data-source、occupation、crawler 与 ai proto。
 
 FROM maven:3.9-eclipse-temurin-21 AS builder
 WORKDIR /app
 COPY occupation/pom.xml pom.xml
-COPY proto/ ./proto/
-RUN mkdir -p /root/.m2
 COPY docker/maven/settings.xml /app/maven-settings.xml
-
-RUN mvn --settings /app/maven-settings.xml dependency:go-offline -Dproto.root=proto -B
+COPY proto/data_source/ ./proto/data_source/
+COPY proto/occupation/ ./proto/occupation/
+COPY proto/crawler/ ./proto/crawler/
+COPY proto/ai/ ./proto/ai/
 COPY occupation/src/ ./src/
-RUN mvn --settings /app/maven-settings.xml package -DskipTests -Dproto.root=proto -B
+
+# Maven 缓存独立于源码层；源码或 proto 变化时不再重新下载全部依赖。
+RUN mvn --settings /app/maven-settings.xml package \
+    -DskipTests -Dproto.root=proto -B -ntp
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app

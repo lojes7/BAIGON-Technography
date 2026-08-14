@@ -25,8 +25,8 @@ import com.baigon.occupation.entity.jobanalysis.JobAnalysisTask;
 import com.baigon.occupation.error.ApiException;
 import com.baigon.occupation.service.AuditContext;
 import com.baigon.occupation.service.EmbeddingDataService;
-import com.baigon.occupation.service.EmbeddingResource;
 import com.baigon.occupation.service.EmbeddingTaskManager;
+import com.baigon.occupation.service.EmbeddingTaskManager.Resource;
 import com.baigon.occupation.service.EmbeddingTaskSnapshot;
 import com.baigon.occupation.service.LogService;
 import com.baigon.occupation.service.jobanalysis.JobAnalysisQueryService;
@@ -186,8 +186,8 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                                      StreamObserver<GetEmbeddingProgressResponse> observer) {
         AuditContext audit = audit(request);
         try {
-            EmbeddingDataService.Progress majors = taskManager.getProgress(EmbeddingResource.MAJOR);
-            EmbeddingDataService.Progress occupations = taskManager.getProgress(EmbeddingResource.OCCUPATION);
+            EmbeddingDataService.Progress majors = taskManager.getProgress(Resource.MAJOR);
+            EmbeddingDataService.Progress occupations = taskManager.getProgress(Resource.OCCUPATION);
             GetEmbeddingProgressResponse response = GetEmbeddingProgressResponse.newBuilder()
                     .setMajors(progress(majors))
                     .setOccupations(progress(occupations))
@@ -202,37 +202,37 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
     @Override
     public void startMajorEmbedding(EmbeddingTaskRequest request,
                                     StreamObserver<EmbeddingTaskStatus> observer) {
-        startTask(EmbeddingResource.MAJOR, request, observer);
+        startTask(Resource.MAJOR, request, observer);
     }
 
     @Override
     public void getMajorEmbeddingStatus(EmbeddingTaskRequest request,
                                         StreamObserver<EmbeddingTaskStatus> observer) {
-        getTaskStatus(EmbeddingResource.MAJOR, request, observer);
+        getTaskStatus(Resource.MAJOR, request, observer);
     }
 
     @Override
     public void stopMajorEmbedding(EmbeddingTaskRequest request,
                                    StreamObserver<EmbeddingTaskStatus> observer) {
-        stopTask(EmbeddingResource.MAJOR, request, observer);
+        stopTask(Resource.MAJOR, request, observer);
     }
 
     @Override
     public void startOccupationEmbedding(EmbeddingTaskRequest request,
                                          StreamObserver<EmbeddingTaskStatus> observer) {
-        startTask(EmbeddingResource.OCCUPATION, request, observer);
+        startTask(Resource.OCCUPATION, request, observer);
     }
 
     @Override
     public void getOccupationEmbeddingStatus(EmbeddingTaskRequest request,
                                              StreamObserver<EmbeddingTaskStatus> observer) {
-        getTaskStatus(EmbeddingResource.OCCUPATION, request, observer);
+        getTaskStatus(Resource.OCCUPATION, request, observer);
     }
 
     @Override
     public void stopOccupationEmbedding(EmbeddingTaskRequest request,
                                         StreamObserver<EmbeddingTaskStatus> observer) {
-        stopTask(EmbeddingResource.OCCUPATION, request, observer);
+        stopTask(Resource.OCCUPATION, request, observer);
     }
 
     @Override
@@ -306,7 +306,7 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
         }
     }
 
-    private void startTask(EmbeddingResource resource,
+    private void startTask(Resource resource,
                            EmbeddingTaskRequest request,
                            StreamObserver<EmbeddingTaskStatus> observer) {
         AuditContext audit = audit(request);
@@ -317,7 +317,7 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
         }
     }
 
-    private void getTaskStatus(EmbeddingResource resource,
+    private void getTaskStatus(Resource resource,
                                EmbeddingTaskRequest request,
                                StreamObserver<EmbeddingTaskStatus> observer) {
         AuditContext audit = audit(request);
@@ -330,7 +330,7 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
         }
     }
 
-    private void stopTask(EmbeddingResource resource,
+    private void stopTask(Resource resource,
                           EmbeddingTaskRequest request,
                           StreamObserver<EmbeddingTaskStatus> observer) {
         AuditContext audit = audit(request);

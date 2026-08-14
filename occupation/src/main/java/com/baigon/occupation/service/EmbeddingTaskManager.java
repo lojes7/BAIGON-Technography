@@ -25,28 +25,34 @@ import java.util.concurrent.ExecutorService;
 @Service
 public class EmbeddingTaskManager {
 
+    /** 由同一任务管理器协调的两类名称向量化资源。 */
+    public enum Resource {
+        MAJOR,
+        OCCUPATION
+    }
+
     private static final Logger logger = LoggerFactory.getLogger(EmbeddingTaskManager.class);
 
-    private final Map<EmbeddingResource, EmbeddingDataService> dataServices;
+    private final Map<Resource, EmbeddingDataService> dataServices;
     private final AIGrpcClient aiClient;
     private final LogService logService;
     private final Snowflake snowflake;
     private final ExecutorService executor;
-    private final Map<EmbeddingResource, TaskTracker> trackers = new EnumMap<>(EmbeddingResource.class);
+    private final Map<Resource, TaskTracker> trackers = new EnumMap<>(Resource.class);
 
     public EmbeddingTaskManager(List<EmbeddingDataService> dataServices,
                                 AIGrpcClient aiClient,
                                 LogService logService,
                                 Snowflake snowflake,
                                 @Qualifier("embeddingExecutor") ExecutorService embeddingExecutor) {
-        this.dataServices = new EnumMap<>(EmbeddingResource.class);
+        this.dataServices = new EnumMap<>(Resource.class);
         for (EmbeddingDataService dataService : dataServices) {
             EmbeddingDataService previous = this.dataServices.put(dataService.resource(), dataService);
             if (previous != null) {
                 throw new IllegalArgumentException("duplicate embedding data service: " + dataService.resource());
             }
         }
-        for (EmbeddingResource resource : EmbeddingResource.values()) {
+        for (Resource resource : Resource.values()) {
             if (!this.dataServices.containsKey(resource)) {
                 throw new IllegalArgumentException("missing embedding data service: " + resource);
             }
@@ -55,11 +61,11 @@ public class EmbeddingTaskManager {
         this.logService = logService;
         this.snowflake = snowflake;
         this.executor = embeddingExecutor;
-        trackers.put(EmbeddingResource.MAJOR, new TaskTracker());
-        trackers.put(EmbeddingResource.OCCUPATION, new TaskTracker());
+        trackers.put(Resource.MAJOR, new TaskTracker());
+        trackers.put(Resource.OCCUPATION, new TaskTracker());
     }
 
-    public EmbeddingTaskSnapshot start(EmbeddingResource resource, AuditContext requestAudit) {
+    public EmbeddingTaskSnapshot start(Resource resource, AuditContext requestAudit) {
         long traceId = requestAudit.traceId() == null ? snowflake.nextId() : requestAudit.traceId();
         AuditContext taskAudit = new AuditContext(traceId, requestAudit.userId(), requestAudit.userName(),
                 requestAudit.userIp(), requestAudit.requestMethod(), requestAudit.requestUrl());
@@ -75,22 +81,22 @@ public class EmbeddingTaskManager {
         return tracker.snapshot();
     }
 
-    public EmbeddingTaskSnapshot getStatus(EmbeddingResource resource) {
+    public EmbeddingTaskSnapshot getStatus(Resource resource) {
         return tracker(resource).snapshot();
     }
 
-    public EmbeddingDataService.Progress getProgress(EmbeddingResource resource) {
+    public EmbeddingDataService.Progress getProgress(Resource resource) {
         return dataService(resource).getProgress();
     }
 
-    public EmbeddingTaskSnapshot stop(EmbeddingResource resource, AuditContext audit) {
+    public EmbeddingTaskSnapshot stop(Resource resource, AuditContext audit) {
         TaskTracker tracker = tracker(resource);
         tracker.requestStop();
         logService.warning(audit, "stop " + label(resource) + " embedding requested");
         return tracker.snapshot();
     }
 
-    private void runTask(EmbeddingResource resource, TaskTracker tracker, AuditContext audit) {
+    private void runTask(Resource resource, TaskTracker tracker, AuditContext audit) {
         try {
             EmbeddingDataService dataService = dataService(resource);
             List<EmbeddingCandidate> candidates = dataService.findCandidates();
@@ -121,7 +127,7 @@ public class EmbeddingTaskManager {
         }
     }
 
-    private void processBatch(EmbeddingResource resource,
+    private void processBatch(Resource resource,
                               EmbeddingDataService dataService,
                               TaskTracker tracker,
                               AuditContext audit,
@@ -151,7 +157,7 @@ public class EmbeddingTaskManager {
         }
     }
 
-    private void markBatchFailed(EmbeddingResource resource,
+    private void markBatchFailed(Resource resource,
                                  EmbeddingDataService dataService,
                                  TaskTracker tracker,
                                  AuditContext audit,
@@ -163,11 +169,11 @@ public class EmbeddingTaskManager {
         logService.error(audit, message, label(resource) + " embedding batch failed");
     }
 
-    private TaskTracker tracker(EmbeddingResource resource) {
+    private TaskTracker tracker(Resource resource) {
         return trackers.get(resource);
     }
 
-    private EmbeddingDataService dataService(EmbeddingResource resource) {
+    private EmbeddingDataService dataService(Resource resource) {
         EmbeddingDataService dataService = dataServices.get(resource);
         if (dataService == null) {
             throw new IllegalArgumentException("unsupported embedding resource: " + resource);
@@ -175,8 +181,8 @@ public class EmbeddingTaskManager {
         return dataService;
     }
 
-    private String label(EmbeddingResource resource) {
-        return resource == EmbeddingResource.MAJOR ? "major" : "occupation";
+    private String label(Resource resource) {
+        return resource == Resource.MAJOR ? "major" : "occupation";
     }
 
     private String safeMessage(Exception exception) {

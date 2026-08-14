@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -11,7 +13,7 @@ RUN APT_MIRROR="${APT_MIRROR}" sh /usr/local/bin/configure-apt-mirror \
 COPY ai/requirements.txt requirements.txt
 # 网络较慢时，默认 15 秒读取超时会中断大体积 arm64 wheel 下载。
 RUN pip install -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple --timeout 180 -r requirements.txt
-COPY proto/ /app/proto/
+COPY proto/ai/ /app/proto/ai/
 COPY ai/src/ ./src/
 # 在镜像内生成 AI gRPC stub，部署不依赖本地生成物。
 RUN mkdir -p /app/pb_gen /app/src/pb \

@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 # 百工谱 — gateway_service
 # 注意：build context 是仓库根目录（见 docker-compose.yml），以便读取 proto/ 接口定义。
 # gRPC stub 在构建阶段自动生成，部署无需手动 make go。
@@ -11,10 +13,10 @@ ARG APT_MIRROR=https://mirrors.tuna.tsinghua.edu.cn
 COPY docker/apt/configure_china_mirror.sh /usr/local/bin/configure-apt-mirror
 RUN APT_MIRROR="${APT_MIRROR}" sh /usr/local/bin/configure-apt-mirror \
     && apt-get update && apt-get install -y --no-install-recommends protobuf-compiler \
-    && go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11 \
+    && rm -rf /var/lib/apt/lists/* 
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11 \
     && go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1 \
-    && go install github.com/swaggo/swag/cmd/swag@v1.16.6 \
-    && rm -rf /var/lib/apt/lists/*
+    && go install github.com/swaggo/swag/cmd/swag@v1.16.6
 ENV PATH="$PATH:/go/bin"
 
 WORKDIR /app/gateway
@@ -22,7 +24,11 @@ COPY gateway/go.mod gateway/go.sum ./
 RUN go mod download
 
 # 生成 gRPC stub（在镜像内完成，部署免手动 make go）
-COPY proto/ /app/proto/
+COPY proto/common/ /app/proto/common/
+COPY proto/user/ /app/proto/user/
+COPY proto/crawler/ /app/proto/crawler/
+COPY proto/data_source/ /app/proto/data_source/
+COPY proto/occupation/ /app/proto/occupation/
 COPY gateway/ ./
 RUN mkdir -p /app/gateway/pb \
     && protoc \

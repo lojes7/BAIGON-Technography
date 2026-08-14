@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 # 百工谱 — crawler_service
 
 FROM python:3.12-slim
@@ -17,10 +19,12 @@ RUN APT_MIRROR="${APT_MIRROR}" sh /usr/local/bin/configure-apt-mirror \
 
 # 安装 Python 依赖（含 grpcio-tools，构建期生成 stub 用）
 COPY crawler/requirements.txt .
-RUN pip install -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple --no-cache-dir -r requirements.txt
+RUN pip install -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple --timeout 180 -r requirements.txt
 
 # 生成 python gRPC stub（在镜像内完成，部署免手动 make python-crawler）
-COPY proto/ /app/proto/
+COPY proto/common/ /app/proto/common/
+COPY proto/crawler/ /app/proto/crawler/
+COPY proto/ai/ /app/proto/ai/
 COPY crawler/src/ /app/src/
 RUN mkdir -p /app/pb_gen \
     && python -m grpc_tools.protoc \
