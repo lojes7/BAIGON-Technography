@@ -79,9 +79,9 @@ func positiveQueryID(c *gin.Context, name string) (int64, error) {
 
 const grpcErrorCodeTrailer = "baigon-error-code"
 
-// userIDFromContext 从 gin context 提取用户 ID
+// UserIDFromContext 从 gin context 提取用户 ID
 // Auth 中间件已注入 userId/uid（见 middleware.go），此处兼容 JWT 数字的两种解析类型
-func userIDFromContext(c *gin.Context) int64 {
+func UserIDFromContext(c *gin.Context) int64 {
 	if v, ok := c.Get("userId"); ok {
 		if id, ok := v.(int64); ok {
 			return id
@@ -93,9 +93,9 @@ func userIDFromContext(c *gin.Context) int64 {
 	return 0
 }
 
-// grpcErrorCodes 将 gRPC 状态映射为 HTTP 状态，并动态透传可选业务错误码。
+// GRPCErrorCodes 将 gRPC 状态映射为 HTTP 状态，并动态透传可选业务错误码。
 // 没有业务码时 errorCode 与 httpCode 相同，不维护业务错误码注册表。
-func grpcErrorCodes(err error, trailers ...metadata.MD) (httpCode int, errorCode int) {
+func GRPCErrorCodes(err error, trailers ...metadata.MD) (httpCode int, errorCode int) {
 	httpCode = http.StatusInternalServerError
 	if st, ok := status.FromError(err); ok {
 		switch st.Code() {

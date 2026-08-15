@@ -2,9 +2,11 @@
 package com.baigon.occupation.service.jobanalysis;
 
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisCandidate;
+import com.baigon.occupation.entity.jobanalysis.JobAnalysisResult;
 import com.baigon.occupation.entity.ReviewStatus;
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisTask;
 import com.baigon.occupation.repository.jobanalysis.JobAnalysisCandidateRepository;
+import com.baigon.occupation.repository.jobanalysis.JobAnalysisResultRepository;
 import com.baigon.occupation.repository.jobanalysis.JobAnalysisTaskRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -24,11 +26,14 @@ public class JobAnalysisQueryService {
 
     private final JobAnalysisTaskRepository taskRepository;
     private final JobAnalysisCandidateRepository candidateRepository;
+    private final JobAnalysisResultRepository resultRepository;
 
     public JobAnalysisQueryService(JobAnalysisTaskRepository taskRepository,
-                                   JobAnalysisCandidateRepository candidateRepository) {
+                                   JobAnalysisCandidateRepository candidateRepository,
+                                   JobAnalysisResultRepository resultRepository) {
         this.taskRepository = taskRepository;
         this.candidateRepository = candidateRepository;
+        this.resultRepository = resultRepository;
     }
 
     public Page<JobAnalysisTask> list(int page, int pageSize, String reviewStatus) {
@@ -47,9 +52,13 @@ public class JobAnalysisQueryService {
 
     public Optional<JobAnalysisDetail> detail(Long id) {
         return taskRepository.findByIdAndDeletedAtIsNull(id).map(task -> new JobAnalysisDetail(
-                task, candidateRepository.findByTaskIdAndDeletedAtIsNullOrderByRankAsc(id)));
+                task,
+                candidateRepository.findByTaskIdAndDeletedAtIsNullOrderByRankAsc(id),
+                resultRepository.findByTaskIdAndDeletedAtIsNullOrderByRankAsc(id)));
     }
 
-    public record JobAnalysisDetail(JobAnalysisTask task, List<JobAnalysisCandidate> candidates) {
+    public record JobAnalysisDetail(JobAnalysisTask task,
+                                    List<JobAnalysisCandidate> candidates,
+                                    List<JobAnalysisResult> results) {
     }
 }

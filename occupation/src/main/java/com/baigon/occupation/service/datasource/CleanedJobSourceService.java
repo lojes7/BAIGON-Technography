@@ -84,7 +84,7 @@ public class CleanedJobSourceService {
         record.setUpdatedAt(now);
         cleanedJobSourceRepository.save(record);
         // 写业务日志（用户上下文来自 Kafka 事件 payload）
-        logService.info(new AuditContext(traceId, userId, userName, userIp, "KAFKA", ""),
+        logService.info(AuditContext.from(traceId, userId, userName, userIp, "KAFKA", ""),
                 "cleaned job source saved: " + record.getJobName());
     }
 
@@ -151,34 +151,32 @@ public class CleanedJobSourceService {
         ReviewResult result = applyReview(source, action, edited, audit.userId());
         writeReviewLog(source, action, audit);
         if (result.approvedVersion() != null) {
-            // 审核快照、jobs 和待分析任务在同一事务中完成，不经过 Kafka。
+            // 审核快照、jobs 和分析任务在同一事务中完成，不经过 Kafka。
             OffsetDateTime now = result.approvedVersion().getUpdatedAt();
             JobAnalysisTask task = createJobAndPrepareAnalysis(result.approvedVersion(), now);
             if (task != null) {
-                jobAnalysisService.submitAfterCommit(task.getId(), auditForSource(source, audit));
+                jobAnalysisService.submitAfterCommit(
+                        task.getId(), audit.withTraceId(source.getTraceId()));
             }
         }
         return Optional.of(result);
     }
 
     /**
-     * 同步创建 jobs：别名命中时直接写 occupation_id；未命中时持久化待分析任务。
-     * 返回值只表示本次新建、需要在提交后启动的任务。
+     * 同步创建 jobs 和总分析任务：别名只决定是否跳过职业名称 Embedding，
+     * 真实 JD 分析始终在事务提交后执行。
      */
     private JobAnalysisTask createJobAndPrepareAnalysis(ReviewedCleanedJobSource source,
                                                         OffsetDateTime now) {
         Job job = jobRepository.findByTraceIdAndDeletedAtIsNull(source.getTraceId())
                 .orElseGet(() -> newJob(source, now));
-        if (job.getOccupationId() != null) return null;
 
-        if (job.getName() != null && !job.getName().isBlank()) {
+        if (job.getOccupationId() == null && job.getName() != null && !job.getName().isBlank()) {
             Optional<JobOccupationAlias> alias =
                     aliasRepository.findByJobNameAndDeletedAtIsNull(job.getName());
             if (alias.isPresent()) {
                 job.setOccupationId(alias.get().getOccupationId());
                 job.setUpdatedAt(now);
-                jobRepository.save(job);
-                return null;
             }
         }
 
@@ -192,7 +190,11 @@ public class CleanedJobSourceService {
         task.setJobId(job.getId());
         task.setJobName(job.getName());
         task.setTaskStatus(TaskStatus.PENDING);
+        task.setOccupationAnalysisStatus(
+                job.getOccupationId() == null ? TaskStatus.PENDING : TaskStatus.SUCCESS);
+        task.setJdAnalysisStatus(TaskStatus.PENDING);
         task.setReviewStatus(ReviewStatus.PENDING);
+        task.setSelectedOccupationId(job.getOccupationId());
         task.setAttempts(0);
         task.setCreatedAt(now);
         task.setUpdatedAt(now);
@@ -302,7 +304,8 @@ public class CleanedJobSourceService {
 
     /** 审核成功后的业务日志统一出口。 */
     private void writeReviewLog(CleanedJobSource source, ReviewAction action, AuditContext audit) {
-        AuditContext sourceAudit = auditForSource(source, audit);
+        // 审核日志使用岗位来源 trace_id，保留原请求的用户与网络上下文。
+        AuditContext sourceAudit = audit.withTraceId(source.getTraceId());
         switch (action) {
             case APPROVE -> logService.info(sourceAudit,
                     "review approved: " + source.getJobName());
@@ -311,12 +314,5 @@ public class CleanedJobSourceService {
             case APPROVE_WITH_EDIT -> logService.info(sourceAudit,
                     "review approved with edit: " + source.getJobName());
         }
-    }
-
-    /** 分类和别名审计统一使用岗位来源 trace_id，而不是一次 HTTP 请求的临时 trace。 */
-    private AuditContext auditForSource(CleanedJobSource source, AuditContext requestAudit) {
-        return new AuditContext(
-                source.getTraceId(), requestAudit.userId(), requestAudit.userName(),
-                requestAudit.userIp(), requestAudit.requestMethod(), requestAudit.requestUrl());
     }
 }

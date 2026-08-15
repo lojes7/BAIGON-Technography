@@ -100,6 +100,16 @@ class JobSourceRepository:
             ).all()
         return {number for number in numbers if number}
 
+    def find_by_trace_id(self, trace_id: int) -> JobSource | None:
+        """按 trace_id 查询一条未软删除的原始岗位记录。"""
+        with self._session_factory() as session:
+            return session.scalar(
+                select(JobSource).where(
+                    JobSource.trace_id == trace_id,
+                    JobSource.deleted_at.is_(None),
+                )
+            )
+
     @staticmethod
     def _initial_embedding_status(
         row: JobRecord,

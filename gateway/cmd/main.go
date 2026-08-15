@@ -103,6 +103,7 @@ func main() {
 	gatewayrouter.RegisterCrawlerRoutes(api, grpcPool, cfg.JWTSecret)
 	gatewayrouter.RegisterDataSourceRoutes(api, grpcPool, cfg.JWTSecret)
 	gatewayrouter.RegisterOccupationRoutes(api, grpcPool, cfg.JWTSecret)
+	gatewayrouter.RegisterJobRoutes(api, grpcPool, cfg.JWTSecret)
 
 	// 启动 HTTP 服务
 	srv := &http.Server{

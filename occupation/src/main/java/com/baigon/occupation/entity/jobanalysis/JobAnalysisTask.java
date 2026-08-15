@@ -32,6 +32,14 @@ public class JobAnalysisTask extends BaseEntity {
     private TaskStatus taskStatus = TaskStatus.PENDING;
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(name = "occupation_analysis_status", nullable = false, columnDefinition = "task_status")
+    private TaskStatus occupationAnalysisStatus = TaskStatus.PENDING;
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(name = "jd_analysis_status", nullable = false, columnDefinition = "task_status")
+    private TaskStatus jdAnalysisStatus = TaskStatus.PENDING;
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(name = "review_status", nullable = false, columnDefinition = "review_status")
     private ReviewStatus reviewStatus = ReviewStatus.PENDING;
     @Column(name = "selected_occupation_id")
@@ -55,6 +63,12 @@ public class JobAnalysisTask extends BaseEntity {
     public void setModelName(String modelName) { this.modelName = modelName; }
     public TaskStatus getTaskStatus() { return taskStatus; }
     public void setTaskStatus(TaskStatus taskStatus) { this.taskStatus = taskStatus; }
+    public TaskStatus getOccupationAnalysisStatus() { return occupationAnalysisStatus; }
+    public void setOccupationAnalysisStatus(TaskStatus occupationAnalysisStatus) {
+        this.occupationAnalysisStatus = occupationAnalysisStatus;
+    }
+    public TaskStatus getJdAnalysisStatus() { return jdAnalysisStatus; }
+    public void setJdAnalysisStatus(TaskStatus jdAnalysisStatus) { this.jdAnalysisStatus = jdAnalysisStatus; }
     public ReviewStatus getReviewStatus() { return reviewStatus; }
     public void setReviewStatus(ReviewStatus reviewStatus) { this.reviewStatus = reviewStatus; }
     public Long getSelectedOccupationId() { return selectedOccupationId; }

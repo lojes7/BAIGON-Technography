@@ -88,7 +88,7 @@ public class DataSourceGrpcService extends DataSourceServiceGrpc.DataSourceServi
                     .build();
 
             // 写业务日志（用户上下文来自请求审计字段）
-            logService.info(audit(request.getTraceId(), request.getUserId(),
+            logService.info(AuditContext.from(request.getTraceId(), request.getUserId(),
                             request.getUserName(), request.getUserIp(),
                             request.getRequestMethod(), request.getRequestUrl()),
                     "list cleaned jobs: total=" + result.getTotalElements());
@@ -123,7 +123,7 @@ public class DataSourceGrpcService extends DataSourceServiceGrpc.DataSourceServi
                     .build());
             responseObserver.onCompleted();
 
-            logService.info(audit(job.getTraceId(), request.getUserId(),
+            logService.info(AuditContext.from(job.getTraceId(), request.getUserId(),
                             request.getUserName(), request.getUserIp(),
                             request.getRequestMethod(), request.getRequestUrl()),
                     "get cleaned job detail: " + job.getJobName());
@@ -151,13 +151,8 @@ public class DataSourceGrpcService extends DataSourceServiceGrpc.DataSourceServi
             GetJobSourceByTraceIdResponse crawlerResp =
                     crawlerGrpcClient.getJobSourceByTraceId(
                             job.getTraceId(),
-                            audit(job.getTraceId(), request.getUserId(), request.getUserName(),
+                            AuditContext.from(job.getTraceId(), request.getUserId(), request.getUserName(),
                                     request.getUserIp(), request.getRequestMethod(), request.getRequestUrl()));
-            if (crawlerResp == null) {
-                responseObserver.onError(ApiException.grpcException(
-                        ApiException.ErrorCode.SERVICE_UNAVAILABLE, "crawler service unavailable"));
-                return;
-            }
 
             SourceJobDetail source = SourceJobDetail.newBuilder()
                     .setId(crawlerResp.getId())
@@ -183,10 +178,12 @@ public class DataSourceGrpcService extends DataSourceServiceGrpc.DataSourceServi
             responseObserver.onNext(GetSourceJobResponse.newBuilder().setSource(source).build());
             responseObserver.onCompleted();
 
-            logService.info(audit(job.getTraceId(), request.getUserId(),
+            logService.info(AuditContext.from(job.getTraceId(), request.getUserId(),
                             request.getUserName(), request.getUserIp(),
                             request.getRequestMethod(), request.getRequestUrl()),
                     "get source job: " + source.getJobName());
+        } catch (ApiException e) {
+            responseObserver.onError(e.asGrpcException());
         } catch (Exception e) {
             log.error("查询原始记录失败", e);
             responseObserver.onError(ApiException.grpcException(
@@ -209,7 +206,7 @@ public class DataSourceGrpcService extends DataSourceServiceGrpc.DataSourceServi
 
             Optional<CleanedJobSourceService.ReviewResult> opt = cleanedJobSourceService.review(
                     request.getId(), action, edited,
-                    audit(request.getTraceId(), request.getUserId(), request.getUserName(),
+                    AuditContext.from(request.getTraceId(), request.getUserId(), request.getUserName(),
                             request.getUserIp(), request.getRequestMethod(), request.getRequestUrl()));
             if (opt.isEmpty()) {
                 responseObserver.onError(ApiException.grpcException(
@@ -311,36 +308,6 @@ public class DataSourceGrpcService extends DataSourceServiceGrpc.DataSourceServi
             log.warn("解析日期失败: {}", value);
             return null;
         }
-    }
-
-    /** 字符串 → Long（空返回 null） */
-    private Long parseLong(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        try {
-            return Long.parseLong(value);
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
-
-    private AuditContext audit(String traceId,
-                               long userId,
-                               String userName,
-                               String userIp,
-                               String requestMethod,
-                               String requestUrl) {
-        return audit(parseLong(traceId), userId, userName, userIp, requestMethod, requestUrl);
-    }
-
-    private AuditContext audit(Long traceId,
-                               long userId,
-                               String userName,
-                               String userIp,
-                               String requestMethod,
-                               String requestUrl) {
-        return new AuditContext(traceId, userId, userName, userIp, requestMethod, requestUrl);
     }
 
     private String orEmpty(String value) {

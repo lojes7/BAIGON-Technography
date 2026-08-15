@@ -48,14 +48,52 @@ public interface JobAnalysisTaskRepository extends JpaRepository<JobAnalysisTask
             UPDATE job_analysis_tasks
             SET job_name_vector = CAST(:vector AS vector),
                 model_name = :modelName,
-                task_status = CAST('SUCCESS' AS task_status),
+                occupation_analysis_status = CAST('SUCCESS' AS task_status),
                 error_msg = NULL,
                 updated_at = now()
             WHERE id = :id AND deleted_at IS NULL
             """, nativeQuery = true)
-    int markAnalysisSucceeded(@Param("id") Long id,
-                              @Param("vector") String vector,
-                              @Param("modelName") String modelName);
+    int markOccupationAnalysisSucceeded(@Param("id") Long id,
+                                        @Param("vector") String vector,
+                                        @Param("modelName") String modelName);
+
+    @Transactional
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = """
+            UPDATE job_analysis_tasks
+            SET jd_analysis_status = CAST('SUCCESS' AS task_status),
+                task_status = CAST('SUCCESS' AS task_status),
+                error_msg = NULL,
+                updated_at = now()
+            WHERE id = :id
+              AND deleted_at IS NULL
+              AND occupation_analysis_status = CAST('SUCCESS' AS task_status)
+            """, nativeQuery = true)
+    int markJdAnalysisSucceeded(@Param("id") Long id);
+
+    @Transactional
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = """
+            UPDATE job_analysis_tasks
+            SET occupation_analysis_status = CAST('FAILED' AS task_status),
+                task_status = CAST('FAILED' AS task_status),
+                error_msg = :error,
+                updated_at = now()
+            WHERE id = :id AND deleted_at IS NULL
+            """, nativeQuery = true)
+    int markOccupationAnalysisFailed(@Param("id") Long id, @Param("error") String error);
+
+    @Transactional
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = """
+            UPDATE job_analysis_tasks
+            SET jd_analysis_status = CAST('FAILED' AS task_status),
+                task_status = CAST('FAILED' AS task_status),
+                error_msg = :error,
+                updated_at = now()
+            WHERE id = :id AND deleted_at IS NULL
+            """, nativeQuery = true)
+    int markJdAnalysisFailed(@Param("id") Long id, @Param("error") String error);
 
     @Transactional
     @Modifying(clearAutomatically = true, flushAutomatically = true)

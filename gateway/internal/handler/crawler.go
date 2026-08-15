@@ -68,7 +68,7 @@ func StartCrawlHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 		resp, err := crawlerpb.NewCrawlerServiceClient(conn).Crawl(ctx, &crawlerpb.CrawlRequest{
 			Type:          req.Type,
 			TraceId:       c.GetString("trace_id"),
-			UserId:        userIDFromContext(c),
+			UserId:        UserIDFromContext(c),
 			UserName:      c.GetString("uid"),
 			UserIp:        c.ClientIP(),
 			RequestMethod: c.Request.Method,
@@ -77,7 +77,7 @@ func StartCrawlHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			MaxDocuments:  int32(req.MaxDocuments),
 		})
 		if err != nil {
-			httpCode, errorCode := grpcErrorCodes(err)
+			httpCode, errorCode := GRPCErrorCodes(err)
 			response.Error(c, httpCode, errorCode)
 			return
 		}
@@ -117,14 +117,14 @@ func GetCrawlStatusHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 		// 透传用户上下文，供后端写 logs 表
 		resp, err := crawlerpb.NewCrawlerServiceClient(conn).GetCrawlStatus(ctx, &crawlerpb.GetCrawlStatusRequest{
 			TraceId:       c.GetString("trace_id"),
-			UserId:        userIDFromContext(c),
+			UserId:        UserIDFromContext(c),
 			UserName:      c.GetString("uid"),
 			UserIp:        c.ClientIP(),
 			RequestMethod: c.Request.Method,
 			RequestUrl:    c.Request.URL.Path,
 		})
 		if err != nil {
-			httpCode, errorCode := grpcErrorCodes(err)
+			httpCode, errorCode := GRPCErrorCodes(err)
 			response.Error(c, httpCode, errorCode)
 			return
 		}
@@ -165,14 +165,14 @@ func StopCrawlHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 		// 透传用户上下文，供后端写 logs 表
 		resp, err := crawlerpb.NewCrawlerServiceClient(conn).StopCrawl(ctx, &crawlerpb.StopCrawlRequest{
 			TraceId:       c.GetString("trace_id"),
-			UserId:        userIDFromContext(c),
+			UserId:        UserIDFromContext(c),
 			UserName:      c.GetString("uid"),
 			UserIp:        c.ClientIP(),
 			RequestMethod: c.Request.Method,
 			RequestUrl:    c.Request.URL.Path,
 		})
 		if err != nil {
-			httpCode, errorCode := grpcErrorCodes(err)
+			httpCode, errorCode := GRPCErrorCodes(err)
 			response.Error(c, httpCode, errorCode)
 			return
 		}
@@ -267,14 +267,14 @@ func IngestDataHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 		resp, err := crawlerpb.NewCrawlerServiceClient(conn).IngestData(ctx, &crawlerpb.IngestDataRequest{
 			Jobs:          jobs,
 			TraceId:       c.GetString("trace_id"),
-			UserId:        userIDFromContext(c),
+			UserId:        UserIDFromContext(c),
 			UserName:      c.GetString("uid"),
 			UserIp:        c.ClientIP(),
 			RequestMethod: c.Request.Method,
 			RequestUrl:    c.Request.URL.Path,
 		})
 		if err != nil {
-			httpCode, errorCode := grpcErrorCodes(err)
+			httpCode, errorCode := GRPCErrorCodes(err)
 			response.Error(c, httpCode, errorCode)
 			return
 		}

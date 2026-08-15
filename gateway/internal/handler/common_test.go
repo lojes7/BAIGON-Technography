@@ -19,7 +19,7 @@ import (
 func TestGRPCErrorCodesReturnsDynamicBusinessCode(t *testing.T) {
 	trailers := metadata.Pairs(grpcErrorCodeTrailer, "40301")
 
-	httpCode, errorCode := grpcErrorCodes(
+	httpCode, errorCode := GRPCErrorCodes(
 		status.Error(codes.FailedPrecondition, "already reviewed"), trailers)
 
 	if httpCode != http.StatusForbidden {
@@ -31,7 +31,7 @@ func TestGRPCErrorCodesReturnsDynamicBusinessCode(t *testing.T) {
 }
 
 func TestGRPCErrorCodesDefaultsToHTTPCode(t *testing.T) {
-	httpCode, errorCode := grpcErrorCodes(status.Error(codes.NotFound, "not found"))
+	httpCode, errorCode := GRPCErrorCodes(status.Error(codes.NotFound, "not found"))
 
 	if httpCode != http.StatusNotFound || errorCode != http.StatusNotFound {
 		t.Fatalf("标准错误码映射错误：http=%d, code=%d", httpCode, errorCode)

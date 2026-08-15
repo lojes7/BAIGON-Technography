@@ -1,15 +1,21 @@
-// 百工谱 — 岗位分析人工审核服务
+// 百工谱 — 岗位职业与技能分析人工审核服务
 package com.baigon.occupation.service.jobanalysis;
 
 import cn.hutool.core.lang.Snowflake;
+import com.baigon.occupation.entity.ReviewStatus;
+import com.baigon.occupation.entity.TaskStatus;
 import com.baigon.occupation.entity.job.Job;
 import com.baigon.occupation.entity.job.JobOccupationAlias;
-import com.baigon.occupation.entity.ReviewStatus;
+import com.baigon.occupation.entity.job.JobSkill;
+import com.baigon.occupation.entity.jobanalysis.JobAnalysisResult;
+import com.baigon.occupation.entity.jobanalysis.JobAnalysisReviewAction;
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisTask;
 import com.baigon.occupation.entity.occupation.Occupation;
 import com.baigon.occupation.error.ApiException;
 import com.baigon.occupation.repository.job.JobOccupationAliasRepository;
 import com.baigon.occupation.repository.job.JobRepository;
+import com.baigon.occupation.repository.job.JobSkillRepository;
+import com.baigon.occupation.repository.jobanalysis.JobAnalysisResultRepository;
 import com.baigon.occupation.repository.jobanalysis.JobAnalysisTaskRepository;
 import com.baigon.occupation.repository.occupation.OccupationRepository;
 import com.baigon.occupation.service.AuditContext;
@@ -18,35 +24,54 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 public class JobAnalysisReviewService {
 
+    private static final Set<String> PROFICIENCIES =
+            Set.of("Expert", "Advanced", "Familiar", "Basic");
+
     private final JobAnalysisTaskRepository taskRepository;
+    private final JobAnalysisResultRepository resultRepository;
     private final JobRepository jobRepository;
+    private final JobSkillRepository jobSkillRepository;
     private final JobOccupationAliasRepository aliasRepository;
     private final OccupationRepository occupationRepository;
     private final LogService logService;
     private final Snowflake snowflake;
 
     public JobAnalysisReviewService(JobAnalysisTaskRepository taskRepository,
+                                    JobAnalysisResultRepository resultRepository,
                                     JobRepository jobRepository,
+                                    JobSkillRepository jobSkillRepository,
                                     JobOccupationAliasRepository aliasRepository,
                                     OccupationRepository occupationRepository,
                                     LogService logService,
                                     Snowflake snowflake) {
         this.taskRepository = taskRepository;
+        this.resultRepository = resultRepository;
         this.jobRepository = jobRepository;
+        this.jobSkillRepository = jobSkillRepository;
         this.aliasRepository = aliasRepository;
         this.occupationRepository = occupationRepository;
         this.logService = logService;
         this.snowflake = snowflake;
     }
 
-    /** 最终职业可来自 occupations 任意有效记录，不要求出现在 AI 候选中。 */
+    /**
+     * 一次事务完成职业确认和全部技能审核；可混合通过、修改后通过与拒绝。
+     * AI 原始字段保持不变，只有通过后的最终技能写入 job_skills。
+     */
     @Transactional
-    public Optional<ReviewResult> review(Long taskId, Long occupationId, AuditContext audit) {
+    public Optional<ReviewResult> review(Long taskId,
+                                         Long occupationId,
+                                         List<SkillReviewDecision> decisions,
+                                         AuditContext audit) {
         Optional<JobAnalysisTask> optionalTask = taskRepository.findByIdForReview(taskId);
         if (optionalTask.isEmpty()) return Optional.empty();
         JobAnalysisTask task = optionalTask.get();
@@ -55,31 +80,28 @@ public class JobAnalysisReviewService {
                     ApiException.ErrorCode.JOB_ANALYSIS_ALREADY_REVIEWED,
                     "job analysis task already reviewed");
         }
+        if (task.getTaskStatus() != TaskStatus.SUCCESS) {
+            throw new ApiException(ApiException.ErrorCode.BAD_REQUEST,
+                    "job analysis task is not complete");
+        }
+
         Occupation occupation = occupationRepository.findByIdAndDeletedAtIsNull(occupationId)
                 .orElseThrow(() -> new ApiException(
                         ApiException.ErrorCode.NOT_FOUND,
                         "occupation not found"));
         Job job = jobRepository.findByIdForUpdate(task.getJobId())
                 .orElseThrow(() -> new IllegalStateException("job not found"));
+        List<JobAnalysisResult> results =
+                resultRepository.findByTaskIdAndDeletedAtIsNullOrderByRankAsc(taskId);
+        Map<Long, SkillReviewDecision> decisionsById = validateDecisions(results, decisions);
 
         OffsetDateTime now = OffsetDateTime.now();
         job.setOccupationId(occupation.getId());
         job.setUpdatedAt(now);
         jobRepository.save(job);
 
-        JobOccupationAlias alias = null;
-        if (job.getName() != null && !job.getName().isBlank()) {
-            alias = aliasRepository.findByJobNameForUpdate(job.getName())
-                    .orElseGet(() -> newAlias(job, task, audit, now));
-            // 已存在映射时以本次人工审核结论更新，并记录本次关键 trace_id。
-            alias.setTraceId(task.getTraceId());
-            alias.setOccupationId(occupation.getId());
-            alias.setOccupationName(occupation.getName());
-            alias.setReviewedAt(now);
-            alias.setReviewedBy(audit.userId());
-            alias.setUpdatedAt(now);
-            aliasRepository.save(alias);
-        }
+        JobOccupationAlias alias = updateAlias(job, task, occupation, audit, now);
+        int approvedSkills = reviewSkills(results, decisionsById, audit.userId(), now);
 
         task.setSelectedOccupationId(occupation.getId());
         task.setReviewStatus(ReviewStatus.PASSED);
@@ -88,8 +110,131 @@ public class JobAnalysisReviewService {
         task.setUpdatedAt(now);
         taskRepository.save(task);
         logService.info(audit, "job analysis reviewed: task_id=" + taskId
-                + ", occupation_id=" + occupationId);
-        return Optional.of(new ReviewResult(task, job, occupation, alias));
+                + ", occupation_id=" + occupationId + ", approved_skills=" + approvedSkills);
+        return Optional.of(new ReviewResult(task, job, occupation, alias, results));
+    }
+
+    /** 必须一次覆盖任务的全部结果，避免半审核状态和部分写入 job_skills。 */
+    private Map<Long, SkillReviewDecision> validateDecisions(
+            List<JobAnalysisResult> results,
+            List<SkillReviewDecision> decisions) {
+        List<SkillReviewDecision> submitted = decisions == null ? List.of() : decisions;
+        if (submitted.size() != results.size()) {
+            throw new ApiException(ApiException.ErrorCode.BAD_REQUEST,
+                    "skill reviews must cover all analysis results");
+        }
+
+        Map<Long, SkillReviewDecision> byId = new HashMap<>();
+        for (SkillReviewDecision decision : submitted) {
+            if (decision == null || decision.resultId() == null || decision.resultId() <= 0
+                    || decision.action() == null) {
+                throw new ApiException(ApiException.ErrorCode.BAD_REQUEST,
+                        "invalid skill review decision");
+            }
+            if (byId.put(decision.resultId(), decision) != null) {
+                throw new ApiException(ApiException.ErrorCode.BAD_REQUEST,
+                        "duplicate analysis result id");
+            }
+        }
+        for (JobAnalysisResult result : results) {
+            if (result.getReviewStatus() != ReviewStatus.PENDING
+                    || !byId.containsKey(result.getId())) {
+                throw new ApiException(ApiException.ErrorCode.BAD_REQUEST,
+                        "skill reviews do not match analysis results");
+            }
+        }
+        return byId;
+    }
+
+    private int reviewSkills(List<JobAnalysisResult> results,
+                             Map<Long, SkillReviewDecision> decisions,
+                             Long reviewerId,
+                             OffsetDateTime now) {
+        int approved = 0;
+        for (JobAnalysisResult result : results) {
+            SkillReviewDecision decision = decisions.get(result.getId());
+            result.setReviewAction(decision.action());
+            result.setReviewedAt(now);
+            result.setReviewedBy(reviewerId);
+            result.setUpdatedAt(now);
+
+            switch (decision.action()) {
+                case APPROVE -> {
+                    result.setReviewStatus(ReviewStatus.PASSED);
+                    saveJobSkill(result, result.getSkillName(), result.getSkillProficiency(),
+                            result.getEvidence(), now);
+                    approved++;
+                }
+                case APPROVE_WITH_EDIT -> {
+                    validateEditedSkill(decision);
+                    String name = decision.skillName().trim();
+                    String evidence = decision.evidence().trim();
+                    result.setReviewStatus(ReviewStatus.PASSED);
+                    result.setReviewedSkillName(name);
+                    result.setReviewedSkillProficiency(decision.skillProficiency());
+                    result.setReviewedEvidence(evidence);
+                    saveJobSkill(result, name, decision.skillProficiency(), evidence, now);
+                    approved++;
+                }
+                case REJECT -> result.setReviewStatus(ReviewStatus.REJECTED);
+            }
+            resultRepository.save(result);
+        }
+        return approved;
+    }
+
+    private void saveJobSkill(JobAnalysisResult result,
+                              String name,
+                              String proficiency,
+                              String evidence,
+                              OffsetDateTime now) {
+        JobSkill skill = new JobSkill();
+        skill.setId(snowflake.nextId());
+        skill.setAnalysisResultId(result.getId());
+        skill.setJobId(result.getJobId());
+        skill.setSkillName(name);
+        skill.setSkillProficiency(proficiency);
+        skill.setEvidence(evidence);
+        skill.setCreatedAt(now);
+        skill.setUpdatedAt(now);
+        jobSkillRepository.save(skill);
+    }
+
+    private void validateEditedSkill(SkillReviewDecision decision) {
+        if (decision.skillName() == null || decision.skillName().isBlank()
+                || decision.skillName().trim().length() > 100) {
+            throw new ApiException(ApiException.ErrorCode.BAD_REQUEST,
+                    "edited skill name is invalid");
+        }
+        if (!PROFICIENCIES.contains(decision.skillProficiency())) {
+            throw new ApiException(ApiException.ErrorCode.BAD_REQUEST,
+                    "edited skill proficiency is invalid");
+        }
+        if (decision.evidence() == null || decision.evidence().isBlank()) {
+            throw new ApiException(ApiException.ErrorCode.BAD_REQUEST,
+                    "edited skill evidence is empty");
+        }
+    }
+
+    private JobOccupationAlias updateAlias(Job job,
+                                             JobAnalysisTask task,
+                                             Occupation occupation,
+                                             AuditContext audit,
+                                             OffsetDateTime now) {
+        if (job.getName() == null || job.getName().isBlank()) {
+            return null;
+        }
+        JobOccupationAlias alias = aliasRepository.findByJobNameForUpdate(job.getName())
+                .orElseGet(() -> newAlias(job, task, audit, now));
+        // 已存在映射时以本次人工审核结论更新，并记录本次关键 trace_id。
+        alias.setTraceId(task.getTraceId());
+        alias.setOccupationId(occupation.getId());
+        alias.setOccupationName(occupation.getName());
+        alias.setReviewedAt(now);
+        alias.setReviewedBy(audit.userId());
+        alias.setUpdatedAt(now);
+        aliasRepository.save(alias);
+        return alias;
     }
 
     private JobOccupationAlias newAlias(Job job,
@@ -107,9 +252,17 @@ public class JobAnalysisReviewService {
         return alias;
     }
 
+    public record SkillReviewDecision(Long resultId,
+                                      JobAnalysisReviewAction action,
+                                      String skillName,
+                                      String skillProficiency,
+                                      String evidence) {
+    }
+
     public record ReviewResult(JobAnalysisTask task,
                                Job job,
                                Occupation occupation,
-                               JobOccupationAlias alias) {
+                               JobOccupationAlias alias,
+                               List<JobAnalysisResult> analysisResults) {
     }
 }

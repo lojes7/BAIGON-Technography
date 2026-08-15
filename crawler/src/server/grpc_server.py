@@ -242,6 +242,63 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
         )
 
     # ============================================================
+    # 原始岗位追溯
+    # ============================================================
+    def GetJobSourceByTraceId(self, request, context):
+        """按 trace_id 查询 job_sources 中的原始岗位。"""
+        if request.trace_id <= 0:
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "trace_id must be positive")
+
+        log_ctx = {
+            "trace_id": request.trace_id,
+            "user_id": request.user_id,
+            "user_name": request.user_name or "system",
+            "user_ip": request.user_ip,
+            "request_method": request.request_method,
+            "request_url": request.request_url,
+        }
+        try:
+            job = self._db.find_by_trace_id(request.trace_id)
+        except Exception as exc:
+            logger.exception("查询原始岗位失败: trace_id=%d", request.trace_id)
+            self._log.error(
+                error_msg=str(exc)[:2000],
+                detail="get source job failed",
+                **log_ctx,
+            )
+            context.abort(grpc.StatusCode.INTERNAL, "server error")
+
+        if job is None:
+            self._log.warning(
+                error_msg="source job not found",
+                detail="get source job not found",
+                **log_ctx,
+            )
+            context.abort(grpc.StatusCode.NOT_FOUND, "source job not found")
+
+        self._log.info(detail="get source job", **log_ctx)
+        return crawler_pb2.GetJobSourceByTraceIdResponse(
+            id=job.id,
+            trace_id=job.trace_id or 0,
+            publish_date=job.publish_date.isoformat() if job.publish_date else "",
+            source_platform=job.source_platform or "",
+            source_url=job.source_url or "",
+            city=job.city or "",
+            tags=job.tags or "",
+            major=job.major or "",
+            nature=job.nature or "",
+            salary=job.salary or "",
+            job_name=job.job_name or "",
+            company_name=job.company_name or "",
+            company_size=job.company_size or "",
+            province=job.province or "",
+            education=job.education or "",
+            experience=job.experience or "",
+            job_description=job.job_description or "",
+            clean_status=job.clean_status or "",
+        )
+
+    # ============================================================
     # 停止
     # ============================================================
     def StopCrawl(self, request, context):

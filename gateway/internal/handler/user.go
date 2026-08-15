@@ -63,7 +63,7 @@ func LoginHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			Password: req.Password,
 		})
 		if err != nil {
-			httpCode, errorCode := grpcErrorCodes(err)
+			httpCode, errorCode := GRPCErrorCodes(err)
 			response.Error(c, httpCode, errorCode)
 			return
 		}

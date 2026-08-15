@@ -1,7 +1,10 @@
-// 百工谱 — ai-service 文本向量化 gRPC 客户端
+// 百工谱 — ai-service 文本向量化与 JD 分析 gRPC 客户端
 package com.baigon.occupation.grpc;
 
 import com.baigon.ai.AIServiceGrpc;
+import com.baigon.ai.AnalyzeJobDescriptionRequest;
+import com.baigon.ai.AnalyzeJobDescriptionResponse;
+import com.baigon.ai.AnalyzedSkill;
 import com.baigon.ai.BatchEmbedTextRequest;
 import com.baigon.ai.BatchEmbedTextResponse;
 import com.baigon.ai.EmbeddingVector;
@@ -21,7 +24,7 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
-/** 通过 Consul 发现 ai-service；一次业务批次只发起一次 AI 请求，不自动重试。 */
+/** 通过 Consul 发现 ai-service；单次业务步骤不自动重试。 */
 @Component
 public class AIGrpcClient {
 
@@ -83,6 +86,23 @@ public class AIGrpcClient {
                 .withDeadlineAfter(timeoutSeconds, TimeUnit.SECONDS)
                 .batchEmbedText(request);
         return new EmbeddingCall(future, texts.size(), dimensions);
+    }
+
+    /** 异步发送真实 JD；AnalyzeJobDescription 契约只接收 jd，不混入审计字段。 */
+    public JobDescriptionAnalysisCall startJobDescriptionAnalysis(String jobDescription) {
+        if (jobDescription == null || jobDescription.isBlank()) {
+            throw new IllegalArgumentException("job_description is empty");
+        }
+        String target = discoverTarget();
+        ManagedChannel activeChannel = channelFor(target);
+        AnalyzeJobDescriptionRequest request = AnalyzeJobDescriptionRequest.newBuilder()
+                .setJd(jobDescription)
+                .build();
+        ListenableFuture<AnalyzeJobDescriptionResponse> future =
+                AIServiceGrpc.newFutureStub(activeChannel)
+                        .withDeadlineAfter(timeoutSeconds, TimeUnit.SECONDS)
+                        .analyzeJobDescription(request);
+        return new JobDescriptionAnalysisCall(future);
     }
 
     private String discoverTarget() {
@@ -182,5 +202,37 @@ public class AIGrpcClient {
                 }
             }
         }
+    }
+
+    /** JD 分析异步调用句柄，保留强类型技能对象，不接收 JSON 字符串。 */
+    public static final class JobDescriptionAnalysisCall {
+        private final ListenableFuture<AnalyzeJobDescriptionResponse> future;
+
+        private JobDescriptionAnalysisCall(ListenableFuture<AnalyzeJobDescriptionResponse> future) {
+            this.future = future;
+        }
+
+        public List<AnalyzedSkillResult> await() throws Exception {
+            try {
+                AnalyzeJobDescriptionResponse response = future.get();
+                List<AnalyzedSkillResult> results = new ArrayList<>(response.getSkillsCount());
+                for (AnalyzedSkill skill : response.getSkillsList()) {
+                    results.add(new AnalyzedSkillResult(
+                            skill.getName(), skill.getProficiency(), skill.getEvidence()));
+                }
+                return List.copyOf(results);
+            } catch (CancellationException exception) {
+                throw exception;
+            } catch (ExecutionException exception) {
+                Throwable cause = exception.getCause();
+                if (cause instanceof Exception checked) {
+                    throw checked;
+                }
+                throw new IllegalStateException("AI JD 分析 gRPC 调用失败", cause);
+            }
+        }
+    }
+
+    public record AnalyzedSkillResult(String name, String proficiency, String evidence) {
     }
 }

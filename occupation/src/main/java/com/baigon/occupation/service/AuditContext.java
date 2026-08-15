@@ -16,4 +16,40 @@ public record AuditContext(
         requestMethod = requestMethod == null ? "" : requestMethod;
         requestUrl = requestUrl == null ? "" : requestUrl;
     }
+
+    /** 从 gRPC 请求字段统一创建审计上下文，非法 trace_id 按空值处理。 */
+    public static AuditContext from(String traceId,
+                                    long userId,
+                                    String userName,
+                                    String userIp,
+                                    String requestMethod,
+                                    String requestUrl) {
+        return from(parseTraceId(traceId), userId, userName, userIp, requestMethod, requestUrl);
+    }
+
+    /** 从已经解析的 trace_id 创建审计上下文。 */
+    public static AuditContext from(Long traceId,
+                                    long userId,
+                                    String userName,
+                                    String userIp,
+                                    String requestMethod,
+                                    String requestUrl) {
+        return new AuditContext(traceId, userId, userName, userIp, requestMethod, requestUrl);
+    }
+
+    /** 保留用户与请求信息，只替换为业务记录的 trace_id。 */
+    public AuditContext withTraceId(Long businessTraceId) {
+        return from(businessTraceId, userId, userName, userIp, requestMethod, requestUrl);
+    }
+
+    private static Long parseTraceId(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
 }

@@ -36,6 +36,10 @@ service OccupationService {
   rpc ListJobAnalysisTasks (ListJobAnalysisTasksRequest) returns (ListJobAnalysisTasksResponse) {}
   rpc GetJobAnalysisTask (GetJobAnalysisTaskRequest) returns (GetJobAnalysisTaskResponse) {}
   rpc ReviewJobAnalysisTask (ReviewJobAnalysisTaskRequest) returns (GetJobAnalysisTaskResponse) {}
+
+  // 已审核岗位的分页检索与聚合详情。
+  rpc ListJobs (ListJobsRequest) returns (ListJobsResponse) {}
+  rpc GetJob (GetJobRequest) returns (GetJobResponse) {}
 }
 
 // 根目录分页查询；page 从 0 开始，page_size 默认 20、最大 100。
@@ -156,6 +160,8 @@ message ReviewJobAnalysisTaskRequest {
   int64 id = 1;
   // 可选择 occupations 表中的任意有效职业，不要求出现在 AI 候选中。
   int64 occupation_id = 2;
+  // 一次提交必须覆盖当前任务的全部 job_analysis_results。
+  repeated JobAnalysisSkillReview skill_reviews = 3;
 
   string trace_id = 10;
   int64 user_id = 11;
@@ -163,6 +169,16 @@ message ReviewJobAnalysisTaskRequest {
   string user_ip = 13;
   string request_method = 14;
   string request_url = 15;
+}
+
+message JobAnalysisSkillReview {
+  int64 result_id = 1;
+  // APPROVE / APPROVE_WITH_EDIT / REJECT
+  string action = 2;
+  // 仅 APPROVE_WITH_EDIT 使用，三个字段均必填。
+  string skill_name = 3;
+  string skill_proficiency = 4;
+  string evidence = 5;
 }
 
 message JobAnalysisTaskSummary {
@@ -179,6 +195,8 @@ message JobAnalysisTaskSummary {
   string created_at = 11;
   string reviewed_at = 12;
   int64 reviewed_by = 13;
+  string occupation_analysis_status = 14;
+  string jd_analysis_status = 15;
 }
 
 message JobAnalysisCandidate {
@@ -188,9 +206,26 @@ message JobAnalysisCandidate {
   double similarity = 4;
 }
 
+message JobAnalysisResult {
+  int64 id = 1;
+  int64 job_id = 2;
+  string skill_name = 3;
+  string skill_proficiency = 4;
+  string evidence = 5;
+  int32 rank = 6; // AI skills 数组中的原始顺序，不代表技能评分或优先级
+  string review_status = 7;
+  string review_action = 8;
+  string reviewed_skill_name = 9;
+  string reviewed_skill_proficiency = 10;
+  string reviewed_evidence = 11;
+  string reviewed_at = 12;
+  int64 reviewed_by = 13;
+}
+
 message JobAnalysisTaskDetail {
   JobAnalysisTaskSummary task = 1;
   repeated JobAnalysisCandidate candidates = 2;
+  repeated JobAnalysisResult results = 3;
 }
 
 message ListJobAnalysisTasksResponse {
@@ -202,4 +237,90 @@ message ListJobAnalysisTasksResponse {
 
 message GetJobAnalysisTaskResponse {
   JobAnalysisTaskDetail analysis = 1;
+}
+
+// 岗位列表使用请求体接收分页和筛选条件；文本字段均为包含匹配。
+message ListJobsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string name = 3;
+  int64 occupation_id = 4;
+  string major = 5;
+  string city = 6;
+  string province = 7;
+  string salary = 8;
+  string company = 9;
+  string education = 10;
+  string nature = 11;
+  string company_size = 12;
+
+  string trace_id = 20;
+  int64 user_id = 21;
+  string user_name = 22;
+  string user_ip = 23;
+  string request_method = 24;
+  string request_url = 25;
+}
+
+message GetJobRequest {
+  int64 id = 1;
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+// jobs 的公开字段；trace_id、job_number 等内部审计字段不进入公开契约。
+message JobData {
+  int64 id = 1;
+  string name = 2;
+  int64 occupation_id = 3;
+  string publish_date = 4;
+  string source_platform = 5;
+  string source_url = 6;
+  string city = 7;
+  string tags = 8;
+  string major = 9;
+  string nature = 10;
+  string salary = 11;
+  string company_name = 12;
+  string company_size = 13;
+  string province = 14;
+  string education = 15;
+  string experience = 16;
+  string job_description = 17;
+  string created_at = 18;
+  string updated_at = 19;
+}
+
+message JobOccupationData {
+  int64 id = 1;
+  string code = 2;
+  string name = 3;
+  int64 occupation_category_id = 4;
+  string description = 5;
+}
+
+message JobSkillData {
+  int64 id = 1;
+  string skill_name = 2;
+  string skill_proficiency = 3;
+  string evidence = 4;
+}
+
+message ListJobsResponse {
+  repeated JobData items = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message GetJobResponse {
+  JobData job = 1;
+  // occupation_id 为空或对应职业已软删除时不设置 occupation。
+  JobOccupationData occupation = 2;
+  repeated JobSkillData job_skills = 3;
 }

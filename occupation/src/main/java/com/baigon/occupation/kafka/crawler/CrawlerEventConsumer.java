@@ -68,7 +68,7 @@ public class CrawlerEventConsumer {
                         failed++;
                         log.error("保存 crawler 清洗岗位失败: trace_id={}", docTraceId, exception);
                         logService.error(
-                                new AuditContext(docTraceId, userId, userName, userIp, "KAFKA", ""),
+                                AuditContext.from(docTraceId, userId, userName, userIp, "KAFKA", ""),
                                 exception.getMessage(), "crawler document persist failed");
                     }
                 }
@@ -77,7 +77,7 @@ public class CrawlerEventConsumer {
         } catch (Exception e) {
             // 消费失败：记录业务日志，不重试（桩阶段）
             log.error("消费 crawler 事件失败", e);
-            logService.error(new AuditContext(0L, 0L, "system", null, "KAFKA", ""),
+            logService.error(AuditContext.from(0L, 0L, "system", null, "KAFKA", ""),
                     e.getMessage(), "crawler kafka consume failed");
         }
     }

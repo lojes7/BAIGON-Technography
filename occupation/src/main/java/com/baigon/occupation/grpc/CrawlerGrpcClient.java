@@ -8,9 +8,12 @@ package com.baigon.occupation.grpc;
 import com.baigon.crawler.CrawlerServiceGrpc;
 import com.baigon.crawler.GetJobSourceByTraceIdRequest;
 import com.baigon.crawler.GetJobSourceByTraceIdResponse;
+import com.baigon.occupation.error.ApiException;
 import com.baigon.occupation.service.AuditContext;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
+import io.grpc.Status;
+import io.grpc.StatusRuntimeException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cloud.client.ServiceInstance;
@@ -33,13 +36,21 @@ public class CrawlerGrpcClient {
 
     /**
      * 按 trace_id 查询 crawler 库中的原始岗位记录（job_sources 表）。
-     * 返回 null 表示未找到或服务不可用。
+     * 原始记录不存在时抛出 NOT_FOUND，服务发现或调用失败时抛出 SERVICE_UNAVAILABLE。
      */
     public GetJobSourceByTraceIdResponse getJobSourceByTraceId(long traceId, AuditContext audit) {
-        String address = discoverCrawlerAddress();
+        String address;
+        try {
+            address = discoverCrawlerAddress();
+        } catch (RuntimeException e) {
+            log.error("从 Consul 发现 crawler-service 失败", e);
+            throw new ApiException(ApiException.ErrorCode.SERVICE_UNAVAILABLE,
+                    "crawler service unavailable");
+        }
         if (address == null) {
             log.warn("crawler-service 无可用实例，无法查询原始记录 trace_id={}", traceId);
-            return null;
+            throw new ApiException(ApiException.ErrorCode.SERVICE_UNAVAILABLE,
+                    "crawler service unavailable");
         }
         ManagedChannel channel = ManagedChannelBuilder.forTarget(address)
                 .usePlaintext()
@@ -48,7 +59,7 @@ public class CrawlerGrpcClient {
             CrawlerServiceGrpc.CrawlerServiceBlockingStub stub =
                     CrawlerServiceGrpc.newBlockingStub(channel)
                             .withDeadlineAfter(5, TimeUnit.SECONDS);
-            GetJobSourceByTraceIdResponse resp = stub.getJobSourceByTraceId(
+            return stub.getJobSourceByTraceId(
                     GetJobSourceByTraceIdRequest.newBuilder()
                             .setTraceId(traceId)
                             .setUserId(audit.userId())
@@ -57,13 +68,29 @@ public class CrawlerGrpcClient {
                             .setRequestMethod(audit.requestMethod())
                             .setRequestUrl(audit.requestUrl())
                             .build());
-            return resp;
-        } catch (Exception e) {
+        } catch (StatusRuntimeException e) {
             log.error("调 crawler-service 查询原始记录失败 trace_id={}", traceId, e);
-            return null;
+            throw mapGrpcError(e);
+        } catch (RuntimeException e) {
+            log.error("调 crawler-service 查询原始记录失败 trace_id={}", traceId, e);
+            throw new ApiException(ApiException.ErrorCode.SERVICE_UNAVAILABLE,
+                    "crawler service unavailable");
         } finally {
             channel.shutdown();
         }
+    }
+
+    /** 保留 crawler 返回的业务语义，避免将所有失败混为一个 null。 */
+    private ApiException mapGrpcError(StatusRuntimeException exception) {
+        Status.Code code = exception.getStatus().getCode();
+        return switch (code) {
+            case NOT_FOUND -> new ApiException(
+                    ApiException.ErrorCode.NOT_FOUND, "source job not found");
+            case INVALID_ARGUMENT -> new ApiException(
+                    ApiException.ErrorCode.BAD_REQUEST, "invalid source job query");
+            default -> new ApiException(
+                    ApiException.ErrorCode.SERVICE_UNAVAILABLE, "crawler service unavailable");
+        };
     }
 
     /** 从 Consul 发现 crawler-service 健康实例，返回 "host:port" 地址 */

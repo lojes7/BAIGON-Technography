@@ -3,6 +3,7 @@ package com.baigon.occupation.service.datasource;
 
 import cn.hutool.core.lang.Snowflake;
 import com.baigon.occupation.entity.ReviewStatus;
+import com.baigon.occupation.entity.TaskStatus;
 import com.baigon.occupation.entity.datasource.CleanedJobSource;
 import com.baigon.occupation.entity.datasource.ReviewedCleanedJobSource;
 import com.baigon.occupation.entity.job.Job;
@@ -96,11 +97,13 @@ class CleanedJobSourceServiceTest {
         verify(taskRepository).save(taskCaptor.capture());
         assertEquals(jobCaptor.getValue().getId(), taskCaptor.getValue().getJobId());
         assertEquals(source.getTraceId(), taskCaptor.getValue().getTraceId());
+        assertEquals(TaskStatus.PENDING, taskCaptor.getValue().getOccupationAnalysisStatus());
+        assertEquals(TaskStatus.PENDING, taskCaptor.getValue().getJdAnalysisStatus());
         verify(jobAnalysisService).submitAfterCommit(eq(taskCaptor.getValue().getId()), any(AuditContext.class));
     }
 
     @Test
-    void aliasHitShouldWriteOccupationIdAndFinishWithoutAnalysisTask() {
+    void aliasHitShouldWriteOccupationIdAndStillCreateJdAnalysisTask() {
         CleanedJobSource source = pendingSource();
         JobOccupationAlias alias = new JobOccupationAlias();
         alias.setOccupationId(88L);
@@ -116,8 +119,12 @@ class CleanedJobSourceServiceTest {
         ArgumentCaptor<Job> jobCaptor = ArgumentCaptor.forClass(Job.class);
         verify(jobRepository).save(jobCaptor.capture());
         assertEquals(88L, jobCaptor.getValue().getOccupationId());
-        verify(taskRepository, never()).save(any(JobAnalysisTask.class));
-        verify(jobAnalysisService, never()).submitAfterCommit(anyLong(), any(AuditContext.class));
+        ArgumentCaptor<JobAnalysisTask> taskCaptor = ArgumentCaptor.forClass(JobAnalysisTask.class);
+        verify(taskRepository).save(taskCaptor.capture());
+        assertEquals(88L, taskCaptor.getValue().getSelectedOccupationId());
+        assertEquals(TaskStatus.SUCCESS, taskCaptor.getValue().getOccupationAnalysisStatus());
+        assertEquals(TaskStatus.PENDING, taskCaptor.getValue().getJdAnalysisStatus());
+        verify(jobAnalysisService).submitAfterCommit(eq(taskCaptor.getValue().getId()), any(AuditContext.class));
     }
 
     @Test

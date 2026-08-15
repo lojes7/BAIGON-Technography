@@ -48,14 +48,14 @@ func ListDisciplineCategoriesHandler(pool *grpcpool.GrpcClientPool) gin.HandlerF
 			ctx,
 			&occupationpb.CatalogListRequest{
 				Page: query.Page, PageSize: query.PageSize, Keyword: query.Keyword,
-				TraceId: c.GetString("trace_id"), UserId: userIDFromContext(c),
+				TraceId: c.GetString("trace_id"), UserId: UserIDFromContext(c),
 				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
 				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
 			},
 			grpc.Trailer(&trailer),
 		)
 		if err != nil {
-			httpCode, errorCode := grpcErrorCodes(err, trailer)
+			httpCode, errorCode := GRPCErrorCodes(err, trailer)
 			response.Error(c, httpCode, errorCode)
 			return
 		}
@@ -102,14 +102,14 @@ func ListMajorCategoriesHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			ctx,
 			&occupationpb.ChildCatalogListRequest{
 				Page: query.Page, PageSize: query.PageSize, Keyword: query.Keyword, ParentId: parentID,
-				TraceId: c.GetString("trace_id"), UserId: userIDFromContext(c),
+				TraceId: c.GetString("trace_id"), UserId: UserIDFromContext(c),
 				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
 				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
 			},
 			grpc.Trailer(&trailer),
 		)
 		if err != nil {
-			httpCode, errorCode := grpcErrorCodes(err, trailer)
+			httpCode, errorCode := GRPCErrorCodes(err, trailer)
 			response.Error(c, httpCode, errorCode)
 			return
 		}
@@ -156,14 +156,14 @@ func ListMajorsHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			ctx,
 			&occupationpb.ChildCatalogListRequest{
 				Page: query.Page, PageSize: query.PageSize, Keyword: query.Keyword, ParentId: parentID,
-				TraceId: c.GetString("trace_id"), UserId: userIDFromContext(c),
+				TraceId: c.GetString("trace_id"), UserId: UserIDFromContext(c),
 				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
 				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
 			},
 			grpc.Trailer(&trailer),
 		)
 		if err != nil {
-			httpCode, errorCode := grpcErrorCodes(err, trailer)
+			httpCode, errorCode := GRPCErrorCodes(err, trailer)
 			response.Error(c, httpCode, errorCode)
 			return
 		}
@@ -204,14 +204,14 @@ func ListOccupationMajorCategoriesHandler(pool *grpcpool.GrpcClientPool) gin.Han
 			ctx,
 			&occupationpb.CatalogListRequest{
 				Page: query.Page, PageSize: query.PageSize, Keyword: query.Keyword,
-				TraceId: c.GetString("trace_id"), UserId: userIDFromContext(c),
+				TraceId: c.GetString("trace_id"), UserId: UserIDFromContext(c),
 				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
 				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
 			},
 			grpc.Trailer(&trailer),
 		)
 		if err != nil {
-			httpCode, errorCode := grpcErrorCodes(err, trailer)
+			httpCode, errorCode := GRPCErrorCodes(err, trailer)
 			response.Error(c, httpCode, errorCode)
 			return
 		}
@@ -258,14 +258,14 @@ func ListOccupationSubCategoriesHandler(pool *grpcpool.GrpcClientPool) gin.Handl
 			ctx,
 			&occupationpb.ChildCatalogListRequest{
 				Page: query.Page, PageSize: query.PageSize, Keyword: query.Keyword, ParentId: parentID,
-				TraceId: c.GetString("trace_id"), UserId: userIDFromContext(c),
+				TraceId: c.GetString("trace_id"), UserId: UserIDFromContext(c),
 				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
 				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
 			},
 			grpc.Trailer(&trailer),
 		)
 		if err != nil {
-			httpCode, errorCode := grpcErrorCodes(err, trailer)
+			httpCode, errorCode := GRPCErrorCodes(err, trailer)
 			response.Error(c, httpCode, errorCode)
 			return
 		}
@@ -312,14 +312,14 @@ func ListOccupationCategoriesHandler(pool *grpcpool.GrpcClientPool) gin.HandlerF
 			ctx,
 			&occupationpb.ChildCatalogListRequest{
 				Page: query.Page, PageSize: query.PageSize, Keyword: query.Keyword, ParentId: parentID,
-				TraceId: c.GetString("trace_id"), UserId: userIDFromContext(c),
+				TraceId: c.GetString("trace_id"), UserId: UserIDFromContext(c),
 				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
 				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
 			},
 			grpc.Trailer(&trailer),
 		)
 		if err != nil {
-			httpCode, errorCode := grpcErrorCodes(err, trailer)
+			httpCode, errorCode := GRPCErrorCodes(err, trailer)
 			response.Error(c, httpCode, errorCode)
 			return
 		}
@@ -366,14 +366,14 @@ func ListOccupationsHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			ctx,
 			&occupationpb.ChildCatalogListRequest{
 				Page: query.Page, PageSize: query.PageSize, Keyword: query.Keyword, ParentId: parentID,
-				TraceId: c.GetString("trace_id"), UserId: userIDFromContext(c),
+				TraceId: c.GetString("trace_id"), UserId: UserIDFromContext(c),
 				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
 				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
 			},
 			grpc.Trailer(&trailer),
 		)
 		if err != nil {
-			httpCode, errorCode := grpcErrorCodes(err, trailer)
+			httpCode, errorCode := GRPCErrorCodes(err, trailer)
 			response.Error(c, httpCode, errorCode)
 			return
 		}
@@ -404,14 +404,14 @@ func GetOccupationEmbeddingProgressHandler(pool *grpcpool.GrpcClientPool) gin.Ha
 		resp, err := occupationpb.NewOccupationServiceClient(conn).GetEmbeddingProgress(
 			ctx,
 			&occupationpb.EmbeddingTaskRequest{
-				TraceId: c.GetString("trace_id"), UserId: userIDFromContext(c),
+				TraceId: c.GetString("trace_id"), UserId: UserIDFromContext(c),
 				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
 				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
 			},
 			grpc.Trailer(&trailer),
 		)
 		if err != nil {
-			httpCode, errorCode := grpcErrorCodes(err, trailer)
+			httpCode, errorCode := GRPCErrorCodes(err, trailer)
 			response.Error(c, httpCode, errorCode)
 			return
 		}
@@ -446,14 +446,14 @@ func StartMajorEmbeddingHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 		resp, err := occupationpb.NewOccupationServiceClient(conn).StartMajorEmbedding(
 			ctx,
 			&occupationpb.EmbeddingTaskRequest{
-				TraceId: c.GetString("trace_id"), UserId: userIDFromContext(c),
+				TraceId: c.GetString("trace_id"), UserId: UserIDFromContext(c),
 				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
 				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
 			},
 			grpc.Trailer(&trailer),
 		)
 		if err != nil {
-			httpCode, errorCode := grpcErrorCodes(err, trailer)
+			httpCode, errorCode := GRPCErrorCodes(err, trailer)
 			response.Error(c, httpCode, errorCode)
 			return
 		}
@@ -483,14 +483,14 @@ func GetMajorEmbeddingStatusHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFu
 		resp, err := occupationpb.NewOccupationServiceClient(conn).GetMajorEmbeddingStatus(
 			ctx,
 			&occupationpb.EmbeddingTaskRequest{
-				TraceId: c.GetString("trace_id"), UserId: userIDFromContext(c),
+				TraceId: c.GetString("trace_id"), UserId: UserIDFromContext(c),
 				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
 				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
 			},
 			grpc.Trailer(&trailer),
 		)
 		if err != nil {
-			httpCode, errorCode := grpcErrorCodes(err, trailer)
+			httpCode, errorCode := GRPCErrorCodes(err, trailer)
 			response.Error(c, httpCode, errorCode)
 			return
 		}
@@ -520,14 +520,14 @@ func StopMajorEmbeddingHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 		resp, err := occupationpb.NewOccupationServiceClient(conn).StopMajorEmbedding(
 			ctx,
 			&occupationpb.EmbeddingTaskRequest{
-				TraceId: c.GetString("trace_id"), UserId: userIDFromContext(c),
+				TraceId: c.GetString("trace_id"), UserId: UserIDFromContext(c),
 				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
 				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
 			},
 			grpc.Trailer(&trailer),
 		)
 		if err != nil {
-			httpCode, errorCode := grpcErrorCodes(err, trailer)
+			httpCode, errorCode := GRPCErrorCodes(err, trailer)
 			response.Error(c, httpCode, errorCode)
 			return
 		}
@@ -557,14 +557,14 @@ func StartOccupationEmbeddingHandler(pool *grpcpool.GrpcClientPool) gin.HandlerF
 		resp, err := occupationpb.NewOccupationServiceClient(conn).StartOccupationEmbedding(
 			ctx,
 			&occupationpb.EmbeddingTaskRequest{
-				TraceId: c.GetString("trace_id"), UserId: userIDFromContext(c),
+				TraceId: c.GetString("trace_id"), UserId: UserIDFromContext(c),
 				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
 				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
 			},
 			grpc.Trailer(&trailer),
 		)
 		if err != nil {
-			httpCode, errorCode := grpcErrorCodes(err, trailer)
+			httpCode, errorCode := GRPCErrorCodes(err, trailer)
 			response.Error(c, httpCode, errorCode)
 			return
 		}
@@ -594,14 +594,14 @@ func GetOccupationEmbeddingStatusHandler(pool *grpcpool.GrpcClientPool) gin.Hand
 		resp, err := occupationpb.NewOccupationServiceClient(conn).GetOccupationEmbeddingStatus(
 			ctx,
 			&occupationpb.EmbeddingTaskRequest{
-				TraceId: c.GetString("trace_id"), UserId: userIDFromContext(c),
+				TraceId: c.GetString("trace_id"), UserId: UserIDFromContext(c),
 				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
 				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
 			},
 			grpc.Trailer(&trailer),
 		)
 		if err != nil {
-			httpCode, errorCode := grpcErrorCodes(err, trailer)
+			httpCode, errorCode := GRPCErrorCodes(err, trailer)
 			response.Error(c, httpCode, errorCode)
 			return
 		}
@@ -631,14 +631,14 @@ func StopOccupationEmbeddingHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFu
 		resp, err := occupationpb.NewOccupationServiceClient(conn).StopOccupationEmbedding(
 			ctx,
 			&occupationpb.EmbeddingTaskRequest{
-				TraceId: c.GetString("trace_id"), UserId: userIDFromContext(c),
+				TraceId: c.GetString("trace_id"), UserId: UserIDFromContext(c),
 				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
 				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
 			},
 			grpc.Trailer(&trailer),
 		)
 		if err != nil {
-			httpCode, errorCode := grpcErrorCodes(err, trailer)
+			httpCode, errorCode := GRPCErrorCodes(err, trailer)
 			response.Error(c, httpCode, errorCode)
 			return
 		}
@@ -678,14 +678,14 @@ func ListJobAnalysisTasksHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc 
 			ctx,
 			&occupationpb.ListJobAnalysisTasksRequest{
 				Page: query.Page, PageSize: query.PageSize, ReviewStatus: c.Query("reviewStatus"),
-				TraceId: c.GetString("trace_id"), UserId: userIDFromContext(c),
+				TraceId: c.GetString("trace_id"), UserId: UserIDFromContext(c),
 				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
 				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
 			},
 			grpc.Trailer(&trailer),
 		)
 		if err != nil {
-			httpCode, errorCode := grpcErrorCodes(err, trailer)
+			httpCode, errorCode := GRPCErrorCodes(err, trailer)
 			response.Error(c, httpCode, errorCode)
 			return
 		}
@@ -696,7 +696,7 @@ func ListJobAnalysisTasksHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc 
 	}
 }
 
-// GetJobAnalysisTaskHandler 查询岗位分析任务及 AI 候选。
+// GetJobAnalysisTaskHandler 查询岗位分析任务、职业候选及 JD 技能结果。
 // @Summary      查询岗位分析任务详情
 // @Tags         岗位分析审核
 // @Produce      json
@@ -726,14 +726,14 @@ func GetJobAnalysisTaskHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 		resp, err := occupationpb.NewOccupationServiceClient(conn).GetJobAnalysisTask(
 			ctx,
 			&occupationpb.GetJobAnalysisTaskRequest{
-				Id: id, TraceId: c.GetString("trace_id"), UserId: userIDFromContext(c),
+				Id: id, TraceId: c.GetString("trace_id"), UserId: UserIDFromContext(c),
 				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
 				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
 			},
 			grpc.Trailer(&trailer),
 		)
 		if err != nil {
-			httpCode, errorCode := grpcErrorCodes(err, trailer)
+			httpCode, errorCode := GRPCErrorCodes(err, trailer)
 			response.Error(c, httpCode, errorCode)
 			return
 		}
@@ -742,12 +742,21 @@ func GetJobAnalysisTaskHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 }
 
 type reviewJobAnalysisRequest struct {
-	OccupationID int64 `json:"occupationId" binding:"required"`
+	OccupationID int64                    `json:"occupationId" binding:"required"`
+	SkillReviews []jobAnalysisSkillReview `json:"skillReviews"`
 }
 
-// ReviewJobAnalysisTaskHandler 从 occupations 中指定最终职业。
-// @Summary      审核岗位分析并指定职业
-// @Description  occupationId 可指向 occupations 表中的任意有效职业，不受 AI 候选限制
+type jobAnalysisSkillReview struct {
+	ResultID         int64  `json:"resultId"`
+	Action           string `json:"action"`
+	SkillName        string `json:"skillName"`
+	SkillProficiency string `json:"skillProficiency"`
+	Evidence         string `json:"evidence"`
+}
+
+// ReviewJobAnalysisTaskHandler 同时确认职业并逐条审核 JD 技能结果。
+// @Summary      审核岗位职业与技能分析
+// @Description  occupationId 可选择任意有效职业；skillReviews 必须覆盖全部分析结果，支持 APPROVE、APPROVE_WITH_EDIT、REJECT
 // @Tags         岗位分析审核
 // @Accept       json
 // @Produce      json
@@ -779,19 +788,27 @@ func ReviewJobAnalysisTaskHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc
 		}
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 		defer cancel()
+		skillReviews := make([]*occupationpb.JobAnalysisSkillReview, 0, len(request.SkillReviews))
+		for _, item := range request.SkillReviews {
+			skillReviews = append(skillReviews, &occupationpb.JobAnalysisSkillReview{
+				ResultId: item.ResultID, Action: item.Action,
+				SkillName: item.SkillName, SkillProficiency: item.SkillProficiency,
+				Evidence: item.Evidence,
+			})
+		}
 		var trailer metadata.MD
 		resp, err := occupationpb.NewOccupationServiceClient(conn).ReviewJobAnalysisTask(
 			ctx,
 			&occupationpb.ReviewJobAnalysisTaskRequest{
-				Id: id, OccupationId: request.OccupationID,
-				TraceId: c.GetString("trace_id"), UserId: userIDFromContext(c),
+				Id: id, OccupationId: request.OccupationID, SkillReviews: skillReviews,
+				TraceId: c.GetString("trace_id"), UserId: UserIDFromContext(c),
 				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
 				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
 			},
 			grpc.Trailer(&trailer),
 		)
 		if err != nil {
-			httpCode, errorCode := grpcErrorCodes(err, trailer)
+			httpCode, errorCode := GRPCErrorCodes(err, trailer)
 			response.Error(c, httpCode, errorCode)
 			return
 		}

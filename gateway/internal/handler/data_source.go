@@ -77,14 +77,14 @@ func ListCleanedJobsHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			PublishDateFrom: req.PublishDateFrom,
 			PublishDateTo:   req.PublishDateTo,
 			TraceId:         c.GetString("trace_id"),
-			UserId:          userIDFromContext(c),
+			UserId:          UserIDFromContext(c),
 			UserName:        c.GetString("uid"),
 			UserIp:          c.ClientIP(),
 			RequestMethod:   c.Request.Method,
 			RequestUrl:      c.Request.URL.Path,
 		})
 		if err != nil {
-			httpCode, errorCode := grpcErrorCodes(err)
+			httpCode, errorCode := GRPCErrorCodes(err)
 			response.Error(c, httpCode, errorCode)
 			return
 		}
@@ -132,14 +132,14 @@ func GetCleanedJobHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 		resp, err := datasourcepb.NewDataSourceServiceClient(conn).GetCleanedJob(ctx, &datasourcepb.GetCleanedJobRequest{
 			Id:            id,
 			TraceId:       c.GetString("trace_id"),
-			UserId:        userIDFromContext(c),
+			UserId:        UserIDFromContext(c),
 			UserName:      c.GetString("uid"),
 			UserIp:        c.ClientIP(),
 			RequestMethod: c.Request.Method,
 			RequestUrl:    c.Request.URL.Path,
 		})
 		if err != nil {
-			httpCode, errorCode := grpcErrorCodes(err)
+			httpCode, errorCode := GRPCErrorCodes(err)
 			response.Error(c, httpCode, errorCode)
 			return
 		}
@@ -182,14 +182,14 @@ func GetSourceJobHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 		resp, err := datasourcepb.NewDataSourceServiceClient(conn).GetSourceJob(ctx, &datasourcepb.GetSourceJobRequest{
 			Id:            id,
 			TraceId:       c.GetString("trace_id"),
-			UserId:        userIDFromContext(c),
+			UserId:        UserIDFromContext(c),
 			UserName:      c.GetString("uid"),
 			UserIp:        c.ClientIP(),
 			RequestMethod: c.Request.Method,
 			RequestUrl:    c.Request.URL.Path,
 		})
 		if err != nil {
-			httpCode, errorCode := grpcErrorCodes(err)
+			httpCode, errorCode := GRPCErrorCodes(err)
 			response.Error(c, httpCode, errorCode)
 			return
 		}
@@ -285,14 +285,14 @@ func EditReviewHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 				JobDescription: req.JobDescription,
 			},
 			TraceId:       c.GetString("trace_id"),
-			UserId:        userIDFromContext(c),
+			UserId:        UserIDFromContext(c),
 			UserName:      c.GetString("uid"),
 			UserIp:        c.ClientIP(),
 			RequestMethod: c.Request.Method,
 			RequestUrl:    c.Request.URL.Path,
 		}, grpc.Trailer(&trailers))
 		if err != nil {
-			httpCode, errorCode := grpcErrorCodes(err, trailers)
+			httpCode, errorCode := GRPCErrorCodes(err, trailers)
 			response.Error(c, httpCode, errorCode)
 			return
 		}
@@ -325,14 +325,14 @@ func reviewActionHandler(pool *grpcpool.GrpcClientPool, action datasourcepb.Revi
 			Id:            id,
 			Action:        action,
 			TraceId:       c.GetString("trace_id"),
-			UserId:        userIDFromContext(c),
+			UserId:        UserIDFromContext(c),
 			UserName:      c.GetString("uid"),
 			UserIp:        c.ClientIP(),
 			RequestMethod: c.Request.Method,
 			RequestUrl:    c.Request.URL.Path,
 		}, grpc.Trailer(&trailers))
 		if err != nil {
-			httpCode, errorCode := grpcErrorCodes(err, trailers)
+			httpCode, errorCode := GRPCErrorCodes(err, trailers)
 			response.Error(c, httpCode, errorCode)
 			return
 		}

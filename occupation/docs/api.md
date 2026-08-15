@@ -7,8 +7,8 @@
 
 - 消费 crawler 清洗完成事件并保存 `cleaned_job_sources`。
 - 提供清洗数据查询、原始记录追溯和人工审核。
-- 审核通过时在同一事务内保存审核快照、查询岗位别名并创建 `jobs`。
-- 别名未命中时持久化分析任务，事务提交后由本地线程池异步调用 AI-service。
+- 审核通过时在同一事务内保存审核快照、查询岗位别名并创建 `jobs` 与 `job_analysis_tasks`。
+- 事务提交后由本地线程池先完成职业匹配，再串行调用 AI-service 分析真实 JD。
 - 管理专业、职业目录及名称向量化任务。
 - 通过 Consul 发现 crawler-service 与 ai-service。
 - 所有领域共用一张 `logs` 业务审计表。
@@ -47,10 +47,10 @@ REST 路径继续使用 `/api/auth/data-source`，protobuf 继续使用
 2. 写入 `reviewed_cleaned_job_sources` 审核快照。
 3. 用最终岗位名查询 `job_occupation_aliases`。
 4. 无条件创建 `jobs`；命中别名时直接写入 `occupation_id`。
-5. 未命中别名时创建 `PENDING` 的 `job_analysis_tasks`。
+5. 无论是否命中别名，都创建 `PENDING` 的 `job_analysis_tasks`。
 
-任一步失败时事务整体回滚。未命中别名的任务在事务提交后由本地专用线程池调用 AI-service，
-不经过 Kafka。拒绝时只更新审核状态，不创建审核快照、岗位或分析任务。
+任一步失败时事务整体回滚。任务在事务提交后由本地专用线程池执行，不经过 Kafka；别名命中时
+跳过岗位名称 Embedding，随后仍分析真实 JD。拒绝时只更新审核状态，不创建审核快照、岗位或分析任务。
 
 ## 岗位异步归类
 
@@ -59,9 +59,11 @@ Kafka 只保留 crawler-service 到 occupation-service 的清洗数据输入：
 
 岗位审核事务按 `trace_id` 和 `job_id` 幂等处理：
 
-- 别名命中：直接填写 `jobs.occupation_id`。
-- 别名未命中：创建唯一的 `job_analysis_tasks`，提交后异步调用 AI 获取前 5 个候选。
-- AI 失败：`jobs` 保持存在，任务标记 `FAILED`，仍允许人工选择职业。
+- 别名命中：直接填写 `jobs.occupation_id`，职业分析步骤视为成功，继续分析 JD。
+- 别名未命中：先对岗位名称做 Embedding 并保存前 5 个职业候选，成功后才分析 JD。
+- JD Analyzer 返回的每项技能写入 `job_analysis_results`，初始审核状态为 `PENDING`。
+- 两个自动步骤都成功后，任务 `task_status` 才为 `SUCCESS`；人工审核状态仍为 `PENDING`。
+- 任一 AI 步骤失败：`jobs` 保持存在，任务标记 `FAILED`；职业 Embedding 失败时不会继续调用 JD Analyzer。
 
 `trace_id` 从 crawler 清洗记录贯穿审核快照、`jobs`、分析任务及
 `job_occupation_aliases`，是岗位归类的关键审计参数。
@@ -99,12 +101,28 @@ REST 位于 `/api/auth/occupation`。目录读取和岗位分析允许 `ADMIN / 
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/job-analysis` | 分页查询，可按 `reviewStatus` 筛选 |
-| GET | `/job-analysis/{id}` | 查看任务与 AI 候选 |
-| PUT | `/job-analysis/{id}/review` | 提交 `{ "occupationId": 123 }` |
+| GET | `/job-analysis/{id}` | 查看任务、职业候选与 JD 技能结果 |
+| PUT | `/job-analysis/{id}/review` | 确认职业并逐条审核全部 JD 技能结果 |
 
-最终职业可选择 `occupations` 中任意有效记录，不要求位于 AI 候选中。审核事务同时更新
-`jobs.occupation_id`、`job_analysis_tasks` 和岗位名称别名；别名保存本次审核链路的
-`trace_id`、`occupation_id` 与 `occupation_name`。
+最终职业可选择 `occupations` 中任意有效记录，不要求位于 AI 候选中。每条技能支持
+`APPROVE`、`APPROVE_WITH_EDIT`、`REJECT`；一次请求必须覆盖当前任务的全部
+`job_analysis_results`。该表只更新审核状态和审核人时间，修改字段不落入该表；通过或修改后通过的最终值写入 `job_skills`，
+拒绝项不写入。审核事务同时更新 `jobs.occupation_id`、技能结果、正式岗位技能、
+`job_analysis_tasks` 和岗位名称别名。
+
+### 岗位查询
+
+岗位查询要求已登录，不限制具体角色。REST 由 gateway 暴露，数据由 occupation-service 查询。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/jobs` | 分页查询 `jobs`，筛选条件放在请求体 |
+| GET | `/api/jobs/{id}` | 聚合返回岗位、对应职业和正式岗位技能 |
+
+列表请求支持 `page`、`pageSize`、`name`、`occupationId`、`major`、`city`、
+`province`、`salary`、`company`、`education`、`nature`、`companySize`。除
+`occupationId` 精确匹配外，文本字段均为忽略大小写的包含匹配；空字段不参与筛选，软删除记录不返回。
+详情中的 `occupation` 在岗位尚未归类时为 `null`，`jobSkills` 没有正式技能时为空数组。
 
 ## 数据库初始化
 

@@ -67,8 +67,7 @@ public class EmbeddingTaskManager {
 
     public EmbeddingTaskSnapshot start(Resource resource, AuditContext requestAudit) {
         long traceId = requestAudit.traceId() == null ? snowflake.nextId() : requestAudit.traceId();
-        AuditContext taskAudit = new AuditContext(traceId, requestAudit.userId(), requestAudit.userName(),
-                requestAudit.userIp(), requestAudit.requestMethod(), requestAudit.requestUrl());
+        AuditContext taskAudit = requestAudit.withTraceId(traceId);
         TaskTracker tracker = tracker(resource);
         tracker.begin(String.valueOf(traceId));
         try {
