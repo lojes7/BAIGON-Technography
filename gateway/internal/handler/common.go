@@ -37,44 +37,57 @@ func embeddingTaskData(status *occupationpb.EmbeddingTaskStatus) gin.H {
 	}
 }
 
-// catalogPageQuery 目录列表统一分页搜索参数。
-type catalogPageQuery struct {
+// CatalogPageQuery 目录列表统一分页搜索参数。
+type CatalogPageQuery struct {
 	Page     int32
 	PageSize int32
 	Keyword  string
 }
 
-// parseCatalogPageQuery 解析 page/pageSize/keyword，并限制单页最多 100 条。
-func parseCatalogPageQuery(c *gin.Context) (catalogPageQuery, error) {
+// ParseCatalogPageQuery 解析 page/pageSize/keyword，并限制单页最多 100 条。
+func ParseCatalogPageQuery(c *gin.Context) (CatalogPageQuery, error) {
 	page := 0
 	pageSize := 20
 	var err error
 	if value := c.Query("page"); value != "" {
 		page, err = strconv.Atoi(value)
 		if err != nil || page < 0 {
-			return catalogPageQuery{}, fmt.Errorf("invalid page")
+			return CatalogPageQuery{}, fmt.Errorf("invalid page")
 		}
 	}
 	if value := c.Query("pageSize"); value != "" {
 		pageSize, err = strconv.Atoi(value)
 		if err != nil || pageSize < 1 || pageSize > 100 {
-			return catalogPageQuery{}, fmt.Errorf("invalid pageSize")
+			return CatalogPageQuery{}, fmt.Errorf("invalid pageSize")
 		}
 	}
-	return catalogPageQuery{
+	return CatalogPageQuery{
 		Page:     int32(page),
 		PageSize: int32(pageSize),
 		Keyword:  c.Query("keyword"),
 	}, nil
 }
 
-// positiveQueryID 解析目录父级 ID，所有级联查询都要求正整数。
-func positiveQueryID(c *gin.Context, name string) (int64, error) {
+// PositiveQueryID 解析目录父级 ID，所有级联查询都要求正整数。
+func PositiveQueryID(c *gin.Context, name string) (int64, error) {
 	value, err := strconv.ParseInt(c.Query(name), 10, 64)
 	if err != nil || value <= 0 {
 		return 0, fmt.Errorf("invalid %s", name)
 	}
 	return value, nil
+}
+
+// OptionalPositiveQueryID 解析 ID；未传返回 0，传入时必须为正整数。
+func OptionalPositiveQueryID(c *gin.Context, name string) (int64, error) {
+	value := c.Query(name)
+	if value == "" {
+		return 0, nil
+	}
+	id, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, fmt.Errorf("invalid %s", name)
+	}
+	return id, nil
 }
 
 const grpcErrorCodeTrailer = "baigon-error-code"

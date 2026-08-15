@@ -13,6 +13,17 @@ option go_package = "baigon-technography/proto/gen/user;userpb";
 service UserService {
   // 登录：校验账号密码，签发 JWT
   rpc Login(LoginRequest) returns (LoginResponse);
+
+  // ADMIN 分页查询用户基础信息。
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+
+  // ADMIN 按用户 ID 查询账号与校园资料。
+  rpc GetUserProfile(GetUserProfileRequest) returns (GetUserProfileResponse);
+
+  // ADMIN 查询系统中的高校、学院和系部目录。
+  rpc ListUniversities(OrganizationListRequest) returns (OrganizationListResponse);
+  rpc ListSchools(OrganizationListRequest) returns (OrganizationListResponse);
+  rpc ListDepartments(OrganizationListRequest) returns (OrganizationListResponse);
 }
 
 // 登录请求
@@ -28,4 +39,92 @@ message LoginResponse {
   string uid = 3;      // 登录账号
   string name = 4;     // 显示名称
   string role = 5;     // 角色
+}
+
+// 用户分页筛选请求；文本字段为空、组织 ID 为 0 时不参与筛选。
+message ListUsersRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string name = 3;
+  string role = 4;
+  reserved 5, 6, 7;
+  reserved "university", "school", "department";
+  int64 university_id = 8;
+  int64 school_id = 9;
+  int64 department_id = 10;
+
+  string trace_id = 20;
+  int64 user_id = 21;
+  string user_name = 22;
+  string user_ip = 23;
+  string request_method = 24;
+  string request_url = 25;
+}
+
+// ADMIN 用户详情请求。
+message GetUserProfileRequest {
+  int64 id = 1;
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+// 组织目录分页请求。parent_id 为 0 时返回全量；学院对应高校 ID，系部对应学院 ID。
+message OrganizationListRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string keyword = 3;
+  int64 parent_id = 4;
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+message OrganizationData {
+  int64 id = 1;
+  string name = 2;
+}
+
+// 用户公开字段；密码永不进入公开契约。
+message UserData {
+  int64 id = 1;
+  string uid = 2;
+  string name = 3;
+  string role = 4;
+  string status = 5;
+  reserved 6, 7, 8;
+  reserved "university", "school", "department";
+}
+
+message ListUsersResponse {
+  repeated UserData items = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message UserProfileData {
+  UserData user = 1;
+  OrganizationData university = 2;
+  OrganizationData school = 3;
+  OrganizationData department = 4;
+}
+
+message GetUserProfileResponse {
+  UserProfileData profile = 1;
+}
+
+message OrganizationListResponse {
+  repeated OrganizationData items = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
 }

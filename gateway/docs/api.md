@@ -112,6 +112,49 @@ curl -X POST http://localhost:8000/api/login \
 
 ---
 
+### ADMIN 用户管理（`/api/auth/users`）
+
+以下接口均要求 Bearer Token，且只允许 **ADMIN** 角色访问。
+
+#### POST /api/auth/users — 分页筛选用户
+
+分页和筛选条件统一放在 JSON 请求体中：
+
+```json
+{
+  "page": 0,
+  "pageSize": 20,
+  "name": "张",
+  "role": "STUDENT",
+  "universityId": 1,
+  "schoolId": 1,
+  "departmentId": 1
+}
+```
+
+`role` 使用 `STUDENT / TEACHER / STUDENT_AFFAIR / DATA_ANALYST / DATA_REVIEWER / ADMIN /
+CIVILIAN` 精确匹配；`name` 忽略大小写并执行包含匹配。三个组织 ID 来自下方的组织目录接口，
+使用精确匹配；值为 `0` 或不传时不参与筛选。查询直接比较 `users` 表字段，列表项只返回
+`id / uid / name / role / status`，不返回密码或组织资料。
+
+#### GET /api/auth/users/{id} — 查看用户详情
+
+ADMIN 通过用户 ID 查看用户账号和校园归属。响应 `data` 包含 `user / university /
+school / department`；非校园角色的三个组织字段均为 `null`，用户不存在时返回 404。
+
+#### 组织目录接口
+
+| 方法 | 路径 | 额外参数 |
+|---|---|---|
+| GET | `/api/auth/users/universities` | 无 |
+| GET | `/api/auth/users/schools` | 可选 `universityId` |
+| GET | `/api/auth/users/departments` | 可选 `schoolId` |
+
+三个接口均支持 `page`、`pageSize` 和 `keyword`。父级 ID 不传时返回全系统对应目录，传入时用于
+级联筛选。列表项统一返回 `id` 和 `name`。
+
+---
+
 ### GET /api/ping — 网关心跳
 
 心跳探测端点，返回网关运行状态和 trace_id。**不需要认证**。

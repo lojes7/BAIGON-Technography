@@ -31,7 +31,7 @@ import (
 // @Router       /api/auth/occupation/discipline-categories [get]
 func ListDisciplineCategoriesHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		query, err := parseCatalogPageQuery(c)
+		query, err := ParseCatalogPageQuery(c)
 		if err != nil {
 			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
 			return
@@ -80,12 +80,12 @@ func ListDisciplineCategoriesHandler(pool *grpcpool.GrpcClientPool) gin.HandlerF
 // @Router       /api/auth/occupation/major-categories [get]
 func ListMajorCategoriesHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		query, err := parseCatalogPageQuery(c)
+		query, err := ParseCatalogPageQuery(c)
 		if err != nil {
 			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
 			return
 		}
-		parentID, err := positiveQueryID(c, "disciplineCategoryId")
+		parentID, err := PositiveQueryID(c, "disciplineCategoryId")
 		if err != nil {
 			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
 			return
@@ -134,12 +134,12 @@ func ListMajorCategoriesHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 // @Router       /api/auth/occupation/majors [get]
 func ListMajorsHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		query, err := parseCatalogPageQuery(c)
+		query, err := ParseCatalogPageQuery(c)
 		if err != nil {
 			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
 			return
 		}
-		parentID, err := positiveQueryID(c, "majorCategoryId")
+		parentID, err := PositiveQueryID(c, "majorCategoryId")
 		if err != nil {
 			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
 			return
@@ -187,7 +187,7 @@ func ListMajorsHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 // @Router       /api/auth/occupation/occupation-major-categories [get]
 func ListOccupationMajorCategoriesHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		query, err := parseCatalogPageQuery(c)
+		query, err := ParseCatalogPageQuery(c)
 		if err != nil {
 			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
 			return
@@ -236,12 +236,12 @@ func ListOccupationMajorCategoriesHandler(pool *grpcpool.GrpcClientPool) gin.Han
 // @Router       /api/auth/occupation/occupation-sub-categories [get]
 func ListOccupationSubCategoriesHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		query, err := parseCatalogPageQuery(c)
+		query, err := ParseCatalogPageQuery(c)
 		if err != nil {
 			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
 			return
 		}
-		parentID, err := positiveQueryID(c, "occupationMajorCategoryId")
+		parentID, err := PositiveQueryID(c, "occupationMajorCategoryId")
 		if err != nil {
 			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
 			return
@@ -290,12 +290,12 @@ func ListOccupationSubCategoriesHandler(pool *grpcpool.GrpcClientPool) gin.Handl
 // @Router       /api/auth/occupation/occupation-categories [get]
 func ListOccupationCategoriesHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		query, err := parseCatalogPageQuery(c)
+		query, err := ParseCatalogPageQuery(c)
 		if err != nil {
 			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
 			return
 		}
-		parentID, err := positiveQueryID(c, "occupationSubCategoryId")
+		parentID, err := PositiveQueryID(c, "occupationSubCategoryId")
 		if err != nil {
 			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
 			return
@@ -344,12 +344,12 @@ func ListOccupationCategoriesHandler(pool *grpcpool.GrpcClientPool) gin.HandlerF
 // @Router       /api/auth/occupation/occupations [get]
 func ListOccupationsHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		query, err := parseCatalogPageQuery(c)
+		query, err := ParseCatalogPageQuery(c)
 		if err != nil {
 			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
 			return
 		}
-		parentID, err := positiveQueryID(c, "occupationCategoryId")
+		parentID, err := PositiveQueryID(c, "occupationCategoryId")
 		if err != nil {
 			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
 			return
@@ -661,7 +661,7 @@ func StopOccupationEmbeddingHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFu
 // @Router       /api/auth/occupation/job-analysis [get]
 func ListJobAnalysisTasksHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		query, err := parseCatalogPageQuery(c)
+		query, err := ParseCatalogPageQuery(c)
 		if err != nil {
 			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
 			return

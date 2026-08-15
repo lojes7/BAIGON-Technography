@@ -11,7 +11,7 @@
 - 审核通过时在同一事务内保存审核快照、查询岗位别名并创建 `jobs` 与 `job_analysis_tasks`。
 - 事务提交后由本地线程池先完成职业匹配，再串行调用 AI-service 分析真实 JD。
 - 管理专业、职业目录及名称向量化任务。
-- 校验用户账号密码并签发 JWT。
+- 校验用户账号密码并签发 JWT，为 ADMIN 提供用户及组织目录查询。
 - 通过 Consul 发现 crawler-service 与 ai-service。
 - 所有领域共用一张 `logs` 业务审计表。
 
@@ -26,7 +26,7 @@
 - gRPC 客户端：`grpc/client/ai`、`grpc/client/crawler`；服务端按业务域放在 `grpc/service/*`。
 - 各层根包只保留共享基类、通用状态、审计上下文和跨领域协调器。
 
-## 用户认证 API
+## 用户认证与 ADMIN 用户管理 API
 
 REST 登录路径仍为 `POST /api/login`，protobuf 仍为
 `baigon.user.UserService.Login`。gateway 只把 Consul 发现目标切换为 `occupation-service`，
@@ -35,6 +35,16 @@ REST 登录路径仍为 `POST /api/login`，protobuf 仍为
 用户、学校、院系、简历和用户分析相关表位于 `sql/init-user.sql`，开发种子账号位于
 `sql/data-user.sql`。JWT 使用 `JWT_SECRET` 与 `JWT_EXPIRATION_HOURS` 配置，并与 gateway
 共享签名密钥。
+
+`students / teachers / student_affairs` 三张身份映射表已取消，高校、学院和系部外键直接保存在
+`users.university_id / users.school_id / users.department_id`。`STUDENT / TEACHER / STUDENT_AFFAIR`
+可保存校园归属，其他角色由数据库约束保证三个字段均为 `NULL`。
+
+`UserService` 还提供 `ListUsers`、`GetUserProfile`、`ListUniversities`、`ListSchools`
+和 `ListDepartments` 五个受保护 RPC，由 gateway 暴露为 `/api/auth/users` 下的 ADMIN 接口。
+`ListUsers` 按姓名、角色及三个组织 ID 组合筛选，所有条件都直接使用 `users` 表字段；列表只返回
+`id / uid / name / role / status`。`GetUserProfile` 按用户 ID 加载账号和组织资料。所有用户接口都不返回密码。
+高校、学院和系部目录均支持分页与名称关键词，学院、高校之间以及系部、学院之间可按可选父级 ID 级联查询。
 
 ## 数据治理 API
 
@@ -143,8 +153,8 @@ REST 位于 `/api/auth/occupation`。目录读取和岗位分析允许 `ADMIN / 
 本项目不维护迁移脚本，现有项目数据可直接丢弃。空库只执行两个入口：
 
 - `occupation/init.sql`：依次加载 `sql/init-*.sql`。
-- `occupation/data.sql`：在同一事务中加载 `sql/data-major.sql` 与
-  `sql/data-occupation.sql`。
+- `occupation/data.sql`：在同一事务中加载 `sql/data-major.sql`、
+  `sql/data-occupation.sql` 与 `sql/data-user.sql`。
 
 PostgreSQL 初始化只创建 `baigon_occupation`，不再创建 `baigon_data_source`。
 

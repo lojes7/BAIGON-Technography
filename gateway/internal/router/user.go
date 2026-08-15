@@ -7,6 +7,7 @@ package router
 import (
 	"baigon-technography/gateway/internal/grpcpool"
 	"baigon-technography/gateway/internal/handler"
+	userhandler "baigon-technography/gateway/internal/handler/user"
 	"baigon-technography/gateway/internal/middleware"
 	"baigon-technography/gateway/internal/response"
 
@@ -22,9 +23,17 @@ func RegisterUserRoutes(api *gin.RouterGroup, pool *grpcpool.GrpcClientPool, jwt
 	api.GET("/ping", PingHandler())
 
 	// ==================== 受保护端点（需 Bearer Token） ====================
-	// 占位：后续用户相关接口（资料、简历等）挂在此组下
 	auth := api.Group("/auth")
 	auth.Use(middleware.Auth(jwtSecret))
+
+	// 用户管理接口只允许 ADMIN 访问。
+	users := auth.Group("/users")
+	users.Use(middleware.RoleAuth("ADMIN"))
+	users.POST("", userhandler.ListUsersHandler(pool))
+	users.GET("/universities", userhandler.ListUniversitiesHandler(pool))
+	users.GET("/schools", userhandler.ListSchoolsHandler(pool))
+	users.GET("/departments", userhandler.ListDepartmentsHandler(pool))
+	users.GET("/:id", userhandler.GetUserProfileHandler(pool))
 }
 
 // PingHandler 网关心跳探测

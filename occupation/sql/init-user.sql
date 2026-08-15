@@ -6,63 +6,13 @@ CREATE TYPE "role" AS ENUM (
     'STUDENT_AFFAIR',
     'DATA_ANALYST',
     'DATA_REVIEWER',
-    'ADMIN'
+    'ADMIN',
+    'CIVILIAN'
 );
 
 CREATE TYPE "user_status" AS ENUM ('NORMAL', 'LOCKED');
 CREATE TYPE "proficiency" AS ENUM ('EXPERT', 'SKILLED', 'FAMILIAR', 'BASIC');
 CREATE TYPE "semester" AS ENUM ('1', '2', '3', '4', '5', '6', '7', '8');
-
-CREATE TABLE "users" (
-    "created_at" timestamp with time zone NOT NULL DEFAULT now(),
-    "updated_at" timestamp with time zone NOT NULL DEFAULT now(),
-    "deleted_at" timestamp with time zone,
-    "id" bigint PRIMARY KEY,
-    "name" varchar(8) NOT NULL,
-    "uid" varchar(16) NOT NULL,
-    "password" varchar(64) NOT NULL,
-    "role" role NOT NULL,
-    "status" user_status NOT NULL DEFAULT 'NORMAL'
-);
-
-CREATE UNIQUE INDEX "idx_users_uid_active" ON "users" ("uid")
-    WHERE "deleted_at" IS NULL;
-
-CREATE TABLE "students" (
-    "created_at" timestamp with time zone NOT NULL DEFAULT now(),
-    "updated_at" timestamp with time zone NOT NULL DEFAULT now(),
-    "deleted_at" timestamp with time zone,
-    "id" bigint PRIMARY KEY,
-    "user_id" bigint NOT NULL REFERENCES "users" ("id"),
-    "department_id" bigint
-);
-
-CREATE UNIQUE INDEX "idx_students_user_active" ON "students" ("user_id")
-    WHERE "deleted_at" IS NULL;
-
-CREATE TABLE "teachers" (
-    "created_at" timestamp with time zone NOT NULL DEFAULT now(),
-    "updated_at" timestamp with time zone NOT NULL DEFAULT now(),
-    "deleted_at" timestamp with time zone,
-    "id" bigint PRIMARY KEY,
-    "user_id" bigint NOT NULL REFERENCES "users" ("id"),
-    "department_id" bigint
-);
-
-CREATE UNIQUE INDEX "idx_teachers_user_active" ON "teachers" ("user_id")
-    WHERE "deleted_at" IS NULL;
-
-CREATE TABLE "student_affairs" (
-    "created_at" timestamp with time zone NOT NULL DEFAULT now(),
-    "updated_at" timestamp with time zone NOT NULL DEFAULT now(),
-    "deleted_at" timestamp with time zone,
-    "id" bigint PRIMARY KEY,
-    "user_id" bigint NOT NULL REFERENCES "users" ("id"),
-    "department_id" bigint
-);
-
-CREATE UNIQUE INDEX "idx_student_affairs_user_active" ON "student_affairs" ("user_id")
-    WHERE "deleted_at" IS NULL;
 
 CREATE TABLE "universities" (
     "created_at" timestamp with time zone NOT NULL DEFAULT now(),
@@ -81,7 +31,7 @@ CREATE TABLE "schools" (
     "deleted_at" timestamp with time zone,
     "id" bigint PRIMARY KEY,
     "name" varchar(32) NOT NULL,
-    "university_id" bigint REFERENCES "universities" ("id")
+    "university_id" bigint NOT NULL REFERENCES "universities" ("id")
 );
 
 CREATE TABLE "departments" (
@@ -90,8 +40,36 @@ CREATE TABLE "departments" (
     "deleted_at" timestamp with time zone,
     "id" bigint PRIMARY KEY,
     "name" varchar(32) NOT NULL,
-    "school_id" bigint REFERENCES "schools" ("id")
+    "school_id" bigint NOT NULL REFERENCES "schools" ("id")
 );
+
+CREATE TABLE "users" (
+    "created_at" timestamp with time zone NOT NULL DEFAULT now(),
+    "updated_at" timestamp with time zone NOT NULL DEFAULT now(),
+    "deleted_at" timestamp with time zone,
+    "id" bigint PRIMARY KEY,
+    "name" varchar(8) NOT NULL,
+    "uid" varchar(16) NOT NULL,
+    "password" varchar(64) NOT NULL,
+    "role" role NOT NULL,
+    "status" user_status NOT NULL DEFAULT 'NORMAL',
+    "university_id" bigint REFERENCES "universities" ("id"),
+    "school_id" bigint REFERENCES "schools" ("id"),
+    "department_id" bigint REFERENCES "departments" ("id"),
+    CONSTRAINT "chk_users_organization_role" CHECK (
+        "role" IN ('STUDENT', 'TEACHER', 'STUDENT_AFFAIR')
+        OR ("university_id" IS NULL AND "school_id" IS NULL AND "department_id" IS NULL)
+    )
+);
+
+CREATE UNIQUE INDEX "idx_users_uid_active" ON "users" ("uid")
+    WHERE "deleted_at" IS NULL;
+CREATE INDEX "idx_users_university_active" ON "users" ("university_id")
+    WHERE "deleted_at" IS NULL AND "university_id" IS NOT NULL;
+CREATE INDEX "idx_users_school_active" ON "users" ("school_id")
+    WHERE "deleted_at" IS NULL AND "school_id" IS NOT NULL;
+CREATE INDEX "idx_users_department_active" ON "users" ("department_id")
+    WHERE "deleted_at" IS NULL AND "department_id" IS NOT NULL;
 
 CREATE TABLE "resumes" (
     "created_at" timestamp with time zone NOT NULL DEFAULT now(),

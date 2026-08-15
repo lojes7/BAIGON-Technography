@@ -1,11 +1,22 @@
 // 百工谱 — UserService gRPC 实现
 package com.baigon.occupation.grpc.service.user;
 
+import com.baigon.occupation.error.ApiException;
 import com.baigon.occupation.service.AuditContext;
 import com.baigon.occupation.service.LogService;
 import com.baigon.occupation.service.user.AuthService;
+import com.baigon.occupation.service.user.admin.AdminUserService;
+import com.baigon.user.GetUserProfileRequest;
+import com.baigon.user.GetUserProfileResponse;
+import com.baigon.user.ListUsersRequest;
+import com.baigon.user.ListUsersResponse;
 import com.baigon.user.LoginRequest;
 import com.baigon.user.LoginResponse;
+import com.baigon.user.OrganizationData;
+import com.baigon.user.OrganizationListRequest;
+import com.baigon.user.OrganizationListResponse;
+import com.baigon.user.UserData;
+import com.baigon.user.UserProfileData;
 import com.baigon.user.UserServiceGrpc;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
@@ -19,10 +30,14 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
     private static final Logger logger = LoggerFactory.getLogger(UserGrpcService.class);
 
     private final AuthService authService;
+    private final AdminUserService adminUserService;
     private final LogService logService;
 
-    public UserGrpcService(AuthService authService, LogService logService) {
+    public UserGrpcService(AuthService authService,
+                           AdminUserService adminUserService,
+                           LogService logService) {
         this.authService = authService;
+        this.adminUserService = adminUserService;
         this.logService = logService;
         logger.info("UserGrpcService 初始化完成");
     }
@@ -59,5 +74,177 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
             responseObserver.onError(Status.INTERNAL.withDescription("server error")
                     .asRuntimeException());
         }
+    }
+
+    @Override
+    public void listUsers(ListUsersRequest request, StreamObserver<ListUsersResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            int pageSize = adminUserService.normalizedPageSize(request.getPageSize());
+            var page = adminUserService.listUsers(
+                    request.getPage(), pageSize,
+                    new AdminUserService.UserSearchCriteria(
+                            request.getName(), request.getRole(), request.getUniversityId(),
+                            request.getSchoolId(), request.getDepartmentId()));
+            ListUsersResponse response = ListUsersResponse.newBuilder()
+                    .addAllItems(page.getContent().stream().map(this::userData).toList())
+                    .setTotal(page.getTotalElements())
+                    .setPage(request.getPage())
+                    .setPageSize(pageSize)
+                    .build();
+            respond(observer, response);
+            logService.info(audit, "list users: total=" + page.getTotalElements());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "list users failed");
+        }
+    }
+
+    @Override
+    public void getUserProfile(GetUserProfileRequest request,
+                               StreamObserver<GetUserProfileResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            var profile = adminUserService.findProfile(request.getId())
+                    .orElseThrow(() -> new ApiException(
+                            ApiException.ErrorCode.NOT_FOUND, "user not found"));
+            respond(observer, GetUserProfileResponse.newBuilder()
+                    .setProfile(profileData(profile))
+                    .build());
+            logService.info(audit, "get user profile: id=" + request.getId());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "get user profile failed");
+        }
+    }
+
+    @Override
+    public void listUniversities(OrganizationListRequest request,
+                                 StreamObserver<OrganizationListResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            int pageSize = adminUserService.normalizedPageSize(request.getPageSize());
+            var page = adminUserService.listUniversities(
+                    request.getPage(), pageSize, request.getKeyword());
+            respond(observer, organizationResponse(page.getContent().stream()
+                    .map(this::organizationData).toList(), page.getTotalElements(),
+                    request.getPage(), pageSize));
+            logService.info(audit, "list universities: total=" + page.getTotalElements());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "list universities failed");
+        }
+    }
+
+    @Override
+    public void listSchools(OrganizationListRequest request,
+                            StreamObserver<OrganizationListResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            int pageSize = adminUserService.normalizedPageSize(request.getPageSize());
+            var page = adminUserService.listSchools(
+                    request.getParentId(), request.getPage(), pageSize, request.getKeyword());
+            respond(observer, organizationResponse(page.getContent().stream()
+                    .map(this::organizationData).toList(), page.getTotalElements(),
+                    request.getPage(), pageSize));
+            logService.info(audit, "list schools: total=" + page.getTotalElements());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "list schools failed");
+        }
+    }
+
+    @Override
+    public void listDepartments(OrganizationListRequest request,
+                                StreamObserver<OrganizationListResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            int pageSize = adminUserService.normalizedPageSize(request.getPageSize());
+            var page = adminUserService.listDepartments(
+                    request.getParentId(), request.getPage(), pageSize, request.getKeyword());
+            respond(observer, organizationResponse(page.getContent().stream()
+                    .map(this::organizationData).toList(), page.getTotalElements(),
+                    request.getPage(), pageSize));
+            logService.info(audit, "list departments: total=" + page.getTotalElements());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "list departments failed");
+        }
+    }
+
+    private UserData userData(AdminUserService.UserSummary user) {
+        return UserData.newBuilder()
+                .setId(user.id())
+                .setUid(orEmpty(user.uid()))
+                .setName(orEmpty(user.name()))
+                .setRole(orEmpty(user.role()))
+                .setStatus(orEmpty(user.status()))
+                .build();
+    }
+
+    private UserProfileData profileData(AdminUserService.UserProfile profile) {
+        UserProfileData.Builder builder = UserProfileData.newBuilder()
+                .setUser(userData(profile.user()));
+        if (profile.university() != null) {
+            builder.setUniversity(organizationData(profile.university()));
+        }
+        if (profile.school() != null) {
+            builder.setSchool(organizationData(profile.school()));
+        }
+        if (profile.department() != null) {
+            builder.setDepartment(organizationData(profile.department()));
+        }
+        return builder.build();
+    }
+
+    private OrganizationData organizationData(AdminUserService.OrganizationSummary item) {
+        return OrganizationData.newBuilder()
+                .setId(item.id())
+                .setName(orEmpty(item.name()))
+                .build();
+    }
+
+    private OrganizationListResponse organizationResponse(
+            java.util.List<OrganizationData> items,
+            long total,
+            int page,
+            int pageSize) {
+        return OrganizationListResponse.newBuilder()
+                .addAllItems(items)
+                .setTotal(total)
+                .setPage(page)
+                .setPageSize(pageSize)
+                .build();
+    }
+
+    private <T> void respond(StreamObserver<T> observer, T response) {
+        observer.onNext(response);
+        observer.onCompleted();
+    }
+
+    private <T> void fail(StreamObserver<T> observer,
+                          AuditContext audit,
+                          Exception exception,
+                          String detail) {
+        logger.error(detail, exception);
+        logService.error(audit, exception.getMessage(), detail);
+        if (exception instanceof ApiException apiException) {
+            observer.onError(apiException.asGrpcException());
+        } else if (exception instanceof IllegalArgumentException) {
+            observer.onError(ApiException.grpcException(
+                    ApiException.ErrorCode.BAD_REQUEST, exception.getMessage()));
+        } else {
+            observer.onError(ApiException.grpcException(
+                    ApiException.ErrorCode.INTERNAL_ERROR, "server error"));
+        }
+    }
+
+    private String orEmpty(String value) {
+        return value == null ? "" : value;
     }
 }
