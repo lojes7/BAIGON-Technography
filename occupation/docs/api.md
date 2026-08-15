@@ -2,14 +2,16 @@
 
 ## 职责
 
-`occupation-service` 已合并原 `data-source-service`，一个进程连接一个数据库，并在同一 gRPC 端口注册
-`DataSourceService` 与 `OccupationService` 两套既有契约。主要职责包括：
+`occupation-service` 已合并原 `data-source-service` 与 `user-service`，一个进程连接一个数据库，
+并在同一 gRPC 端口注册 `DataSourceService`、`OccupationService` 与 `UserService` 三套既有契约。
+主要职责包括：
 
 - 消费 crawler 清洗完成事件并保存 `cleaned_job_sources`。
 - 提供清洗数据查询、原始记录追溯和人工审核。
 - 审核通过时在同一事务内保存审核快照、查询岗位别名并创建 `jobs` 与 `job_analysis_tasks`。
 - 事务提交后由本地线程池先完成职业匹配，再串行调用 AI-service 分析真实 JD。
 - 管理专业、职业目录及名称向量化任务。
+- 校验用户账号密码并签发 JWT。
 - 通过 Consul 发现 crawler-service 与 ai-service。
 - 所有领域共用一张 `logs` 业务审计表。
 
@@ -20,7 +22,19 @@
 - 职业域：`entity/occupation`、`repository/occupation`、`service/occupation`。
 - 岗位域：`entity/job`、`repository/job`。
 - 岗位分析域：`entity/jobanalysis`、`repository/jobanalysis`、`service/jobanalysis`。
+- 用户域：`entity/user`、`repository/user`、`service/user`、`grpc/service/user`。
+- gRPC 客户端：`grpc/client/ai`、`grpc/client/crawler`；服务端按业务域放在 `grpc/service/*`。
 - 各层根包只保留共享基类、通用状态、审计上下文和跨领域协调器。
+
+## 用户认证 API
+
+REST 登录路径仍为 `POST /api/login`，protobuf 仍为
+`baigon.user.UserService.Login`。gateway 只把 Consul 发现目标切换为 `occupation-service`，
+请求、响应、JWT claims 和错误码保持不变。
+
+用户、学校、院系、简历和用户分析相关表位于 `sql/init-user.sql`，开发种子账号位于
+`sql/data-user.sql`。JWT 使用 `JWT_SECRET` 与 `JWT_EXPIRATION_HOURS` 配置，并与 gateway
+共享签名密钥。
 
 ## 数据治理 API
 

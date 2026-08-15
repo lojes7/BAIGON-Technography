@@ -7,7 +7,7 @@ import com.baigon.occupation.entity.TaskStatus;
 import com.baigon.occupation.entity.job.Job;
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisResult;
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisTask;
-import com.baigon.occupation.grpc.AIGrpcClient;
+import com.baigon.occupation.grpc.client.ai.AIGrpcClient;
 import com.baigon.occupation.repository.job.JobRepository;
 import com.baigon.occupation.repository.jobanalysis.JobAnalysisCandidateRepository;
 import com.baigon.occupation.repository.jobanalysis.JobAnalysisResultRepository;

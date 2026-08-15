@@ -2,8 +2,9 @@
 
 package com.baigon.occupation.config;
 
-import com.baigon.occupation.grpc.DataSourceGrpcService;
-import com.baigon.occupation.grpc.OccupationGrpcService;
+import com.baigon.occupation.grpc.service.datasource.DataSourceGrpcService;
+import com.baigon.occupation.grpc.service.occupation.OccupationGrpcService;
+import com.baigon.occupation.grpc.service.user.UserGrpcService;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
 import jakarta.annotation.PostConstruct;
@@ -17,7 +18,7 @@ import java.io.IOException;
 
 /**
  * gRPC Server 手动配置（与 grpc-server-spring-boot-starter 互为补充）
- * 用于在同一端口注册 OccupationService 与 DataSourceService gRPC 实现
+ * 用于在同一端口注册数据治理、职业与用户三套既有 gRPC 契约。
  */
 @Configuration
 public class GrpcServerConfig {
@@ -31,19 +32,23 @@ public class GrpcServerConfig {
 
     private final OccupationGrpcService occupationGrpcService;
     private final DataSourceGrpcService dataSourceGrpcService;
+    private final UserGrpcService userGrpcService;
 
     public GrpcServerConfig(OccupationGrpcService occupationGrpcService,
-                            DataSourceGrpcService dataSourceGrpcService) {
+                            DataSourceGrpcService dataSourceGrpcService,
+                            UserGrpcService userGrpcService) {
         this.occupationGrpcService = occupationGrpcService;
         this.dataSourceGrpcService = dataSourceGrpcService;
+        this.userGrpcService = userGrpcService;
     }
 
     @PostConstruct
     public void startGrpcServer() throws IOException {
         server = ServerBuilder.forPort(grpcPort)
-                // 部署合并不破坏既有 protobuf 契约：同一端口注册两套服务。
+                // 部署合并不破坏既有 protobuf 契约：同一端口注册三套服务。
                 .addService(occupationGrpcService)
                 .addService(dataSourceGrpcService)
+                .addService(userGrpcService)
                 .maxInboundMessageSize(50 * 1024 * 1024) // 50MB
                 .build()
                 .start();

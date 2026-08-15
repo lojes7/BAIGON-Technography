@@ -77,3 +77,8 @@ logging:
 job-analysis:
   # AI 候选仅供审核参考，最终可选择 occupations 中任意有效职业。
   candidate-limit: 5
+
+jwt:
+  # 与 gateway 使用同一签名密钥；配置缺失时拒绝启动。
+  secret: ${JWT_SECRET}
+  expiration-hours: ${JWT_EXPIRATION_HOURS:1}

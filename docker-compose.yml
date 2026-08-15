@@ -67,15 +67,10 @@ services:
       AI_DB_USER: ${AI_DB_USER}
       AI_DB_PASSWORD: ${AI_DB_PASSWORD}
 
-      # occupation_service
+      # occupation_service（包含用户域）
       OCCUPATION_DB_NAME: ${OCCUPATION_DB_NAME}
       OCCUPATION_DB_USER: ${OCCUPATION_DB_USER}
       OCCUPATION_DB_PASSWORD: ${OCCUPATION_DB_PASSWORD}
-
-      # user_service
-      USER_DB_NAME: ${USER_DB_NAME}
-      USER_DB_USER: ${USER_DB_USER}
-      USER_DB_PASSWORD: ${USER_DB_PASSWORD}
 
     volumes:
       - ./docker/postgres/init.sh:/docker-entrypoint-initdb.d/01-init.sh:ro
@@ -84,8 +79,6 @@ services:
       - ./occupation/init.sql:/service-init/occupation/init.sql:ro
       - ./occupation/data.sql:/service-init/occupation/data.sql:ro
       - ./occupation/sql:/service-init/occupation/sql:ro
-      - ./user/init.sql:/service-init/user_init.sql:ro
-      - ./user/data.sql:/service-init/user_data.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 10s
@@ -207,9 +200,9 @@ services:
     networks:
       - baigon-net
 
-  # occupation_service — Java 数据治理、职业目录与岗位分析合并服务
+  # occupation_service — Java 数据治理、职业目录、岗位分析与用户认证合并服务
   occupation:
-    # context 指向根目录：构建时需要 data-source、occupation、crawler 与 ai 接口定义
+    # context 指向根目录：构建时需要三套服务端及内部客户端接口定义
     build:
       context: .
       dockerfile: occupation/Dockerfile
@@ -229,37 +222,6 @@ services:
       AI_SERVICE_NAME: ai-service
       GRPC_PORT: 50054
       SERVER_PORT: 8082
-    depends_on:
-      consul:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-    networks:
-      - baigon-net
-
-  # user_service — Java 用户服务
-  # context 指向根目录：构建时需要 proto/ 中的接口定义
-  user:
-    build:
-      context: .
-      dockerfile: user/Dockerfile
-    container_name: baigon-user-service
-    ports:
-      - "${USER_GRPC_PORT}:50055"
-    environment:
-      CONSUL_HOST: consul
-      CONSUL_PORT: 8500
-      SNOWFLAKE_WORKER_ID: ${SNOWFLAKE_WORKER_ID_USER}
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: ${USER_DB_NAME}
-      DB_USER: ${USER_DB_USER}
-      DB_PASSWORD: ${USER_DB_PASSWORD}
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      GRPC_PORT: 50055
-      SERVER_PORT: 8083
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRATION_HOURS: ${JWT_EXPIRATION_HOURS}
     depends_on:

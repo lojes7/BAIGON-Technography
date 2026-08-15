@@ -31,7 +31,7 @@ Go + Gin 网关，负责：
 
 ### POST /api/login — 用户登录
 
-网关接收 REST JSON 请求，通过 gRPC 调用 user-service 的 `Login` RPC，返回 JWT Token 和用户信息。
+网关接收 REST JSON 请求，通过 gRPC 调用 occupation-service 中的 `UserService.Login` RPC，返回 JWT Token 和用户信息。
 
 > **本接口不需要认证**。登录等公开端点直接挂在 api group 下（未挂载 Auth 中间件）。
 
@@ -99,7 +99,7 @@ Go + Gin 网关，负责：
 | 400 | 400 | 请求体格式错误 |
 | 401 | 401 | 账号或密码错误 |
 | 403 | 403 | 账号已被锁定 |
-| 503 | 503 | 用户服务不可用（user-service 连接失败或超时） |
+| 503 | 503 | 合并服务不可用（occupation-service 连接失败或超时） |
 | 500 | 500 | 内部服务错误 |
 
 **cURL 示例**
@@ -323,7 +323,7 @@ Authorization: Bearer <token>
 
 > **注意**：Auth 中间件已移除路径白名单逻辑，新增端点时必须显式声明——公开端点挂 api group，受保护端点挂 auth group，避免遗忘鉴权。
 
-Token 由 user-service 使用 HS256 算法签发，gateway 使用同一 `JWT_SECRET` 环境变量验签。
+Token 由 occupation-service 的用户域签发，gateway 使用同一 `JWT_SECRET` 环境变量验签。
 
 Claims 包含：`sub`(uid)、`userId`、`role`、`iat`、`exp`。
 

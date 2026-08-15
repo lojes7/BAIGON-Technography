@@ -75,7 +75,7 @@ docker compose ps
 # 网关健康检查
 curl http://localhost:8000/health
 
-# 用户登录（获取 JWT Token，种子账号见 user/data.sql）
+# 用户登录（获取 JWT Token，种子账号见 occupation/sql/data-user.sql）
 # 响应遵循统一格式: {"code":200,"data":{...}}，失败时仅 {"code":<状态码>}
 curl -X POST http://localhost:8000/api/login \
   -H "Content-Type: application/json" \

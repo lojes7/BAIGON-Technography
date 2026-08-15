@@ -83,7 +83,7 @@ func CORS() gin.HandlerFunc {
 }
 
 // Auth JWT Token 验证中间件
-// 与 user 服务共用同一把 JWT_SECRET 验签；验证通过后
+// 与 occupation 合并服务中的用户域共用同一把 JWT_SECRET 验签；验证通过后
 // 把 uid / userId / role 注入请求上下文，供下游 handler 使用
 func Auth(jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -104,7 +104,7 @@ func Auth(jwtSecret string) gin.HandlerFunc {
 
 		// 解析并验证签名与过期时间
 		token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (any, error) {
-			// 防算法混淆：只接受 HMAC 系列（user 服务用 HS512 签发）
+			// 防算法混淆：只接受用户域签发的 HMAC 系列 token。
 			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 			}

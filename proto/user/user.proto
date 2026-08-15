@@ -1,4 +1,4 @@
-// 百工谱 — user_service 接口定义
+// 百工谱 — 用户域接口定义（由 occupation-service 承载）
 // 用户管理、人岗匹配、简历解析、能力诊断、学习路径推荐
 
 syntax = "proto3";
@@ -8,8 +8,6 @@ package baigon.user;
 option java_package = "com.baigon.user";
 option java_multiple_files = true;
 option go_package = "baigon-technography/proto/gen/user;userpb";
-
-import "common/evidence.proto";
 
 // 用户服务：认证与用户管理
 service UserService {

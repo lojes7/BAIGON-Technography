@@ -1,5 +1,5 @@
-// 百工谱 — user-service 相关 REST handler
-// 网关 REST → gRPC 调用 user-service（user 服务不暴露 HTTP 业务接口）
+// 百工谱 — 用户域 REST handler
+// 网关 REST → gRPC 调用 occupation 合并服务中的 UserService
 
 package handler
 
@@ -21,7 +21,7 @@ type loginRequest struct {
 	Password string `json:"password" example:"123456"` // 密码
 }
 
-// LoginHandler 处理用户登录，网关 REST → gRPC 调用 user-service
+// LoginHandler 处理用户登录，网关 REST → gRPC 调用 UserService
 // @Summary      用户登录
 // @Description  校验账号密码，成功返回 JWT Token 和用户信息。
 // @Description  统一响应格式：成功 {"code":200,"data":{...}}；失败仅 {"code":<HTTP状态码>}
@@ -48,8 +48,8 @@ func LoginHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			return
 		}
 
-		// 通过 Consul 发现 user-service，走 gRPC 调用
-		conn, err := pool.GetConn("user-service")
+		// 用户域已物理并入 occupation-service，protobuf 契约保持不变。
+		conn, err := pool.GetConn("occupation-service")
 		if err != nil {
 			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
 			return

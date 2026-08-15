@@ -1,4 +1,4 @@
-// 百工谱 — user 服务路由注册
+// 百工谱 — 用户域路由注册
 // 鉴权约定：公开端点直接挂 api group；受保护端点必须挂 auth group（Auth 中间件）
 // 注意：Auth 中间件不再使用路径白名单，新增端点请显式声明是否需要鉴权
 
@@ -13,10 +13,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// RegisterUserRoutes 注册 user 服务相关路由
+// RegisterUserRoutes 注册用户域相关路由
 func RegisterUserRoutes(api *gin.RouterGroup, pool *grpcpool.GrpcClientPool, jwtSecret string) {
 	// ==================== 公开端点（免鉴权） ====================
-	// 登录：gateway 通过 gRPC 调用 user-service（user 服务不暴露 HTTP 业务接口）
+	// 登录：gateway 调用 occupation 合并服务中的 UserService。
 	api.POST("/login", handler.LoginHandler(pool))
 	// Ping 心跳探测
 	api.GET("/ping", PingHandler())

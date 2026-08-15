@@ -5,5 +5,6 @@ BEGIN;
 
 \ir sql/data-major.sql
 \ir sql/data-occupation.sql
+\ir sql/data-user.sql
 
 COMMIT;

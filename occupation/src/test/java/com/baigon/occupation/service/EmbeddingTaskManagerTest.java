@@ -2,8 +2,8 @@
 package com.baigon.occupation.service;
 
 import cn.hutool.core.lang.Snowflake;
-import com.baigon.occupation.grpc.AIGrpcClient;
-import com.baigon.occupation.grpc.AIGrpcClient.EmbeddingCall;
+import com.baigon.occupation.grpc.client.ai.AIGrpcClient;
+import com.baigon.occupation.grpc.client.ai.AIGrpcClient.EmbeddingCall;
 import com.baigon.occupation.error.ApiException;
 import com.baigon.occupation.service.EmbeddingDataService.EmbeddingCandidate;
 import com.baigon.occupation.service.EmbeddingTaskManager.Resource;

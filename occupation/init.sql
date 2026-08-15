@@ -2,6 +2,7 @@
 -- 仅供空库初始化；本项目不维护增量迁移脚本。
 
 \ir sql/init-common.sql
+\ir sql/init-user.sql
 \ir sql/init-data-source.sql
 \ir sql/init-major.sql
 \ir sql/init-occupation.sql
