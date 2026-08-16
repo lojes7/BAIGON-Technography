@@ -16,6 +16,8 @@ import com.baigon.user.LoginRequest;
 import com.baigon.user.LoginResponse;
 import com.baigon.user.OrganizationListRequest;
 import com.baigon.user.OrganizationListResponse;
+import com.baigon.user.UnlockUserRequest;
+import com.baigon.user.UnlockUserResponse;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import org.junit.jupiter.api.BeforeEach;
@@ -106,12 +108,12 @@ class UserGrpcServiceTest {
 
     @Test
     void listUsersShouldReturnUserDataAndPagination() {
-        var summary = new AdminUserService.UserSummary(
+        var user = new AdminUserService.UserData(
                 8L, "student01", "张三", "STUDENT", "NORMAL",
                 1L, 2L, 3L, "百工大学", "计算机学院", "软件工程系");
         when(adminUserService.normalizedPageSize(20)).thenReturn(20);
         when(adminUserService.listUsers(eq(0), eq(20), any()))
-                .thenReturn(new PageImpl<>(List.of(summary)));
+                .thenReturn(new PageImpl<>(List.of(user)));
         @SuppressWarnings("unchecked")
         StreamObserver<ListUsersResponse> observer = mock(StreamObserver.class);
 
@@ -208,10 +210,10 @@ class UserGrpcServiceTest {
 
     @Test
     void blockUserShouldReturnLockedUser() {
-        var summary = new AdminUserService.UserSummary(
+        var user = new AdminUserService.UserData(
                 8L, "student01", "张三", "STUDENT", "LOCKED",
                 1L, 2L, 3L, "百工大学", "计算机学院", "软件工程系");
-        when(adminUserService.blockUser(8L)).thenReturn(Optional.of(summary));
+        when(adminUserService.blockUser(8L)).thenReturn(Optional.of(user));
         @SuppressWarnings("unchecked")
         StreamObserver<BlockUserResponse> observer = mock(StreamObserver.class);
 
@@ -245,6 +247,47 @@ class UserGrpcServiceTest {
         assertEquals(Status.Code.NOT_FOUND,
                 Status.fromThrowable(error.getValue()).getCode());
         verify(logService).error(any(), eq("user not found"), eq("block user failed"));
+    }
+
+    @Test
+    void unlockUserShouldReturnNormalUser() {
+        var user = new AdminUserService.UserData(
+                8L, "student01", "张三", "STUDENT", "NORMAL",
+                1L, 2L, 3L, "百工大学", "计算机学院", "软件工程系");
+        when(adminUserService.unlockUser(8L)).thenReturn(Optional.of(user));
+        @SuppressWarnings("unchecked")
+        StreamObserver<UnlockUserResponse> observer = mock(StreamObserver.class);
+
+        service.unlockUser(UnlockUserRequest.newBuilder()
+                .setId(8L)
+                .setUserId(1L)
+                .setUserName("admin")
+                .setRequestMethod("POST")
+                .setRequestUrl("/api/auth/users/8/unlock")
+                .build(), observer);
+
+        ArgumentCaptor<UnlockUserResponse> response =
+                ArgumentCaptor.forClass(UnlockUserResponse.class);
+        verify(observer).onNext(response.capture());
+        verify(observer).onCompleted();
+        assertEquals("NORMAL", response.getValue().getUser().getStatus());
+        assertEquals(1L, response.getValue().getUser().getUniversityId());
+        verify(logService).info(any(), eq("unlock user: id=8"));
+    }
+
+    @Test
+    void unlockUserShouldMapMissingUserToNotFound() {
+        when(adminUserService.unlockUser(99L)).thenReturn(Optional.empty());
+        @SuppressWarnings("unchecked")
+        StreamObserver<UnlockUserResponse> observer = mock(StreamObserver.class);
+
+        service.unlockUser(UnlockUserRequest.newBuilder().setId(99L).build(), observer);
+
+        ArgumentCaptor<Throwable> error = ArgumentCaptor.forClass(Throwable.class);
+        verify(observer).onError(error.capture());
+        assertEquals(Status.Code.NOT_FOUND,
+                Status.fromThrowable(error.getValue()).getCode());
+        verify(logService).error(any(), eq("user not found"), eq("unlock user failed"));
     }
 
     @Test

@@ -61,6 +61,18 @@ public class AdminUserService {
         });
     }
 
+    /** ADMIN 解封用户；正常账号重复调用时保持 NORMAL。 */
+    @Transactional
+    public Optional<UserData> unlockUser(long id) {
+        if (id <= 0) {
+            throw new IllegalArgumentException("id must be > 0");
+        }
+        return userRepository.findByIdAndDeletedAtIsNull(id).map(user -> {
+            user.setStatus(User.UserStatus.NORMAL);
+            return build(userRepository.save(user));
+        });
+    }
+
     /** 分页查询高校目录。 */
     public Page<OrganizationSummary> listUniversities(int page, int pageSize, String keyword) {
         return universityRepository.search(text(keyword), catalogPageable(page, pageSize))

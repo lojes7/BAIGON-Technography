@@ -40,14 +40,15 @@ REST 登录路径仍为 `POST /api/login`，protobuf 仍为
 `users.university_id / users.school_id / users.department_id`。`STUDENT / TEACHER / STUDENT_AFFAIR`
 可保存校园归属，其他角色由数据库约束保证三个字段均为 `NULL`。
 
-`UserService` 还提供 `ListUsers`、`GetUser`、`BlockUser`、`ListUniversities`、`ListSchools`
-和 `ListDepartments` 六个受保护 RPC。gateway 将用户本人资料查询暴露为 `/api/auth/me`，
+`UserService` 还提供 `ListUsers`、`GetUser`、`BlockUser`、`UnlockUser`、`ListUniversities`、
+`ListSchools` 和 `ListDepartments` 七个受保护 RPC。gateway 将用户本人资料查询暴露为 `/api/auth/me`，
 其余管理能力暴露为 `/api/auth/users` 下的 ADMIN 接口。
 `ListUsers` 按姓名、角色及三个组织 ID 组合筛选，并与 `GetUser` 一样返回完整 `UserData`。
 `GetUser` 按用户 ID 加载账号，并扁平返回
 `university_id / university_name / school_id / school_name / department_id / department_name`。
 所有用户接口都不返回密码。
 `BlockUser` 将目标账号幂等设为 `LOCKED`，用户不存在时返回 `NOT_FOUND`。
+`UnlockUser` 将目标账号幂等设为 `NORMAL`，用户不存在时返回 `NOT_FOUND`。
 高校、学院和系部目录均支持分页与名称关键词，学院、高校之间以及系部、学院之间可按可选父级 ID 级联查询。
 
 ## 数据治理 API

@@ -18,6 +18,8 @@ import com.baigon.user.LoginResponse;
 import com.baigon.user.OrganizationData;
 import com.baigon.user.OrganizationListRequest;
 import com.baigon.user.OrganizationListResponse;
+import com.baigon.user.UnlockUserRequest;
+import com.baigon.user.UnlockUserResponse;
 import com.baigon.user.UserData;
 import com.baigon.user.UserServiceGrpc;
 import io.grpc.Status;
@@ -145,6 +147,25 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
     }
 
     @Override
+    public void unlockUser(UnlockUserRequest request,
+                           StreamObserver<UnlockUserResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            var user = adminUserService.unlockUser(request.getId())
+                    .orElseThrow(() -> new ApiException(
+                            ApiException.ErrorCode.NOT_FOUND, "user not found"));
+            respond(observer, UnlockUserResponse.newBuilder()
+                    .setUser(userData(user))
+                    .build());
+            logService.info(audit, "unlock user: id=" + request.getId());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "unlock user failed");
+        }
+    }
+
+    @Override
     public void listUniversities(OrganizationListRequest request,
                                  StreamObserver<OrganizationListResponse> observer) {
         AuditContext audit = AuditContext.from(
@@ -201,7 +222,7 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
         }
     }
 
-    private UserData userData(AdminUserService.UserSummary user) {
+    private UserData userData(AdminUserService.UserData user) {
         return UserData.newBuilder()
                 .setId(user.id())
                 .setUid(orEmpty(user.uid()))

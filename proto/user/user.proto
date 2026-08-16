@@ -23,6 +23,9 @@ service UserService {
   // ADMIN 按用户 ID 封禁账号。
   rpc BlockUser(BlockUserRequest) returns (BlockUserResponse);
 
+  // ADMIN 按用户 ID 解封账号。
+  rpc UnlockUser(UnlockUserRequest) returns (UnlockUserResponse);
+
   // ADMIN 查询系统中的高校、学院和系部目录。
   rpc ListUniversities(OrganizationListRequest) returns (OrganizationListResponse);
   rpc ListSchools(OrganizationListRequest) returns (OrganizationListResponse);
@@ -88,6 +91,18 @@ message BlockUserRequest {
   string request_url = 15;
 }
 
+// ADMIN 解封用户请求。
+message UnlockUserRequest {
+  int64 id = 1;
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
 // 组织目录分页请求。parent_id 为 0 时返回全量；学院对应高校 ID，系部对应学院 ID。
 message OrganizationListRequest {
   int32 page = 1;
@@ -135,6 +150,10 @@ message GetUserResponse {
 }
 
 message BlockUserResponse {
+  UserData user = 1;
+}
+
+message UnlockUserResponse {
   UserData user = 1;
 }
 

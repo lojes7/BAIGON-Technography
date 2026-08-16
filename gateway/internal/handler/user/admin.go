@@ -200,6 +200,59 @@ func BlockUserHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 	}
 }
 
+// UnlockUserHandler 将指定用户设为 NORMAL，重复解封保持成功。
+// @Summary      ADMIN 解封用户
+// @Tags         用户管理
+// @Produce      json
+// @Security     Bearer
+// @Param        id path int true "用户 ID"
+// @Success      200 {object} response.SuccessBody "data 为解封后的完整用户信息"
+// @Failure      400 {object} response.ErrorBody
+// @Failure      401 {object} response.ErrorBody
+// @Failure      403 {object} response.ErrorBody
+// @Failure      404 {object} response.ErrorBody
+// @Failure      503 {object} response.ErrorBody
+// @Router       /api/auth/users/{id}/unlock [post]
+func UnlockUserHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+		if err != nil || id <= 0 {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+
+		conn, err := pool.GetConn("occupation-service")
+		if err != nil {
+			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+		var trailer metadata.MD
+		result, err := userpb.NewUserServiceClient(conn).UnlockUser(
+			ctx,
+			&userpb.UnlockUserRequest{
+				Id: id, TraceId: c.GetString("trace_id"),
+				UserId: commonhandler.UserIDFromContext(c), UserName: c.GetString("uid"),
+				UserIp: c.ClientIP(), RequestMethod: c.Request.Method,
+				RequestUrl: c.Request.URL.Path,
+			},
+			grpc.Trailer(&trailer),
+		)
+		if err != nil {
+			httpCode, errorCode := commonhandler.GRPCErrorCodes(err, trailer)
+			response.Error(c, httpCode, errorCode)
+			return
+		}
+
+		if result.GetUser() == nil {
+			response.Error(c, http.StatusInternalServerError, http.StatusInternalServerError)
+			return
+		}
+		response.Success(c, userData(result.GetUser()))
+	}
+}
+
 // ListUniversitiesHandler 分页查询系统高校目录。
 // @Summary      ADMIN 查询高校列表
 // @Tags         用户管理

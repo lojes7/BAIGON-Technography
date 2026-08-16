@@ -37,6 +37,7 @@ func RegisterUserRoutes(api *gin.RouterGroup, pool *grpcpool.GrpcClientPool, jwt
 	admin.GET("/departments", userhandler.ListDepartmentsHandler(pool))
 	admin.GET("/:id", userhandler.GetUserHandler(pool))
 	admin.POST("/:id/block", userhandler.BlockUserHandler(pool))
+	admin.POST("/:id/unlock", userhandler.UnlockUserHandler(pool))
 }
 
 // PingHandler 网关心跳探测

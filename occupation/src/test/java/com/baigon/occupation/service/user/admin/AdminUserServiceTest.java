@@ -114,7 +114,7 @@ class AdminUserServiceTest {
     }
 
     @Test
-    void blockUserSetsLockedAndReturnsUpdatedSummary() {
+    void blockUserSetsLockedAndReturnsUpdatedUser() {
         User user = new User();
         user.setId(7L);
         user.setUid("student01");
@@ -136,6 +136,31 @@ class AdminUserServiceTest {
         when(userRepository.findByIdAndDeletedAtIsNull(99L)).thenReturn(Optional.empty());
 
         assertEquals(Optional.empty(), service.blockUser(99L));
+    }
+
+    @Test
+    void unlockUserSetsNormalAndReturnsUpdatedUser() {
+        User user = new User();
+        user.setId(7L);
+        user.setUid("student01");
+        user.setName("张三");
+        user.setRole(User.Role.STUDENT);
+        user.setStatus(User.UserStatus.LOCKED);
+        when(userRepository.findByIdAndDeletedAtIsNull(7L)).thenReturn(Optional.of(user));
+        when(userRepository.save(user)).thenReturn(user);
+
+        var result = service.unlockUser(7L);
+
+        assertEquals(User.UserStatus.NORMAL, user.getStatus());
+        assertEquals("NORMAL", result.orElseThrow().status());
+        verify(userRepository).save(user);
+    }
+
+    @Test
+    void unlockUserReturnsEmptyWhenUserDoesNotExist() {
+        when(userRepository.findByIdAndDeletedAtIsNull(99L)).thenReturn(Optional.empty());
+
+        assertEquals(Optional.empty(), service.unlockUser(99L));
     }
 
     @Test
