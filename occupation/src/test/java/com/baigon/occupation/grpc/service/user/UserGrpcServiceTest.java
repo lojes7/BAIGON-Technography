@@ -1,9 +1,15 @@
 // 百工谱 — UserService gRPC 契约测试
 package com.baigon.occupation.grpc.service.user;
 
+import com.baigon.occupation.entity.user.User;
 import com.baigon.occupation.service.LogService;
 import com.baigon.occupation.service.user.AuthService;
+import com.baigon.occupation.service.user.UserService;
 import com.baigon.occupation.service.user.admin.AdminUserService;
+import com.baigon.user.BlockUserRequest;
+import com.baigon.user.BlockUserResponse;
+import com.baigon.user.GetUserRequest;
+import com.baigon.user.GetUserResponse;
 import com.baigon.user.ListUsersRequest;
 import com.baigon.user.ListUsersResponse;
 import com.baigon.user.LoginRequest;
@@ -18,6 +24,7 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.PageImpl;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
@@ -30,6 +37,7 @@ import static org.mockito.Mockito.when;
 class UserGrpcServiceTest {
 
     private AuthService authService;
+    private UserService userService;
     private AdminUserService adminUserService;
     private LogService logService;
     private UserGrpcService service;
@@ -37,9 +45,10 @@ class UserGrpcServiceTest {
     @BeforeEach
     void setUp() {
         authService = mock(AuthService.class);
+        userService = mock(UserService.class);
         adminUserService = mock(AdminUserService.class);
         logService = mock(LogService.class);
-        service = new UserGrpcService(authService, adminUserService, logService);
+        service = new UserGrpcService(authService, userService, adminUserService, logService);
     }
 
     @Test
@@ -96,9 +105,10 @@ class UserGrpcServiceTest {
     }
 
     @Test
-    void listUsersShouldReturnBaseFieldsAndPagination() {
+    void listUsersShouldReturnUserDataAndPagination() {
         var summary = new AdminUserService.UserSummary(
-                8L, "student01", "张三", "STUDENT", "NORMAL");
+                8L, "student01", "张三", "STUDENT", "NORMAL",
+                1L, 2L, 3L, "百工大学", "计算机学院", "软件工程系");
         when(adminUserService.normalizedPageSize(20)).thenReturn(20);
         when(adminUserService.listUsers(eq(0), eq(20), any()))
                 .thenReturn(new PageImpl<>(List.of(summary)));
@@ -123,6 +133,12 @@ class UserGrpcServiceTest {
         verify(observer).onCompleted();
         assertEquals(1, response.getValue().getItemsCount());
         assertEquals("student01", response.getValue().getItems(0).getUid());
+        assertEquals(1L, response.getValue().getItems(0).getUniversityId());
+        assertEquals(2L, response.getValue().getItems(0).getSchoolId());
+        assertEquals(3L, response.getValue().getItems(0).getDepartmentId());
+        assertEquals("百工大学", response.getValue().getItems(0).getUniversityName());
+        assertEquals("计算机学院", response.getValue().getItems(0).getSchoolName());
+        assertEquals("软件工程系", response.getValue().getItems(0).getDepartmentName());
         assertEquals(20, response.getValue().getPageSize());
         verify(logService).info(any(), eq("list users: total=1"));
     }
@@ -145,6 +161,90 @@ class UserGrpcServiceTest {
         assertEquals(Status.Code.INVALID_ARGUMENT,
                 Status.fromThrowable(error.getValue()).getCode());
         verify(logService).error(any(), eq("invalid role"), eq("list users failed"));
+    }
+
+    @Test
+    void getUserShouldReturnOrganizationIdsAndNames() {
+        var user = new UserService.UserData(
+                8L, "student01", "张三", User.Role.STUDENT, User.UserStatus.NORMAL,
+                1L, 2L, 3L, "百工大学", "计算机学院", "软件工程系");
+        when(userService.getUser(8L)).thenReturn(Optional.of(user));
+        @SuppressWarnings("unchecked")
+        StreamObserver<GetUserResponse> observer = mock(StreamObserver.class);
+
+        service.getUser(GetUserRequest.newBuilder()
+                .setId(8L)
+                .setUserId(8L)
+                .setRequestMethod("GET")
+                .setRequestUrl("/api/auth/me")
+                .build(), observer);
+
+        ArgumentCaptor<GetUserResponse> response = ArgumentCaptor.forClass(GetUserResponse.class);
+        verify(observer).onNext(response.capture());
+        verify(observer).onCompleted();
+        assertEquals(1L, response.getValue().getUser().getUniversityId());
+        assertEquals(2L, response.getValue().getUser().getSchoolId());
+        assertEquals(3L, response.getValue().getUser().getDepartmentId());
+        assertEquals("百工大学", response.getValue().getUser().getUniversityName());
+        assertEquals("计算机学院", response.getValue().getUser().getSchoolName());
+        assertEquals("软件工程系", response.getValue().getUser().getDepartmentName());
+        verify(logService).info(any(), eq("get user: id=8"));
+    }
+
+    @Test
+    void getUserShouldMapMissingUserToNotFound() {
+        when(userService.getUser(99L)).thenReturn(Optional.empty());
+        @SuppressWarnings("unchecked")
+        StreamObserver<GetUserResponse> observer = mock(StreamObserver.class);
+
+        service.getUser(GetUserRequest.newBuilder().setId(99L).build(), observer);
+
+        ArgumentCaptor<Throwable> error = ArgumentCaptor.forClass(Throwable.class);
+        verify(observer).onError(error.capture());
+        assertEquals(Status.Code.NOT_FOUND,
+                Status.fromThrowable(error.getValue()).getCode());
+        verify(logService).error(any(), eq("user not found"), eq("get user failed"));
+    }
+
+    @Test
+    void blockUserShouldReturnLockedUser() {
+        var summary = new AdminUserService.UserSummary(
+                8L, "student01", "张三", "STUDENT", "LOCKED",
+                1L, 2L, 3L, "百工大学", "计算机学院", "软件工程系");
+        when(adminUserService.blockUser(8L)).thenReturn(Optional.of(summary));
+        @SuppressWarnings("unchecked")
+        StreamObserver<BlockUserResponse> observer = mock(StreamObserver.class);
+
+        service.blockUser(BlockUserRequest.newBuilder()
+                .setId(8L)
+                .setUserId(1L)
+                .setUserName("admin")
+                .setRequestMethod("POST")
+                .setRequestUrl("/api/auth/users/8/block")
+                .build(), observer);
+
+        ArgumentCaptor<BlockUserResponse> response =
+                ArgumentCaptor.forClass(BlockUserResponse.class);
+        verify(observer).onNext(response.capture());
+        verify(observer).onCompleted();
+        assertEquals("LOCKED", response.getValue().getUser().getStatus());
+        assertEquals(1L, response.getValue().getUser().getUniversityId());
+        verify(logService).info(any(), eq("block user: id=8"));
+    }
+
+    @Test
+    void blockUserShouldMapMissingUserToNotFound() {
+        when(adminUserService.blockUser(99L)).thenReturn(Optional.empty());
+        @SuppressWarnings("unchecked")
+        StreamObserver<BlockUserResponse> observer = mock(StreamObserver.class);
+
+        service.blockUser(BlockUserRequest.newBuilder().setId(99L).build(), observer);
+
+        ArgumentCaptor<Throwable> error = ArgumentCaptor.forClass(Throwable.class);
+        verify(observer).onError(error.capture());
+        assertEquals(Status.Code.NOT_FOUND,
+                Status.fromThrowable(error.getValue()).getCode());
+        verify(logService).error(any(), eq("user not found"), eq("block user failed"));
     }
 
     @Test

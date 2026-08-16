@@ -112,6 +112,13 @@ curl -X POST http://localhost:8000/api/login \
 
 ---
 
+### GET /api/auth/me — 查看当前用户资料
+
+任意已登录用户可以查询 JWT 对应的账号与校园归属，不接受客户端传入的用户 ID。
+响应 `data` 为扁平用户对象，包含 `id / uid / name / role / status`，以及
+`university_id / university_name / school_id / school_name / department_id / department_name`。
+未归属的组织 ID 为 `0`，名称为空字符串。
+
 ### ADMIN 用户管理（`/api/auth/users`）
 
 以下接口均要求 Bearer Token，且只允许 **ADMIN** 角色访问。
@@ -134,13 +141,18 @@ curl -X POST http://localhost:8000/api/login \
 
 `role` 使用 `STUDENT / TEACHER / STUDENT_AFFAIR / DATA_ANALYST / DATA_REVIEWER / ADMIN /
 CIVILIAN` 精确匹配；`name` 忽略大小写并执行包含匹配。三个组织 ID 来自下方的组织目录接口，
-使用精确匹配；值为 `0` 或不传时不参与筛选。查询直接比较 `users` 表字段，列表项只返回
-`id / uid / name / role / status`，不返回密码或组织资料。
+使用精确匹配；值为 `0` 或不传时不参与筛选。列表项返回完整 `UserData`，包含基础字段、
+三级组织 ID 及名称，不返回密码。
 
 #### GET /api/auth/users/{id} — 查看用户详情
 
-ADMIN 通过用户 ID 查看用户账号和校园归属。响应 `data` 包含 `user / university /
-school / department`；非校园角色的三个组织字段均为 `null`，用户不存在时返回 404。
+ADMIN 通过用户 ID 查看用户账号和校园归属，返回与 `/api/auth/me` 相同的
+扁平用户字段；用户不存在时返回 404。
+
+#### POST /api/auth/users/{id}/block — 封禁用户
+
+ADMIN 将指定用户状态设为 `LOCKED`。该操作是幂等的，重复封禁已锁定用户仍返回
+200；响应 `data` 为更新后的完整 `UserData`，用户不存在时返回 404。
 
 #### 组织目录接口
 

@@ -24,7 +24,7 @@ public class AuthService {
     /** 校验账号密码并签发 JWT。 */
     public AuthResult login(String uid, String password) {
         // 账号不存在与密码错误使用同一结果，避免泄露账号是否存在。
-        User user = userRepository.findByUid(uid)
+        User user = userRepository.findByUidAndDeletedAtIsNull(uid)
                 .orElseThrow(() -> new AuthException(401, "uid or password error"));
 
         if (!passwordEncoder.matches(password, user.getPassword())) {

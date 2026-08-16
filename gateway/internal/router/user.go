@@ -26,14 +26,17 @@ func RegisterUserRoutes(api *gin.RouterGroup, pool *grpcpool.GrpcClientPool, jwt
 	auth := api.Group("/auth")
 	auth.Use(middleware.Auth(jwtSecret))
 
-	// 用户管理接口只允许 ADMIN 访问。
-	users := auth.Group("/users")
-	users.Use(middleware.RoleAuth("ADMIN"))
-	users.POST("", userhandler.ListUsersHandler(pool))
-	users.GET("/universities", userhandler.ListUniversitiesHandler(pool))
-	users.GET("/schools", userhandler.ListSchoolsHandler(pool))
-	users.GET("/departments", userhandler.ListDepartmentsHandler(pool))
-	users.GET("/:id", userhandler.GetUserProfileHandler(pool))
+	auth.GET("/me", userhandler.GetCurrentUserHandler(pool))
+
+	// 管理员接口
+	admin := auth.Group("/users")
+	admin.Use(middleware.RoleAuth("ADMIN"))
+	admin.POST("", userhandler.ListUsersHandler(pool))
+	admin.GET("/universities", userhandler.ListUniversitiesHandler(pool))
+	admin.GET("/schools", userhandler.ListSchoolsHandler(pool))
+	admin.GET("/departments", userhandler.ListDepartmentsHandler(pool))
+	admin.GET("/:id", userhandler.GetUserHandler(pool))
+	admin.POST("/:id/block", userhandler.BlockUserHandler(pool))
 }
 
 // PingHandler 网关心跳探测

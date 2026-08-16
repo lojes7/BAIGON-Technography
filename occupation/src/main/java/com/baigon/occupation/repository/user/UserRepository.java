@@ -13,11 +13,15 @@ import java.util.Optional;
 
 public interface UserRepository extends JpaRepository<User, Long> {
 
-    /** 按账号查询未软删除用户。 */
-    @Query("SELECT u FROM User u WHERE u.uid = :uid AND u.deletedAt IS NULL")
-    Optional<User> findByUid(@Param("uid") String uid);
+    /** 按 uid 查询未软删除用户。 */
+    Optional<User> findByUidAndDeletedAtIsNull(String uid);
 
-    /** 用户列表直接按 users 表字段筛选，不再跨身份表或组织表。 */
+    /** 用户列表按 users 表字段筛选，并一次加载扁平响应需要的组织名称。 */
+    @EntityGraph(attributePaths = {
+            "university",
+            "school",
+            "department"
+    })
     @Query("""
             SELECT u FROM User u
             WHERE u.deletedAt IS NULL
@@ -34,12 +38,11 @@ public interface UserRepository extends JpaRepository<User, Long> {
                       @Param("departmentId") Long departmentId,
                       Pageable pageable);
 
-    /** ADMIN 按用户 ID 查询账号与对应校园身份资料。 */
+    /** 按用户 ID 查询账号资料。 */
     @EntityGraph(attributePaths = {
             "university",
             "school",
             "department"
     })
-    @Query("SELECT u FROM User u WHERE u.id = :id AND u.deletedAt IS NULL")
-    Optional<User> findProfileById(@Param("id") long id);
+    Optional<User> findByIdAndDeletedAtIsNull(long id);
 }

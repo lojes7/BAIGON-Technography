@@ -5,9 +5,12 @@ import com.baigon.occupation.error.ApiException;
 import com.baigon.occupation.service.AuditContext;
 import com.baigon.occupation.service.LogService;
 import com.baigon.occupation.service.user.AuthService;
+import com.baigon.occupation.service.user.UserService;
 import com.baigon.occupation.service.user.admin.AdminUserService;
-import com.baigon.user.GetUserProfileRequest;
-import com.baigon.user.GetUserProfileResponse;
+import com.baigon.user.BlockUserRequest;
+import com.baigon.user.BlockUserResponse;
+import com.baigon.user.GetUserRequest;
+import com.baigon.user.GetUserResponse;
 import com.baigon.user.ListUsersRequest;
 import com.baigon.user.ListUsersResponse;
 import com.baigon.user.LoginRequest;
@@ -16,7 +19,6 @@ import com.baigon.user.OrganizationData;
 import com.baigon.user.OrganizationListRequest;
 import com.baigon.user.OrganizationListResponse;
 import com.baigon.user.UserData;
-import com.baigon.user.UserProfileData;
 import com.baigon.user.UserServiceGrpc;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
@@ -30,13 +32,16 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
     private static final Logger logger = LoggerFactory.getLogger(UserGrpcService.class);
 
     private final AuthService authService;
+    private final UserService userService;
     private final AdminUserService adminUserService;
     private final LogService logService;
 
     public UserGrpcService(AuthService authService,
+                           UserService userService,
                            AdminUserService adminUserService,
                            LogService logService) {
         this.authService = authService;
+        this.userService = userService;
         this.adminUserService = adminUserService;
         this.logService = logService;
         logger.info("UserGrpcService 初始化完成");
@@ -102,21 +107,40 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
     }
 
     @Override
-    public void getUserProfile(GetUserProfileRequest request,
-                               StreamObserver<GetUserProfileResponse> observer) {
+    public void getUser(GetUserRequest request,
+                        StreamObserver<GetUserResponse> observer) {
         AuditContext audit = AuditContext.from(
                 request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
                 request.getRequestMethod(), request.getRequestUrl());
         try {
-            var profile = adminUserService.findProfile(request.getId())
+            var user = userService.getUser(request.getId())
                     .orElseThrow(() -> new ApiException(
                             ApiException.ErrorCode.NOT_FOUND, "user not found"));
-            respond(observer, GetUserProfileResponse.newBuilder()
-                    .setProfile(profileData(profile))
+            respond(observer, GetUserResponse.newBuilder()
+                    .setUser(userData(user))
                     .build());
-            logService.info(audit, "get user profile: id=" + request.getId());
+            logService.info(audit, "get user: id=" + request.getId());
         } catch (Exception exception) {
-            fail(observer, audit, exception, "get user profile failed");
+            fail(observer, audit, exception, "get user failed");
+        }
+    }
+
+    @Override
+    public void blockUser(BlockUserRequest request,
+                          StreamObserver<BlockUserResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            var user = adminUserService.blockUser(request.getId())
+                    .orElseThrow(() -> new ApiException(
+                            ApiException.ErrorCode.NOT_FOUND, "user not found"));
+            respond(observer, BlockUserResponse.newBuilder()
+                    .setUser(userData(user))
+                    .build());
+            logService.info(audit, "block user: id=" + request.getId());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "block user failed");
         }
     }
 
@@ -184,22 +208,29 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
                 .setName(orEmpty(user.name()))
                 .setRole(orEmpty(user.role()))
                 .setStatus(orEmpty(user.status()))
+                .setUniversityId(orZero(user.universityId()))
+                .setSchoolId(orZero(user.schoolId()))
+                .setDepartmentId(orZero(user.departmentId()))
+                .setUniversityName(orEmpty(user.universityName()))
+                .setSchoolName(orEmpty(user.schoolName()))
+                .setDepartmentName(orEmpty(user.departmentName()))
                 .build();
     }
 
-    private UserProfileData profileData(AdminUserService.UserProfile profile) {
-        UserProfileData.Builder builder = UserProfileData.newBuilder()
-                .setUser(userData(profile.user()));
-        if (profile.university() != null) {
-            builder.setUniversity(organizationData(profile.university()));
-        }
-        if (profile.school() != null) {
-            builder.setSchool(organizationData(profile.school()));
-        }
-        if (profile.department() != null) {
-            builder.setDepartment(organizationData(profile.department()));
-        }
-        return builder.build();
+    private UserData userData(UserService.UserData user) {
+        return UserData.newBuilder()
+                .setId(user.id())
+                .setUid(orEmpty(user.uid()))
+                .setName(orEmpty(user.name()))
+                .setRole(user.role().name())
+                .setStatus(user.status().name())
+                .setUniversityId(orZero(user.universityId()))
+                .setSchoolId(orZero(user.schoolId()))
+                .setDepartmentId(orZero(user.departmentId()))
+                .setUniversityName(orEmpty(user.universityName()))
+                .setSchoolName(orEmpty(user.schoolName()))
+                .setDepartmentName(orEmpty(user.departmentName()))
+                .build();
     }
 
     private OrganizationData organizationData(AdminUserService.OrganizationSummary item) {
@@ -246,5 +277,9 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
 
     private String orEmpty(String value) {
         return value == null ? "" : value;
+    }
+
+    private long orZero(Long value) {
+        return value == null ? 0L : value;
     }
 }

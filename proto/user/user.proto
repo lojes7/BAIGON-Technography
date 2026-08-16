@@ -17,8 +17,11 @@ service UserService {
   // ADMIN 分页查询用户基础信息。
   rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
 
-  // ADMIN 按用户 ID 查询账号与校园资料。
-  rpc GetUserProfile(GetUserProfileRequest) returns (GetUserProfileResponse);
+  // 按用户 ID 查询账号与校园资料，gateway 用于本人和 ADMIN 查询。
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+
+  // ADMIN 按用户 ID 封禁账号。
+  rpc BlockUser(BlockUserRequest) returns (BlockUserResponse);
 
   // ADMIN 查询系统中的高校、学院和系部目录。
   rpc ListUniversities(OrganizationListRequest) returns (OrganizationListResponse);
@@ -61,8 +64,20 @@ message ListUsersRequest {
   string request_url = 25;
 }
 
-// ADMIN 用户详情请求。
-message GetUserProfileRequest {
+// 用户详情请求。
+message GetUserRequest {
+  int64 id = 1;
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+// ADMIN 封禁用户请求。
+message BlockUserRequest {
   int64 id = 1;
 
   string trace_id = 10;
@@ -93,15 +108,19 @@ message OrganizationData {
   string name = 2;
 }
 
-// 用户公开字段；密码永不进入公开契约。
+// 用户字段；密码永不进入公开契约。
 message UserData {
   int64 id = 1;
   string uid = 2;
   string name = 3;
   string role = 4;
   string status = 5;
-  reserved 6, 7, 8;
-  reserved "university", "school", "department";
+  string university_name = 6;
+  string school_name = 7;
+  string department_name = 8;
+  int64 university_id = 9;
+  int64 school_id = 10;
+  int64 department_id = 11;
 }
 
 message ListUsersResponse {
@@ -111,15 +130,12 @@ message ListUsersResponse {
   int32 page_size = 4;
 }
 
-message UserProfileData {
+message GetUserResponse {
   UserData user = 1;
-  OrganizationData university = 2;
-  OrganizationData school = 3;
-  OrganizationData department = 4;
 }
 
-message GetUserProfileResponse {
-  UserProfileData profile = 1;
+message BlockUserResponse {
+  UserData user = 1;
 }
 
 message OrganizationListResponse {

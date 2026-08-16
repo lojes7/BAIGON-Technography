@@ -41,7 +41,7 @@ class AuthServiceTest {
 
     @Test
     void loginShouldReturnExistingContractFields() {
-        when(userRepository.findByUid("admin")).thenReturn(Optional.of(user));
+        when(userRepository.findByUidAndDeletedAtIsNull("admin")).thenReturn(Optional.of(user));
         when(jwtTokenService.generateToken(user)).thenReturn("jwt-token");
 
         AuthService.AuthResult result = authService.login("admin", PASSWORD);
@@ -56,7 +56,7 @@ class AuthServiceTest {
 
     @Test
     void loginShouldHideWhetherUidExists() {
-        when(userRepository.findByUid("missing")).thenReturn(Optional.empty());
+        when(userRepository.findByUidAndDeletedAtIsNull("missing")).thenReturn(Optional.empty());
 
         AuthService.AuthException exception = assertThrows(
                 AuthService.AuthException.class,
@@ -68,7 +68,7 @@ class AuthServiceTest {
 
     @Test
     void loginShouldRejectWrongPasswordWithSameMessage() {
-        when(userRepository.findByUid("admin")).thenReturn(Optional.of(user));
+        when(userRepository.findByUidAndDeletedAtIsNull("admin")).thenReturn(Optional.of(user));
 
         AuthService.AuthException exception = assertThrows(
                 AuthService.AuthException.class,
@@ -81,7 +81,7 @@ class AuthServiceTest {
     @Test
     void loginShouldRejectLockedUser() {
         user.setStatus(User.UserStatus.LOCKED);
-        when(userRepository.findByUid("admin")).thenReturn(Optional.of(user));
+        when(userRepository.findByUidAndDeletedAtIsNull("admin")).thenReturn(Optional.of(user));
 
         AuthService.AuthException exception = assertThrows(
                 AuthService.AuthException.class,

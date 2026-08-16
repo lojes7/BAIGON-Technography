@@ -1,9 +1,6 @@
 // 百工谱 — ADMIN 用户分页与组织目录查询业务层
 package com.baigon.occupation.service.user.admin;
 
-import com.baigon.occupation.entity.user.Department;
-import com.baigon.occupation.entity.user.School;
-import com.baigon.occupation.entity.user.University;
 import com.baigon.occupation.entity.user.User;
 import com.baigon.occupation.repository.user.UserRepository;
 import com.baigon.occupation.repository.user.admin.DepartmentRepository;
@@ -40,33 +37,37 @@ public class AdminUserService {
         this.schoolRepository = schoolRepository;
         this.departmentRepository = departmentRepository;
     }
-    
-    /** 列表筛选全部使用 users 表字段，不加载组织资料。 */
-    public Page<UserSummary> listUsers(int page, int pageSize, UserSearchCriteria criteria) {
+
+    /** 列表筛选使用 users 表字段，同时返回扁平组织信息。 */
+    public Page<UserData> listUsers(int page, int pageSize, UserSearchCriteria criteria) {
         UserSearchCriteria filter = criteria == null ? UserSearchCriteria.empty() : criteria;
         User.Role role = role(filter.role());
         return userRepository.search(
                         text(filter.name()), role, organizationId(filter.universityId()),
                         organizationId(filter.schoolId()), organizationId(filter.departmentId()),
                         PageRequest.of(page(page), pageSize(pageSize)))
-                .map(this::summary);
+                .map(this::build);
     }
 
-    /** ADMIN 按用户 ID 查看账号与对应校园归属。 */
-    public Optional<UserProfile> findProfile(long id) {
+    /** ADMIN 封禁用户；已封禁账号重复调用时保持 LOCKED。 */
+    @Transactional
+    public Optional<UserData> blockUser(long id) {
         if (id <= 0) {
             throw new IllegalArgumentException("id must be > 0");
         }
-        return userRepository.findProfileById(id).map(this::profile);
+        return userRepository.findByIdAndDeletedAtIsNull(id).map(user -> {
+            user.setStatus(User.UserStatus.LOCKED);
+            return build(userRepository.save(user));
+        });
     }
 
-    //
+    /** 分页查询高校目录。 */
     public Page<OrganizationSummary> listUniversities(int page, int pageSize, String keyword) {
         return universityRepository.search(text(keyword), catalogPageable(page, pageSize))
                 .map(item -> new OrganizationSummary(item.getId(), item.getName()));
     }
 
-    //
+    /** 分页查询学院目录，universityId 为 0 时不限高校。 */
     public Page<OrganizationSummary> listSchools(long universityId,
                                                   int page,
                                                   int pageSize,
@@ -75,7 +76,7 @@ public class AdminUserService {
                 .map(item -> new OrganizationSummary(item.getId(), item.getName()));
     }
 
-    //
+    /** 分页查询系部目录，schoolId 为 0 时不限学院。 */
     public Page<OrganizationSummary> listDepartments(long schoolId,
                                                       int page,
                                                       int pageSize,
@@ -129,29 +130,13 @@ public class AdminUserService {
         }
     }
 
-    private UserSummary summary(User user) {
-        return new UserSummary(
-                user.getId(), user.getUid(), user.getName(), user.getRole().name(), user.getStatus().name());
-    }
-
-    private UserProfile profile(User user) {
-        return new UserProfile(
-                summary(user),
-                organization(user.getUniversity()),
-                organization(user.getSchool()),
-                organization(user.getDepartment()));
-    }
-
-    private OrganizationSummary organization(University university) {
-        return university == null ? null : new OrganizationSummary(university.getId(), university.getName());
-    }
-
-    private OrganizationSummary organization(School school) {
-        return school == null ? null : new OrganizationSummary(school.getId(), school.getName());
-    }
-
-    private OrganizationSummary organization(Department department) {
-        return department == null ? null : new OrganizationSummary(department.getId(), department.getName());
+    private UserData build(User user) {
+        return new UserData(
+                user.getId(), user.getUid(), user.getName(), user.getRole().name(), user.getStatus().name(),
+                user.getUniversityId(), user.getSchoolId(), user.getDepartmentId(),
+                user.getUniversity() == null ? null : user.getUniversity().getName(),
+                user.getSchool() == null ? null : user.getSchool().getName(),
+                user.getDepartment() == null ? null : user.getDepartment().getName());
     }
 
     private Long organizationId(long value) {
@@ -176,18 +161,17 @@ public class AdminUserService {
     public record OrganizationSummary(Long id, String name) {
     }
 
-    public record UserSummary(
+    public record UserData(
             Long id,
             String uid,
             String name,
             String role,
-            String status) {
-    }
-
-    public record UserProfile(
-            UserSummary user,
-            OrganizationSummary university,
-            OrganizationSummary school,
-            OrganizationSummary department) {
+            String status,
+            Long universityId,
+            Long schoolId,
+            Long departmentId,
+            String universityName,
+            String schoolName,
+            String departmentName) {
     }
 }
