@@ -76,21 +76,30 @@ CREATE TABLE "resumes" (
     "updated_at" timestamp with time zone NOT NULL DEFAULT now(),
     "deleted_at" timestamp with time zone,
     "id" bigint PRIMARY KEY,
-    "user_id" bigint,
-    "file_key" varchar(512),
-    "bucket_name" varchar(64),
+    "user_id" bigint NOT NULL REFERENCES "users" ("id"),
+    "file_key" varchar(512) NOT NULL,
+    "bucket_name" varchar(64) NOT NULL,
     "file_name" varchar(255) NOT NULL,
     "file_size" bigint NOT NULL DEFAULT 0,
     "content" text,
-    "md5" varchar(64),
+    "md5" varchar(64) NOT NULL,
+    -- JSONB 格式的教育经历
     "education_experiences" jsonb,
+    -- JSONB 格式的工作经历
     "work_experiences" jsonb,
+    -- JSONB 格式的项目经历
     "project_experiences" jsonb,
+    -- JSONB 格式的专业技能
     "professional_skills" jsonb,
+    -- JSONB 格式的获奖经历
     "awards" jsonb,
     "review_status" review_status NOT NULL DEFAULT 'PENDING',
     "reviewed_at" timestamp with time zone
 );
+
+CREATE INDEX "idx_resumes_user_created_active"
+    ON "resumes" ("user_id", "created_at" DESC)
+    WHERE "deleted_at" IS NULL;
 
 CREATE TABLE "grades" (
     "created_at" timestamp with time zone NOT NULL DEFAULT now(),
@@ -110,7 +119,7 @@ CREATE TABLE "user_analysis_tasks" (
     "id" bigint PRIMARY KEY,
     "trace_id" bigint,
     "user_id" bigint,
-    "task_status" task_status NOT NULL DEFAULT 'FAILED',
+    "task_status" task_status NOT NULL DEFAULT 'PENDING',
     "model_name" varchar(32),
     "ai_suggestion" text
 );
@@ -127,7 +136,11 @@ CREATE TABLE "user_graphs" (
     "trace_id" bigint,
     "user_id" bigint REFERENCES "users" ("id"),
     "ability_id" bigint,
-    "proficiency" proficiency
+    "proficiency" proficiency,
+    "evidence" text NOT NULL,
+    CONSTRAINT "ck_user_graph_proficiency" CHECK (
+        "proficiency" IN ('Expert', 'Advanced', 'Familiar', 'Basic')
+        )
 );
 
 CREATE INDEX "idx_user_graphs_user_id" ON "user_graphs" ("user_id");

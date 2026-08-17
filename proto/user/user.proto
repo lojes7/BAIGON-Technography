@@ -20,6 +20,15 @@ service UserService {
   // 按用户 ID 查询账号与校园资料，gateway 用于本人和 ADMIN 查询。
   rpc GetUser(GetUserRequest) returns (GetUserResponse);
 
+  // 为当前用户签发 MinIO 预签名上传地址，文件不经过 gateway 或 gRPC。
+  rpc CreateResumeUpload(CreateResumeUploadRequest) returns (CreateResumeUploadResponse);
+
+  // 前端直传 MinIO 后确认上传；服务同步创建记录并提取文字。
+  rpc CompleteResumeUpload(CompleteResumeUploadRequest) returns (CompleteResumeUploadResponse);
+
+  // 当前用户查询自己的简历。
+  rpc GetMyResume(GetMyResumeRequest) returns (GetMyResumeResponse);
+
   // ADMIN 按用户 ID 封禁账号。
   rpc BlockUser(BlockUserRequest) returns (BlockUserResponse);
 
@@ -162,4 +171,63 @@ message OrganizationListResponse {
   int64 total = 2;
   int32 page = 3;
   int32 page_size = 4;
+}
+
+// 预签名上传申请；file_size 仅用于上传前校验，完成时仍会以 MinIO 实际对象为准。
+message CreateResumeUploadRequest {
+  string file_name = 1;
+  int64 file_size = 2;
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+message CompleteResumeUploadRequest {
+  int64 upload_id = 1;
+  string file_name = 2;
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+message GetMyResumeRequest {
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+// 对外不暴露 MinIO bucket、object key 和文件摘要等内部存储字段。
+message ResumeData {
+  int64 id = 1;
+  string file_name = 2;
+  int64 file_size = 3;
+  string content = 4;
+  string created_at = 5;
+}
+
+message CreateResumeUploadResponse {
+  int64 upload_id = 1;
+  string upload_url = 2;
+  string method = 3;
+  string content_type = 4;
+  string expires_at = 5;
+}
+
+message CompleteResumeUploadResponse {
+  ResumeData resume = 1;
+}
+
+message GetMyResumeResponse {
+  ResumeData resume = 1;
 }

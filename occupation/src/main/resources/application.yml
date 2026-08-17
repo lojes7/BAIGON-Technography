@@ -2,7 +2,7 @@
 # Spring Boot + gRPC + Consul + PostgreSQL + Kafka
 
 server:
-  port: ${SERVER_PORT:8082}
+  port: ${SERVER_PORT}
 
 spring:
   application:
@@ -43,7 +43,7 @@ spring:
       discovery:
         instance-id: ${spring.application.name}-${random.value}
         service-name: occupation-service
-        port: ${GRPC_PORT:50054}  # 注册端口必须与实际 gRPC 端口一致
+        port: ${GRPC_PORT}  # 注册端口必须与实际 gRPC 端口一致
         health-check-url: http://${HOSTNAME:localhost}:${server.port}/actuator/health
         health-check-interval: 10s
         # 本服务按需调用 DiscoveryClient，不需要轮询完整目录；同时避免旧客户端使用已弃用的 token 查询参数。
@@ -82,3 +82,24 @@ jwt:
   # 与 gateway 使用同一签名密钥；配置缺失时拒绝启动。
   secret: ${JWT_SECRET}
   expiration-hours: ${JWT_EXPIRATION_HOURS:1}
+
+minio:
+  endpoint: ${MINIO_ENDPOINT}
+  # 浏览器直传地址属于应用配置，不从 .env 注入。
+  public-endpoint: ${MINIO_PUBLIC_ENDPOINT}
+  access-key: ${MINIO_ROOT_USER}
+  secret-key: ${MINIO_ROOT_PASSWORD}
+  region: ${MINIO_REGION:us-east-1}
+  resume-bucket: ${MINIO_RESUME_BUCKET:resumes}
+
+resume:
+  # 上传前校验声明大小，完成时再按 MinIO 对象实际大小复核。
+  max-file-size-bytes: ${RESUME_MAX_FILE_SIZE_BYTES:10485760}
+  max-pdf-pages: 10
+  upload-url-expiry-seconds: ${RESUME_UPLOAD_URL_EXPIRY_SECONDS:600}
+
+ocr:
+  command: tesseract
+  languages: chi_sim+eng
+  page-dpi: 200
+  timeout-seconds: 30

@@ -97,6 +97,8 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      # 浏览器直传所需的 CORS 属于 MinIO 服务配置，不从 .env 注入。
+      MINIO_API_CORS_ALLOW_ORIGIN: ${MINIO_API_CORS_ALLOW_ORIGIN}
     command: server /data --console-address ":9001"
     volumes:
       - miniodata:/data
@@ -210,26 +212,42 @@ services:
     ports:
       - "${OCCUPATION_GRPC_PORT}:50054"
     environment:
+      # consul
       CONSUL_HOST: consul
       CONSUL_PORT: 8500
+      # snowflake
       SNOWFLAKE_WORKER_ID: ${SNOWFLAKE_WORKER_ID_OCCUPATION}
+      # database
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: ${OCCUPATION_DB_NAME}
       DB_USER: ${OCCUPATION_DB_USER}
       DB_PASSWORD: ${OCCUPATION_DB_PASSWORD}
+      # kafka
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      # ai-service
       AI_SERVICE_NAME: ai-service
+      # gRPC
       GRPC_PORT: 50054
-      SERVER_PORT: 8082
+      #JWT
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRATION_HOURS: ${JWT_EXPIRATION_HOURS}
+      # minIO
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_PUBLIC_ENDPOINT: http://minio:${MINIO_PORT}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_REGION: ${MINIO_REGION}
+      MINIO_RESUME_BUCKET: ${MINIO_RESUME_BUCKET:-resumes}
+      RESUME_UPLOAD_URL_EXPIRY_SECONDS: ${RESUME_UPLOAD_URL_EXPIRY_SECONDS}
     depends_on:
       consul:
         condition: service_healthy
       postgres:
         condition: service_healthy
       kafka:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     networks:
       - baigon-net
