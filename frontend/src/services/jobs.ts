@@ -1,5 +1,7 @@
 import type { ApiResponse, PaginatedData, JobItem, JobAbilities } from "../types/api";
 
+import { parseJson } from "./lossless";
+
 const BASE = "/api/jobs";
 const hdrs = () => ({
   "Content-Type": "application/json",
@@ -13,7 +15,8 @@ async function request<T>(url: string, init?: RequestInit): Promise<ApiResponse<
     const msg = body.detail?.[0]?.msg || `请求失败 (${res.status})`;
     throw new Error(msg);
   }
-  return res.json();
+  const text = await res.text();
+  return parseJson(text) as ApiResponse<T>;
 }
 
 export async function getJobList(major_id: string, city_id?: string, page = 1, page_size = 20) {

@@ -6,7 +6,7 @@ import T from "../constants/tokens";
 import { useAuth } from "../auth/AuthContext";
 import { PAGE_PERMISSIONS, ROLES, type RoleKey } from "../auth/roles";
 import { auditEntries, actionTypeColors } from "../data";
-import { PageHeader, Btn, Card, StatusBadge } from "../components/ui";
+import { Btn, Card, StatusBadge } from "../components/ui";
 
 // ── 各角色的 Mock 详细资料 ──
 const PROFILE: Record<RoleKey, {
@@ -29,20 +29,6 @@ const PROFILE: Record<RoleKey, {
       { label: "创建标准词条", value: "17" },
       { label: "操作记录总数", value: "1,284" },
       { label: "本月活跃天数", value: "18" },
-    ],
-  },
-  engineer: {
-    email: "zhaoengineer@cjut.edu.cn",
-    institution: "常州工业职业技术学院",
-    department: "数据工程部",
-    accountType: "技术人员",
-    joinDate: "2024-10-15",
-    stats: [
-      { label: "导入数据批次", value: "156" },
-      { label: "成功导入条数", value: "4,520" },
-      { label: "导出任务完成", value: "43" },
-      { label: "数据源管理", value: "8" },
-      { label: "本月活跃天数", value: "22" },
     ],
   },
   reviewer: {

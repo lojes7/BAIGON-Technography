@@ -543,7 +543,7 @@ export interface ComboChange {
 export interface ComboEvidenceJob {
   job_id: string;
   job_name: string;
-  skill_ids: number[];
+  skill_ids: string[];
   cooccurrence_count: number;
   sample_count: number;
 }
@@ -572,61 +572,61 @@ export interface CrawlerStatus {
   message: string;
 }
 
-// 清洗后岗位列表摘要（新版字段为 camelCase）
+// 清洗后岗位列表摘要（后端返回 snake_case）
 export interface DataSourceItem {
   id: string;
-  jobName: string;
-  companyName: string;
-  sourcePlatform: string;
-  publishDate: string;
-  createdAt: string;
-  reviewStatus: string;
+  job_name: string;
+  company_name: string;
+  source_platform: string;
+  publish_date: string;
+  created_at: string;
+  review_status: string;
 }
 
-// 清洗后岗位详情（全字段）
+// 清洗后岗位详情（全字段，后端 snake_case）
 export interface DataSourceDetail {
   id: string;
-  traceId: string;
-  publishDate: string;
-  sourcePlatform: string;
-  sourceUrl: string;
+  trace_id: string;
+  publish_date: string;
+  source_platform: string;
+  source_url: string;
   city: string;
   tags: string;
   major: string;
   nature: string;
   salary: string;
-  jobName: string;
-  companyName: string;
-  companySize: string;
+  job_name: string;
+  company_name: string;
+  company_size: string;
   province: string;
   education: string;
   experience: string;
-  jobDescription: string;
-  reviewStatus: string;
-  reviewedAt: string | null;
-  reviewedBy: string | null;
+  job_description: string;
+  review_status: string;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
 }
 
-// 原始记录（追溯用）
+// 原始记录（追溯用，后端 snake_case）
 export interface SourceJobDetail {
   id: string;
-  traceId: string;
-  publishDate: string;
-  sourcePlatform: string;
-  sourceUrl: string;
+  trace_id: string;
+  publish_date: string;
+  source_platform: string;
+  source_url: string;
   city: string;
   tags: string;
   major: string;
   nature: string;
   salary: string;
-  jobName: string;
-  companyName: string;
-  companySize: string;
+  job_name: string;
+  company_name: string;
+  company_size: string;
   province: string;
   education: string;
   experience: string;
-  jobDescription: string;
-  cleanStatus: string;
+  job_description: string;
+  clean_status: string;
 }
 
 // 复核响应
@@ -641,6 +641,81 @@ export interface DataSourceListParams {
   reviewStatus?: string;
   publishDateFrom?: string;
   publishDateTo?: string;
+}
+
+// ── 模拟采集（ingest）模块 ──
+
+// 单条注入岗位数据（字段与爬虫产出 JobRecord 一致，snake_case）
+export interface IngestJob {
+  publish_date?: string;
+  source_platform?: string;
+  source_url?: string;
+  city?: string;
+  tags?: string;
+  major?: string;
+  nature?: string;
+  salary?: string;
+  job_name: string;
+  company_name?: string;
+  company_size?: string;
+  province?: string;
+  education?: string;
+  experience?: string;
+  job_description?: string;
+}
+
+// 模拟采集响应
+export interface IngestResult {
+  count: string;
+  trace_id: string;
+  status: string;
+}
+
+// ── 专业职业管理（occupation）模块 ──
+
+// 目录项（学科门类 / 专业类 / 职业大类 / 职业中类 / 职业小类）
+export interface CatalogItem {
+  id: string; // 雪花 ID int64，lossless 解析为字符串避免精度丢失
+  code: string;
+  name: string;
+}
+
+// 可向量化目录项（专业 / 职业），is_embed 表示名称是否已完成向量化
+export interface EmbeddableCatalogItem extends CatalogItem {
+  is_embed: boolean;
+}
+
+// 目录分页响应（gateway 返回 pageSize，字段为 camelCase）
+export interface CatalogPage<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+// 向量化进度（embedded / total）
+export interface EmbeddingProgress {
+  embedded: number;
+  total: number;
+}
+
+// 专业与职业向量化进度汇总
+export interface EmbeddingProgressResponse {
+  majors: EmbeddingProgress;
+  occupations: EmbeddingProgress;
+}
+
+// 向量化任务状态（gateway 返回 camelCase）
+export interface EmbeddingTaskStatus {
+  status: string;
+  traceId: string;
+  total: number;
+  processed: number;
+  succeeded: number;
+  failed: number;
+  message: string;
+  startedAt: string;
+  finishedAt: string;
 }
 
 // ── 学生简历模块 ──

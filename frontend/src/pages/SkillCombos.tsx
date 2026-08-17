@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { CheckCircle } from "lucide-react";
 import T from "../constants/tokens";
 import { getComboEvolution } from "../services/analytics";

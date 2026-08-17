@@ -1,4 +1,3 @@
-import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import { toast } from "sonner";
 import { X, Download } from "lucide-react";
@@ -13,7 +12,6 @@ function EvidenceDrawer({
 }: {
   title: string; subtitle?: string; items?: EvidenceItemType[]; onClose: () => void;
 }) {
-  const { t } = useTranslation();
   const [expanded, setExpanded] = useState<number | null>(0);
   return (
     <div className="fixed inset-0 z-40 flex" onClick={onClose}>

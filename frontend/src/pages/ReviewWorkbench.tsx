@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import { toast } from "sonner";
-import { CheckCircle, ChevronDown, ChevronLeft, ChevronRight, Plus, Pencil, AlertTriangle, X } from "lucide-react";
+import { CheckCircle, ChevronDown, ChevronLeft, ChevronRight, Plus, AlertTriangle, X } from "lucide-react";
 import T from "../constants/tokens";
 import { useAuth } from "../auth/AuthContext";
 import { PageHeader, Card, Btn, StatusBadge, ConfidenceBadge, Divider } from "../components/ui";
@@ -25,7 +25,7 @@ function ReviewWorkbenchPage() {
     setSelected(0);
     const msgs: Record<string, string> = {
       accept: t("msg.acceptedDesc"), reject: t("msg.rejectedDesc"),
-      later: t("msg.postponedDesc"), edit: t("msg.modifiedAndAccepted"),
+      later: t("msg.postponedDesc"),
     };
     if (action === "reject") toast(msgs[action]);
     else toast.success(msgs[action] || "已处理");
@@ -211,7 +211,6 @@ function ReviewWorkbenchPage() {
                 <>
                   <div className="flex gap-2">
                     <Btn size="sm" icon={CheckCircle} onClick={() => advance("accept")}>审核通过</Btn>
-                    <Btn variant="secondary" size="sm" icon={Pencil} onClick={() => advance("edit")}>修改后通过</Btn>
                     <Btn variant="ghost" size="sm" icon={X} onClick={() => advance("reject")}>驳回</Btn>
                     <Btn variant="ghost" size="sm" icon={AlertTriangle} onClick={() => toast("已标记为需更多证据")}>标记需更多证据</Btn>
                   </div>
@@ -229,7 +228,6 @@ function ReviewWorkbenchPage() {
                     <Btn variant="ghost" size="sm" onClick={() => advance("later")}>稍后处理</Btn>
                   </div>
                   <div className="flex gap-2">
-                    <Btn variant="secondary" size="sm" icon={Pencil} onClick={() => advance("edit")}>编辑后接受</Btn>
                     {selected === 2
                       ? <Btn size="sm" icon={Plus} onClick={() => setCreateSkillOpen(true)}>新建标准能力</Btn>
                       : <Btn size="sm" icon={CheckCircle} onClick={() => advance("accept")}>接受候选①</Btn>}

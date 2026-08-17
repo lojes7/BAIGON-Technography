@@ -1,5 +1,7 @@
 import type { ApiResponse, ImportResult } from "../types/api";
 
+import { parseJson } from "./lossless";
+
 const BASE = "/api/student-affair";
 
 async function request<T>(url: string, init?: RequestInit): Promise<ApiResponse<T>> {
@@ -9,7 +11,8 @@ async function request<T>(url: string, init?: RequestInit): Promise<ApiResponse<
     const msg = body.detail?.[0]?.msg || `请求失败 (${res.status})`;
     throw new Error(msg);
   }
-  return res.json();
+  const text = await res.text();
+  return parseJson(text) as ApiResponse<T>;
 }
 
 export async function importUsers(file: File) {

@@ -26,6 +26,7 @@ export const ADMIN_NAV: NavSection[] = [
     mkChild("job-dict", "nav.jobDict"),
     mkChild("skill-dict", "nav.skillDict"),
     mkChild("taxonomy", "nav.taxonomy"),
+    mkChild("discipline", "nav.discipline"),
   ]),
   mk("graph", "nav.graph", Network, [
     mkChild("graph-browser", "nav.graphBrowser"),
@@ -120,6 +121,7 @@ export const REVIEWER_NAV: NavSection[] = [
     mkChild("job-dict", "nav.jobDict"),
     mkChild("skill-dict", "nav.skillDict"),
     mkChild("taxonomy", "nav.taxonomy"),
+    mkChild("discipline", "nav.discipline"),
   ]),
   mk("profile", "nav.personalCenter", User, [
     mkChild("account-settings", "nav.accountSettings"),

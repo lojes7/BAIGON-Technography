@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
+import { register } from "../services/auth";
 import T from "../constants/tokens";
 import { Eye, EyeOff, User, Lock, LogIn, ArrowRight, Network, TrendingUp, Target, Briefcase, Layers, GitBranch } from "lucide-react";
 

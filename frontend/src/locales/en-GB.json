@@ -30,7 +30,20 @@
     "name": "Name",
     "count": "Count",
     "unitItem": "items",
-    "unitRecord": "records"
+    "unitRecord": "records",
+    "copy": "Copy"
+  },
+  "diff": {
+    "original": "Original",
+    "cleaned": "Cleaned"
+  },
+  "embedding": {
+    "majorName": "major name",
+    "occupationName": "occupation name",
+    "start": "Embed",
+    "started": "Embedding task started",
+    "embedding": "Embedding…",
+    "progress": "{{label}} embedding progress"
   },
   "nav": {
     "brand": "百工谱",
@@ -38,18 +51,19 @@
     "dashboard": "Dashboard",
     "dataCenter": "Data Centre",
     "dataSources": "Data Sources",
-    "importBatches": "Import Batches",
+    "importBatches": "Data Import",
     "autoImport": "Auto Import",
-    "rawRecords": "Raw Records",
+    "rawRecords": "Data Review",
     "aiProcessing": "AI Processing",
     "extractionTasks": "Extraction Tasks",
     "reviewQueue": "Review Queue",
     "aiAnalyses": "AI Analysis Records",
     "processingErrors": "Processing Errors",
     "dictionaries": "Standard Dictionary",
-    "jobDict": "Job Dictionary",
+    "jobDict": "Occupation Dictionary",
     "skillDict": "Skill Dictionary",
     "taxonomy": "Taxonomy",
+    "discipline": "Discipline Categories",
     "graph": "Competency Graph",
     "graphBrowser": "Graph Browser",
     "graphSnapshots": "Graph Snapshots",
@@ -315,8 +329,8 @@
       "noLogs": "No logs"
     },
     "rawRecords": {
-      "title": "Raw Records",
-      "desc": "Raw job and training data imported into the system, anonymised",
+      "title": "Data Review",
+      "desc": "Manually review cleaned job data and trace the original record",
       "colId": "Record ID",
       "colSource": "Data Source",
       "colPlatform": "Platform",
@@ -338,6 +352,9 @@
       "reviewDate": "Reviewed",
       "createDate": "Created",
       "viewOriginal": "View Original Link",
+      "viewOriginalRecord": "View Original Record",
+      "diffTitle": "Original vs Cleaned",
+      "back": "Back",
       "rawData": "Raw Data",
       "jobName": "Job Title",
       "companyName": "Company",
@@ -349,6 +366,8 @@
       "jobMajor": "Major",
       "jobNature": "Company Type",
       "jobTags": "Skill Tags",
+      "jobCompanySize": "Company Size",
+      "jobSourceUrl": "Source URL",
       "jobConfidence": "Confidence",
       "jobInfo": "Job Info",
       "jobDesc": "Job Description",
@@ -360,7 +379,8 @@
       "crawlerRunning": "Crawler is running, auto-refreshing every 5s...",
       "reviewApproved": "Approved",
       "reviewRejected": "Rejected",
-      "reviewUpdated": "Updated"
+      "reviewUpdated": "Updated",
+      "noDiffData": "No source/cleaned data to compare"
     },
     "dataExport": {
       "title": "Data Export",
@@ -392,8 +412,8 @@
       "colActions": "Actions"
     },
     "jobDict": {
-      "title": "Job Dictionary",
-      "desc": "Standardised job titles and classification system",
+      "title": "Occupation Dictionary",
+      "desc": "Standardised occupation catalog (major → sub → category → occupation) with name embedding",
       "create": "New Standard Job",
       "colName": "Standard Job Title",
       "colEN": "English Name",
@@ -505,6 +525,12 @@
       "industryScope": "Industry",
       "sourceDesc": "Description"
     },
+    "dataImport": {
+      "desc": "Manually fill in or upload Excel to inject job data through the full ingest and clean pipeline",
+      "ingestTitle": "Mock Ingest (Inject Data)",
+      "ingestDesc": "Submit configured job data through the same persist / clean / Kafka pipeline (no real crawling)",
+      "ingestBtn": "Mock Ingest (Inject Data)"
+    },
     "taxonomy": {
       "title": "Taxonomy",
       "desc": "Hierarchical classification: Industry → Job Family → Job → Skill Type",
@@ -523,6 +549,10 @@
       "nodeNameZh": "Node Name (Chinese)",
       "nodeNameEn": "English Name",
       "willCreate": "Will create:"
+    },
+    "discipline": {
+      "title": "Discipline Categories",
+      "desc": "Discipline category → major category → major hierarchy with major name embedding"
     },
     "aiExtraction": {
       "title": "AI Extraction Task",

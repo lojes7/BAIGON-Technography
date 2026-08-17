@@ -21,7 +21,7 @@ const proficiencyColor: Record<string, string> = {
 };
 
 const labelClass = "text-[13px] font-medium flex-shrink-0";
-const selectClass = "px-3 py-2 rounded-lg text-[13px] outline-none transition-colors focus:border-[#122E8A] min-w-[160px]";
+const selectClass = "px-3 py-2 rounded-lg text-[13px] outline-none transition-colors focus:border-[#315D6D] min-w-[160px]";
 
 export default function SkillCompare() {
   const { t } = useTranslation();

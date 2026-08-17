@@ -123,7 +123,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
                     fontSize: 13, paddingLeft: 48, paddingRight: 16,
                     paddingTop: 6, paddingBottom: 6,
                     color: activePage === child.id ? "#F5EFEA" : "rgba(245,239,234,0.5)",
-                    background: activePage === child.id ? "rgba(18,46,138,0.55)" : "transparent",
+                    background: activePage === child.id ? "rgba(25,50,77,0.55)" : "transparent",
                   }}
                   onClick={() => handleNav(child.id)}
                 >
