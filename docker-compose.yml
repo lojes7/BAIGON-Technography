@@ -212,6 +212,7 @@ services:
     ports:
       - "${OCCUPATION_GRPC_PORT}:50054"
     environment:
+      SERVER_PORT: 8123
       # consul
       CONSUL_HOST: consul
       CONSUL_PORT: 8500
