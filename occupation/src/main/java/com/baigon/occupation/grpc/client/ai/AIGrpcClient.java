@@ -4,14 +4,18 @@ package com.baigon.occupation.grpc.client.ai;
 import com.baigon.ai.AIServiceGrpc;
 import com.baigon.ai.AnalyzeJobDescriptionRequest;
 import com.baigon.ai.AnalyzeJobDescriptionResponse;
+import com.baigon.ai.AnalyzeResumeRequest;
+import com.baigon.ai.AnalyzeResumeResponse;
 import com.baigon.ai.AnalyzedSkill;
 import com.baigon.ai.BatchEmbedTextRequest;
 import com.baigon.ai.BatchEmbedTextResponse;
 import com.baigon.ai.EmbeddingVector;
 import com.baigon.occupation.service.AuditContext;
+import com.baigon.occupation.error.ApiException;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
+import io.grpc.StatusRuntimeException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.client.ServiceInstance;
 import org.springframework.cloud.client.discovery.DiscoveryClient;
@@ -33,6 +37,7 @@ public class AIGrpcClient {
     private final int dimensions;
     private final int configuredBatchSize;
     private final long timeoutSeconds;
+    private final long resumeTimeoutSeconds;
 
     private final Object channelLock = new Object();
     private ManagedChannel channel;
@@ -42,7 +47,8 @@ public class AIGrpcClient {
                         @Value("${ai.service-name:ai-service}") String serviceName,
                         @Value("${ai.dimensions:1024}") int dimensions,
                         @Value("${ai.batch-size:20}") int configuredBatchSize,
-                        @Value("${ai.timeout-seconds:30}") long timeoutSeconds) {
+                        @Value("${ai.timeout-seconds:30}") long timeoutSeconds,
+                        @Value("${ai.resume-timeout-seconds:120}") long resumeTimeoutSeconds) {
         if (dimensions != 1024) {
             throw new IllegalArgumentException("ai.dimensions must match vector(1024)");
         }
@@ -52,11 +58,15 @@ public class AIGrpcClient {
         if (timeoutSeconds <= 0) {
             throw new IllegalArgumentException("ai.timeout-seconds must be > 0");
         }
+        if (resumeTimeoutSeconds <= 0) {
+            throw new IllegalArgumentException("ai.resume-timeout-seconds must be > 0");
+        }
         this.discoveryClient = discoveryClient;
         this.serviceName = serviceName;
         this.dimensions = dimensions;
         this.configuredBatchSize = configuredBatchSize;
         this.timeoutSeconds = timeoutSeconds;
+        this.resumeTimeoutSeconds = resumeTimeoutSeconds;
     }
 
     public int getConfiguredBatchSize() {
@@ -103,6 +113,36 @@ public class AIGrpcClient {
                         .withDeadlineAfter(timeoutSeconds, TimeUnit.SECONDS)
                         .analyzeJobDescription(request);
         return new JobDescriptionAnalysisCall(future);
+    }
+
+    /** 同步分析 OCR 简历正文；单次上传不自动重试模型请求。 */
+    public String analyzeResume(String content) {
+        if (content == null || content.isBlank()) {
+            throw new IllegalArgumentException("resume content is empty");
+        }
+        try {
+            String target = discoverTarget();
+            ManagedChannel activeChannel = channelFor(target);
+            AnalyzeResumeResponse response = AIServiceGrpc.newBlockingStub(activeChannel)
+                    .withDeadlineAfter(resumeTimeoutSeconds, TimeUnit.SECONDS)
+                    .analyzeResume(AnalyzeResumeRequest.newBuilder()
+                            .setContent(content)
+                            .build());
+            if (response.getResumeJson().isBlank()) {
+                throw new IllegalStateException("AI 返回空简历 JSON");
+            }
+            return response.getResumeJson();
+        } catch (StatusRuntimeException exception) {
+            throw new ApiException(
+                    ApiException.ErrorCode.SERVICE_UNAVAILABLE,
+                    "resume analysis unavailable");
+        } catch (ApiException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw new ApiException(
+                    ApiException.ErrorCode.SERVICE_UNAVAILABLE,
+                    "resume analysis unavailable");
+        }
     }
 
     private String discoverTarget() {

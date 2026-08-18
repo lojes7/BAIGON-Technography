@@ -11,8 +11,9 @@ CREATE TYPE "role" AS ENUM (
 );
 
 CREATE TYPE "user_status" AS ENUM ('NORMAL', 'LOCKED');
-CREATE TYPE "proficiency" AS ENUM ('EXPERT', 'SKILLED', 'FAMILIAR', 'BASIC');
+CREATE TYPE "proficiency" AS ENUM ('EXPERT', 'ADVANCED', 'FAMILIAR', 'BASIC');
 CREATE TYPE "semester" AS ENUM ('1', '2', '3', '4', '5', '6', '7', '8');
+CREATE TYPE "resume_source" AS ENUM ('EDITED', 'SYSTEM');
 
 CREATE TABLE "universities" (
     "created_at" timestamp with time zone NOT NULL DEFAULT now(),
@@ -77,22 +78,24 @@ CREATE TABLE "resumes" (
     "deleted_at" timestamp with time zone,
     "id" bigint PRIMARY KEY,
     "user_id" bigint NOT NULL REFERENCES "users" ("id"),
-    "file_key" varchar(512) NOT NULL,
-    "bucket_name" varchar(64) NOT NULL,
-    "file_name" varchar(255) NOT NULL,
-    "file_size" bigint NOT NULL DEFAULT 0,
+    -- EDITED 记录无需文件；SYSTEM 记录由下方检查约束保证文件元数据完整。
+    "file_key" varchar(512),
+    "bucket_name" varchar(64),
+    "file_name" varchar(255),
+    "file_size" bigint,
     "content" text,
-    "md5" varchar(64) NOT NULL,
+    "md5" varchar(64),
+    "source" resume_source NOT NULL,
     -- JSONB 格式的教育经历
-    "education_experiences" jsonb,
+    "education_experiences" jsonb NOT NULL DEFAULT '[]'::jsonb,
     -- JSONB 格式的工作经历
-    "work_experiences" jsonb,
+    "work_experiences" jsonb NOT NULL DEFAULT '[]'::jsonb,
     -- JSONB 格式的项目经历
-    "project_experiences" jsonb,
+    "project_experiences" jsonb NOT NULL DEFAULT '[]'::jsonb,
     -- JSONB 格式的专业技能
-    "professional_skills" jsonb,
+    "professional_skills" jsonb NOT NULL DEFAULT '[]'::jsonb,
     -- JSONB 格式的获奖经历
-    "awards" jsonb,
+    "awards" jsonb NOT NULL DEFAULT '[]'::jsonb,
     "review_status" review_status NOT NULL DEFAULT 'PENDING',
     "reviewed_at" timestamp with time zone
 );

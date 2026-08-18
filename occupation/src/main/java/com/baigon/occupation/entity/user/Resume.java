@@ -3,6 +3,7 @@ package com.baigon.occupation.entity.user;
 
 import com.baigon.occupation.entity.BaseEntity;
 import com.baigon.occupation.entity.ReviewStatus;
+import com.baigon.occupation.entity.user.resume.ResumeSource;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -20,34 +21,40 @@ public class Resume extends BaseEntity {
 
     @Column(name = "user_id", nullable = false)
     private Long userId;
-    @Column(name = "file_key", nullable = false, length = 512)
+    // 人工编辑记录不绑定文件，只有 SYSTEM 记录填写以下五个字段。
+    @Column(name = "file_key", length = 512)
     private String fileKey;
-    @Column(name = "bucket_name", nullable = false, length = 64)
+    @Column(name = "bucket_name", length = 64)
     private String bucketName;
-    @Column(name = "file_name", nullable = false, length = 255)
+    @Column(name = "file_name", length = 255)
     private String fileName;
-    @Column(name = "file_size", nullable = false)
+    @Column(name = "file_size")
     private Long fileSize;
     @Column(columnDefinition = "text")
     private String content;
-    @Column(nullable = false, length = 64)
+    @Column(length = 64)
     private String md5;
+
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(name = "source", nullable = false, columnDefinition = "resume_source")
+    private ResumeSource source;
 
     // JSONB 字段保持结构化映射，避免业务层自行解析字符串。
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "education_experiences", columnDefinition = "jsonb")
+    @Column(name = "education_experiences", nullable = false, columnDefinition = "jsonb")
     private JsonNode educationExperiences;
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "work_experiences", columnDefinition = "jsonb")
+    @Column(name = "work_experiences", nullable = false, columnDefinition = "jsonb")
     private JsonNode workExperiences;
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "project_experiences", columnDefinition = "jsonb")
+    @Column(name = "project_experiences", nullable = false, columnDefinition = "jsonb")
     private JsonNode projectExperiences;
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "professional_skills", columnDefinition = "jsonb")
+    @Column(name = "professional_skills", nullable = false, columnDefinition = "jsonb")
     private JsonNode professionalSkills;
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(columnDefinition = "jsonb")
+    @Column(nullable = false, columnDefinition = "jsonb")
     private JsonNode awards;
 
     @Enumerated(EnumType.STRING)
@@ -71,6 +78,8 @@ public class Resume extends BaseEntity {
     public void setContent(String content) { this.content = content; }
     public String getMd5() { return md5; }
     public void setMd5(String md5) { this.md5 = md5; }
+    public ResumeSource getSource() { return source; }
+    public void setSource(ResumeSource source) { this.source = source; }
     public JsonNode getEducationExperiences() { return educationExperiences; }
     public void setEducationExperiences(JsonNode value) { this.educationExperiences = value; }
     public JsonNode getWorkExperiences() { return workExperiences; }

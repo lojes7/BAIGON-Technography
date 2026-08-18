@@ -29,6 +29,9 @@ service UserService {
   // 当前用户查询自己的简历。
   rpc GetMyResume(GetMyResumeRequest) returns (GetMyResumeResponse);
 
+  // 当前用户提交人工编辑的完整简历字段，保存为一条不绑定文件的新记录。
+  rpc EditMyResume(EditMyResumeRequest) returns (EditMyResumeResponse);
+
   // ADMIN 按用户 ID 封禁账号。
   rpc BlockUser(BlockUserRequest) returns (BlockUserResponse);
 
@@ -207,13 +210,31 @@ message GetMyResumeRequest {
   string request_url = 15;
 }
 
+// 人工编辑请求直接传输 format.json 对应的 JSON，避免重复定义一套嵌套 protobuf。
+message EditMyResumeRequest {
+  optional string content = 1;
+  string fields_json = 2;
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
 // 对外不暴露 MinIO bucket、object key 和文件摘要等内部存储字段。
 message ResumeData {
   int64 id = 1;
-  string file_name = 2;
-  int64 file_size = 3;
-  string content = 4;
+  // EDITED 记录不绑定上传文件，因此文件字段允许为空。
+  optional string file_name = 2;
+  optional int64 file_size = 3;
+  optional string content = 4;
   string created_at = 5;
+  // occupation-service 校验并规范化后的完整 format.json 对象。
+  string fields_json = 6;
+  string source = 7;
+  reserved 8, 9, 10;
 }
 
 message CreateResumeUploadResponse {
@@ -229,5 +250,9 @@ message CompleteResumeUploadResponse {
 }
 
 message GetMyResumeResponse {
+  ResumeData resume = 1;
+}
+
+message EditMyResumeResponse {
   ResumeData resume = 1;
 }

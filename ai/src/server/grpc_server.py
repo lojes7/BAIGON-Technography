@@ -4,12 +4,14 @@ import logging
 from typing import Any
 
 import grpc
+from openai import OpenAIError
 
 from src.config import model_config
 from src.llm.exceptions import ModelConfigurationError
 from src.pb import ai_pb2, ai_pb2_grpc
 from src.service.job_analysis import MAX_JD_LENGTH
 from src.service.model_service import AIModelService
+from src.service.resume_analysis import MAX_RESUME_CONTENT_LENGTH
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +23,7 @@ MAX_CHUNK_SIZE = model_config.embedding_max_chunk_size
 
 
 class AIServicer(ai_pb2_grpc.AIServiceServicer):
-    """AIService gRPC 实现：提供星火 JD 分析和 Qwen 文本向量能力。"""
+    """AIService gRPC 实现：提供结构化分析和文本向量能力。"""
 
     def __init__(self, model_service: AIModelService | Any | None = None):
         # 支持注入,在不调用外部模型的情况下测试 Handler。
@@ -54,6 +56,42 @@ class AIServicer(ai_pb2_grpc.AIServiceServicer):
         except Exception:
             logger.exception("AnalyzeJobDescription 失败")
             context.abort(grpc.StatusCode.INTERNAL, "JD 分析服务暂不可用")
+
+    def AnalyzeResume(self, request, context):
+        """抽取简历字段，只返回服务端最终校验后的 JSON。"""
+        content = request.content.strip()
+        if not content:
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "content 不能为空")
+        if len(content) > MAX_RESUME_CONTENT_LENGTH:
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "content 长度超过上限")
+
+        try:
+            analysis = self.model_service.analyze_resume(content)
+            counts = {
+                "education": len(analysis.education_experience),
+                "work": len(analysis.work_experience),
+                "project": len(analysis.project_experience),
+                "skills": len(analysis.professional_skills),
+                "awards": len(analysis.awards),
+            }
+            logger.info(
+                "AnalyzeResume 完成: content_length=%d, counts=%s",
+                len(content),
+                counts,
+            )
+            return ai_pb2.AnalyzeResumeResponse(
+                resume_json=analysis.model_dump_json(),
+            )
+        except ModelConfigurationError:
+            logger.exception("AnalyzeResume 失败：星火模型未配置")
+            context.abort(grpc.StatusCode.FAILED_PRECONDITION, "星火模型未配置")
+        except OpenAIError as exception:
+            logger.error("AnalyzeResume 供应商调用失败: type=%s", type(exception).__name__)
+            context.abort(grpc.StatusCode.UNAVAILABLE, "简历分析模型暂不可用")
+        except Exception as exception:
+            # ValidationError 可能包含模型原值，日志只记录类型，避免泄露简历内容。
+            logger.error("AnalyzeResume 校验失败: type=%s", type(exception).__name__)
+            context.abort(grpc.StatusCode.INTERNAL, "简历分析服务暂不可用")
 
     def EmbedText(self, request, context):
         """调用 Qwen 生成单条文本的嵌入向量。"""

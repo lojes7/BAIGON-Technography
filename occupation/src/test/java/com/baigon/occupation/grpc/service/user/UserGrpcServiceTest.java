@@ -2,6 +2,7 @@
 package com.baigon.occupation.grpc.service.user;
 
 import com.baigon.occupation.entity.user.User;
+import com.baigon.occupation.entity.user.resume.ResumeSource;
 import com.baigon.occupation.service.LogService;
 import com.baigon.occupation.service.user.AuthService;
 import com.baigon.occupation.service.user.UserService;
@@ -13,8 +14,12 @@ import com.baigon.user.CompleteResumeUploadRequest;
 import com.baigon.user.CompleteResumeUploadResponse;
 import com.baigon.user.CreateResumeUploadRequest;
 import com.baigon.user.CreateResumeUploadResponse;
+import com.baigon.user.EditMyResumeRequest;
+import com.baigon.user.EditMyResumeResponse;
 import com.baigon.user.GetUserRequest;
 import com.baigon.user.GetUserResponse;
+import com.baigon.user.GetMyResumeRequest;
+import com.baigon.user.GetMyResumeResponse;
 import com.baigon.user.ListUsersRequest;
 import com.baigon.user.ListUsersResponse;
 import com.baigon.user.LoginRequest;
@@ -37,6 +42,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -253,7 +259,8 @@ class UserGrpcServiceTest {
         when(resumeService.completeUpload(8L, 101L, "张三.pdf"))
                 .thenReturn(new ResumeService.ResumeData(
                         101L, "张三.pdf", 128L, "OCR 简历正文",
-                        OffsetDateTime.parse("2026-08-17T10:00:00+08:00")));
+                        OffsetDateTime.parse("2026-08-17T10:00:00+08:00"),
+                        resumeFieldsJson(), ResumeSource.SYSTEM));
         @SuppressWarnings("unchecked")
         StreamObserver<CompleteResumeUploadResponse> observer = mock(StreamObserver.class);
 
@@ -272,8 +279,64 @@ class UserGrpcServiceTest {
         assertEquals(101L, response.getValue().getResume().getId());
         assertEquals("OCR 简历正文", response.getValue().getResume().getContent());
         assertEquals("张三.pdf", response.getValue().getResume().getFileName());
+        assertEquals(ResumeSource.SYSTEM.name(), response.getValue().getResume().getSource());
+        assertEquals(resumeFieldsJson(), response.getValue().getResume().getFieldsJson());
         verify(logService).info(any(),
-                eq("complete resume upload and extract text: id=101"));
+                eq("complete resume upload and analyze content: id=101"));
+    }
+
+    @Test
+    void getMyResumeShouldReturnContentAndStructuredFields() {
+        when(resumeService.getMyResume(8L)).thenReturn(Optional.of(
+                new ResumeService.ResumeData(
+                        101L, "张三.pdf", 128L, "OCR 简历正文",
+                        OffsetDateTime.parse("2026-08-17T10:00:00+08:00"),
+                        resumeFieldsJson(), ResumeSource.SYSTEM)));
+        @SuppressWarnings("unchecked")
+        StreamObserver<GetMyResumeResponse> observer = mock(StreamObserver.class);
+
+        service.getMyResume(GetMyResumeRequest.newBuilder()
+                .setUserId(8L)
+                .setRequestMethod("GET")
+                .setRequestUrl("/api/auth/resumes")
+                .build(), observer);
+
+        ArgumentCaptor<GetMyResumeResponse> response =
+                ArgumentCaptor.forClass(GetMyResumeResponse.class);
+        verify(observer).onNext(response.capture());
+        verify(observer).onCompleted();
+        assertEquals("OCR 简历正文", response.getValue().getResume().getContent());
+        assertEquals(resumeFieldsJson(), response.getValue().getResume().getFieldsJson());
+        assertEquals("SYSTEM", response.getValue().getResume().getSource());
+    }
+
+    @Test
+    void editMyResumeShouldForwardCheckedJsonAndReturnEditedSource() {
+        when(resumeService.editMyResume(eq(8L), isNull(), eq(resumeFieldsJson())))
+                .thenReturn(new ResumeService.ResumeData(
+                        102L, null, null, null,
+                        OffsetDateTime.parse("2026-08-18T10:00:00+08:00"),
+                        resumeFieldsJson(), ResumeSource.EDITED));
+        @SuppressWarnings("unchecked")
+        StreamObserver<EditMyResumeResponse> observer = mock(StreamObserver.class);
+
+        service.editMyResume(EditMyResumeRequest.newBuilder()
+                .setFieldsJson(resumeFieldsJson())
+                .setUserId(8L)
+                .setRequestMethod("PUT")
+                .setRequestUrl("/api/auth/resumes")
+                .build(), observer);
+
+        ArgumentCaptor<EditMyResumeResponse> response =
+                ArgumentCaptor.forClass(EditMyResumeResponse.class);
+        verify(observer).onNext(response.capture());
+        verify(observer).onCompleted();
+        assertEquals(102L, response.getValue().getResume().getId());
+        assertEquals("EDITED", response.getValue().getResume().getSource());
+        assertEquals(false, response.getValue().getResume().hasFileName());
+        assertEquals(false, response.getValue().getResume().hasFileSize());
+        assertEquals(false, response.getValue().getResume().hasContent());
+        verify(logService).info(any(), eq("edit my resume: id=102"));
     }
 
     @Test
@@ -386,5 +449,10 @@ class UserGrpcServiceTest {
                 .setUid("admin")
                 .setPassword("123456")
                 .build();
+    }
+
+    private String resumeFieldsJson() {
+        return """
+                {"education_experience":[],"work_experience":[],"project_experience":[],"professional_skills":[{"skill_name":"Java","proficiency":"Advanced"}],"awards":[]}""";
     }
 }

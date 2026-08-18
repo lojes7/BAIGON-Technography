@@ -7,6 +7,7 @@ import numpy as np
 from src.llm.embedding_model import TextEmbedding
 from src.llm.spark_model import SparkModel
 from src.service.job_analysis import JobAnalysisResult, analyze_job_description
+from src.service.resume_analysis import ResumeAnalysisResult, analyze_resume
 
 
 class AIModelService:
@@ -32,6 +33,10 @@ class AIModelService:
     def analyze_job_description(self, jd: str) -> JobAnalysisResult:
         """分析 JD，成功时只返回经过固定契约校验的结果。"""
         return analyze_job_description(self.chat_model, jd)
+
+    def analyze_resume(self, content: str) -> ResumeAnalysisResult:
+        """抽取简历字段，成功时只返回经过结构和来源校验的结果。"""
+        return analyze_resume(self.chat_model, content)
 
     def embed_texts(self, texts: list[str | None], **options: Any) -> np.ndarray:
         """批量生成文本向量。"""
