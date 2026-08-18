@@ -6,8 +6,13 @@ import com.baigon.occupation.service.LogService;
 import com.baigon.occupation.service.user.AuthService;
 import com.baigon.occupation.service.user.UserService;
 import com.baigon.occupation.service.user.admin.AdminUserService;
+import com.baigon.occupation.service.user.resume.ResumeService;
 import com.baigon.user.BlockUserRequest;
 import com.baigon.user.BlockUserResponse;
+import com.baigon.user.CompleteResumeUploadRequest;
+import com.baigon.user.CompleteResumeUploadResponse;
+import com.baigon.user.CreateResumeUploadRequest;
+import com.baigon.user.CreateResumeUploadResponse;
 import com.baigon.user.GetUserRequest;
 import com.baigon.user.GetUserResponse;
 import com.baigon.user.ListUsersRequest;
@@ -25,6 +30,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.PageImpl;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -41,6 +47,7 @@ class UserGrpcServiceTest {
     private AuthService authService;
     private UserService userService;
     private AdminUserService adminUserService;
+    private ResumeService resumeService;
     private LogService logService;
     private UserGrpcService service;
 
@@ -49,8 +56,10 @@ class UserGrpcServiceTest {
         authService = mock(AuthService.class);
         userService = mock(UserService.class);
         adminUserService = mock(AdminUserService.class);
+        resumeService = mock(ResumeService.class);
         logService = mock(LogService.class);
-        service = new UserGrpcService(authService, userService, adminUserService, logService);
+        service = new UserGrpcService(
+                authService, userService, adminUserService, resumeService, logService);
     }
 
     @Test
@@ -206,6 +215,65 @@ class UserGrpcServiceTest {
         assertEquals(Status.Code.NOT_FOUND,
                 Status.fromThrowable(error.getValue()).getCode());
         verify(logService).error(any(), eq("user not found"), eq("get user failed"));
+    }
+
+    @Test
+    void createResumeUploadShouldReturnDirectMinioUploadContract() {
+        when(resumeService.createUpload(8L, "张三.pdf", 128L))
+                .thenReturn(new ResumeService.ResumeUploadData(
+                        101L,
+                        "http://localhost:9000/resumes/signed",
+                        "PUT",
+                        "application/pdf",
+                        OffsetDateTime.parse("2026-08-17T09:10:00+08:00")));
+        @SuppressWarnings("unchecked")
+        StreamObserver<CreateResumeUploadResponse> observer = mock(StreamObserver.class);
+
+        service.createResumeUpload(CreateResumeUploadRequest.newBuilder()
+                .setFileName("张三.pdf")
+                .setFileSize(128L)
+                .setUserId(8L)
+                .setRequestMethod("POST")
+                .setRequestUrl("/api/auth/resumes/upload-url")
+                .build(), observer);
+
+        ArgumentCaptor<CreateResumeUploadResponse> response =
+                ArgumentCaptor.forClass(CreateResumeUploadResponse.class);
+        verify(observer).onNext(response.capture());
+        verify(observer).onCompleted();
+        assertEquals(101L, response.getValue().getUploadId());
+        assertEquals("http://localhost:9000/resumes/signed", response.getValue().getUploadUrl());
+        assertEquals("PUT", response.getValue().getMethod());
+        assertEquals("application/pdf", response.getValue().getContentType());
+        verify(logService).info(any(), eq("create resume upload: id=101"));
+    }
+
+    @Test
+    void completeResumeUploadShouldReturnExtractedContentWithoutStorageFields() {
+        when(resumeService.completeUpload(8L, 101L, "张三.pdf"))
+                .thenReturn(new ResumeService.ResumeData(
+                        101L, "张三.pdf", 128L, "OCR 简历正文",
+                        OffsetDateTime.parse("2026-08-17T10:00:00+08:00")));
+        @SuppressWarnings("unchecked")
+        StreamObserver<CompleteResumeUploadResponse> observer = mock(StreamObserver.class);
+
+        service.completeResumeUpload(CompleteResumeUploadRequest.newBuilder()
+                .setUploadId(101L)
+                .setFileName("张三.pdf")
+                .setUserId(8L)
+                .setRequestMethod("POST")
+                .setRequestUrl("/api/auth/resumes/upload-complete")
+                .build(), observer);
+
+        ArgumentCaptor<CompleteResumeUploadResponse> response =
+                ArgumentCaptor.forClass(CompleteResumeUploadResponse.class);
+        verify(observer).onNext(response.capture());
+        verify(observer).onCompleted();
+        assertEquals(101L, response.getValue().getResume().getId());
+        assertEquals("OCR 简历正文", response.getValue().getResume().getContent());
+        assertEquals("张三.pdf", response.getValue().getResume().getFileName());
+        verify(logService).info(any(),
+                eq("complete resume upload and extract text: id=101"));
     }
 
     @Test

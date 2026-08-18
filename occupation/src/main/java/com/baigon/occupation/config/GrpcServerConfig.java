@@ -25,7 +25,7 @@ public class GrpcServerConfig {
 
     private static final Logger log = LoggerFactory.getLogger(GrpcServerConfig.class);
 
-    @Value("${grpc.server.port:50054}")
+    @Value("${grpc.server.port}")
     private int grpcPort;
 
     private Server server;

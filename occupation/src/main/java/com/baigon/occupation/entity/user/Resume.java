@@ -18,11 +18,11 @@ import java.time.OffsetDateTime;
 @Table(name = "resumes")
 public class Resume extends BaseEntity {
 
-    @Column(name = "user_id")
+    @Column(name = "user_id", nullable = false)
     private Long userId;
-    @Column(name = "file_key", length = 512)
+    @Column(name = "file_key", nullable = false, length = 512)
     private String fileKey;
-    @Column(name = "bucket_name", length = 64)
+    @Column(name = "bucket_name", nullable = false, length = 64)
     private String bucketName;
     @Column(name = "file_name", nullable = false, length = 255)
     private String fileName;
@@ -30,7 +30,7 @@ public class Resume extends BaseEntity {
     private Long fileSize;
     @Column(columnDefinition = "text")
     private String content;
-    @Column(length = 64)
+    @Column(nullable = false, length = 64)
     private String md5;
 
     // JSONB 字段保持结构化映射，避免业务层自行解析字符串。

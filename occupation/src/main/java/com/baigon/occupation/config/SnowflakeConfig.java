@@ -15,7 +15,7 @@ import java.util.Date;
 public class SnowflakeConfig {
 
     @Bean
-    public Snowflake snowflake(@Value("${SNOWFLAKE_WORKER_ID:0}") long workerId) {
+    public Snowflake snowflake(@Value("${SNOWFLAKE_WORKER_ID}") long workerId) {
         // 自定义纪元 2024-01-01 00:00:00 UTC（与 gateway/Python 端一致），10bit workerId + 0 datacenterId
         return new Snowflake(new Date(1704067200000L), workerId, 0, false);
     }

@@ -28,6 +28,11 @@ func RegisterUserRoutes(api *gin.RouterGroup, pool *grpcpool.GrpcClientPool, jwt
 
 	auth.GET("/me", userhandler.GetCurrentUserHandler(pool))
 
+	// 用户功能
+	auth.POST("/resumes/upload-url", userhandler.CreateResumeUploadHandler(pool))
+	auth.POST("/resumes/upload-complete", userhandler.CompleteResumeUploadHandler(pool))
+	auth.GET("/resumes", userhandler.GetMyResumeHandler(pool))
+
 	// 管理员接口
 	admin := auth.Group("/users")
 	admin.Use(middleware.RoleAuth("ADMIN"))

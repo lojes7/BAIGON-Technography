@@ -32,6 +32,12 @@
         <dependency><groupId>com.google.protobuf</groupId><artifactId>protobuf-java</artifactId><version>${protobuf.version}</version></dependency>
         <dependency><groupId>org.springframework.cloud</groupId><artifactId>spring-cloud-starter-consul-discovery</artifactId><version>4.1.1</version></dependency>
         <dependency><groupId>org.springframework.kafka</groupId><artifactId>spring-kafka</artifactId></dependency>
+        <!-- 简历对象存储。 -->
+        <dependency><groupId>io.minio</groupId><artifactId>minio</artifactId><version>8.5.17</version></dependency>
+        <!-- PDF 原生文本提取与无文本页渲染。 -->
+        <dependency><groupId>org.apache.pdfbox</groupId><artifactId>pdfbox</artifactId><version>3.0.7</version></dependency>
+        <!-- DOCX 正文与内嵌图片提取。 -->
+        <dependency><groupId>org.apache.poi</groupId><artifactId>poi-ooxml</artifactId><version>5.4.1</version></dependency>
         <!-- 用户域仅使用密码散列模块，不启用 Spring Security 拦截链。 -->
         <dependency><groupId>org.springframework.security</groupId><artifactId>spring-security-crypto</artifactId></dependency>
         <!-- JWT 签发依赖。 -->
@@ -62,7 +68,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.5</version>
                 <configuration>
-                    <argLine>-Dnet.bytebuddy.experimental=true</argLine>
+                    <argLine>-Dnet.bytebuddy.experimental=true -Djava.awt.headless=true</argLine>
                 </configuration>
             </plugin>
             <!-- 检测当前平台，用于选择 protoc 与 grpc-java 插件。 -->

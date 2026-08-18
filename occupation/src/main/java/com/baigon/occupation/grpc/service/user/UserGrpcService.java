@@ -7,17 +7,25 @@ import com.baigon.occupation.service.LogService;
 import com.baigon.occupation.service.user.AuthService;
 import com.baigon.occupation.service.user.UserService;
 import com.baigon.occupation.service.user.admin.AdminUserService;
+import com.baigon.occupation.service.user.resume.ResumeService;
 import com.baigon.user.BlockUserRequest;
 import com.baigon.user.BlockUserResponse;
+import com.baigon.user.CompleteResumeUploadRequest;
+import com.baigon.user.CompleteResumeUploadResponse;
+import com.baigon.user.CreateResumeUploadRequest;
+import com.baigon.user.CreateResumeUploadResponse;
 import com.baigon.user.GetUserRequest;
 import com.baigon.user.GetUserResponse;
 import com.baigon.user.ListUsersRequest;
 import com.baigon.user.ListUsersResponse;
+import com.baigon.user.GetMyResumeRequest;
+import com.baigon.user.GetMyResumeResponse;
 import com.baigon.user.LoginRequest;
 import com.baigon.user.LoginResponse;
 import com.baigon.user.OrganizationData;
 import com.baigon.user.OrganizationListRequest;
 import com.baigon.user.OrganizationListResponse;
+import com.baigon.user.ResumeData;
 import com.baigon.user.UnlockUserRequest;
 import com.baigon.user.UnlockUserResponse;
 import com.baigon.user.UserData;
@@ -36,15 +44,18 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
     private final AuthService authService;
     private final UserService userService;
     private final AdminUserService adminUserService;
+    private final ResumeService resumeService;
     private final LogService logService;
 
     public UserGrpcService(AuthService authService,
                            UserService userService,
                            AdminUserService adminUserService,
+                           ResumeService resumeService,
                            LogService logService) {
         this.authService = authService;
         this.userService = userService;
         this.adminUserService = adminUserService;
+        this.resumeService = resumeService;
         this.logService = logService;
         logger.info("UserGrpcService 初始化完成");
     }
@@ -222,6 +233,66 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
         }
     }
 
+    @Override
+    public void createResumeUpload(CreateResumeUploadRequest request,
+                                   StreamObserver<CreateResumeUploadResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            ResumeService.ResumeUploadData upload = resumeService.createUpload(
+                    request.getUserId(),
+                    request.getFileName(),
+                    request.getFileSize());
+            respond(observer, CreateResumeUploadResponse.newBuilder()
+                    .setUploadId(upload.uploadId())
+                    .setUploadUrl(upload.uploadUrl())
+                    .setMethod(upload.method())
+                    .setContentType(upload.contentType())
+                    .setExpiresAt(upload.expiresAt().toString())
+                    .build());
+            logService.info(audit, "create resume upload: id=" + upload.uploadId());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "create resume upload failed");
+        }
+    }
+
+    @Override
+    public void completeResumeUpload(CompleteResumeUploadRequest request,
+                                     StreamObserver<CompleteResumeUploadResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            ResumeService.ResumeData resume = resumeService.completeUpload(
+                    request.getUserId(), request.getUploadId(), request.getFileName());
+            respond(observer, CompleteResumeUploadResponse.newBuilder()
+                    .setResume(resumeData(resume))
+                    .build());
+            logService.info(audit,
+                    "complete resume upload and extract text: id=" + resume.id());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "complete resume upload failed");
+        }
+    }
+
+    @Override
+    public void getMyResume(GetMyResumeRequest request,
+                            StreamObserver<GetMyResumeResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            var resume = resumeService.getMyResume(request.getUserId());
+            GetMyResumeResponse.Builder builder = GetMyResumeResponse.newBuilder();
+            resume.ifPresent(data -> builder.setResume(resumeData(data)));
+            respond(observer, builder.build());
+            logService.info(audit, "get my resume: present=" + resume.isPresent());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "get my resume failed");
+        }
+    }
+
     private UserData userData(AdminUserService.UserData user) {
         return UserData.newBuilder()
                 .setId(user.id())
@@ -258,6 +329,16 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
         return OrganizationData.newBuilder()
                 .setId(item.id())
                 .setName(orEmpty(item.name()))
+                .build();
+    }
+
+    private ResumeData resumeData(ResumeService.ResumeData resume) {
+        return ResumeData.newBuilder()
+                .setId(resume.id())
+                .setFileName(orEmpty(resume.fileName()))
+                .setFileSize(resume.fileSize())
+                .setContent(orEmpty(resume.content()))
+                .setCreatedAt(resume.createdAt() == null ? "" : resume.createdAt().toString())
                 .build();
     }
 

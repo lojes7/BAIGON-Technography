@@ -45,4 +45,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
             "department"
     })
     Optional<User> findByIdAndDeletedAtIsNull(long id);
+
+    boolean existsByIdAndDeletedAtIsNull(long id);
 }

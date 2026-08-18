@@ -63,28 +63,50 @@ CREATE TABLE "job_sources" (
     "updated_at" timestamp with time zone NOT NULL DEFAULT (now()),
     "deleted_at" timestamp with time zone,
     "id" bigint PRIMARY KEY,
-    "trace_id" bigint,  
+    "trace_id" bigint, 
+    -- 更新时间
     "publish_date" timestamp with time zone, -- 可空：爬虫解析失败时存 NULL（不伪造当前时间）
+    -- 来源平台标识
     "source_platform" varchar(32) NOT NULL,
-    "job_number" varchar(128), -- 来源平台内稳定的岗位业务编号，允许保留多条岗位记录
+    -- 来源平台内稳定的岗位业务编号，允许保留多条岗位记录
+    "job_number" varchar(128), 
+    -- URL
     "source_url" varchar(512),
+    -- 技能标签
     "tags" text,
+    -- 专业要求
     "major" varchar(64),
+    -- 公司性质
     "nature" varchar(64),
+    -- 薪资范围
     "salary" varchar(64),
+    -- 岗位名称
     "job_name" varchar(64),
+    -- 公司名称
     "company_name" varchar(64),
+    -- 公司规模
     "company_size" varchar(64),
+    -- 省份
     "province" varchar(64),
+    -- 城市
     "city" varchar(64),
+    -- 学历要求
     "education" varchar(64),
+    -- 工作经验要求
     "experience" text,
+    -- 岗位描述 JD
     "job_description" text,
+    -- 岗位描述向量化结果
     "job_description_vector" vector(1024),
+    -- 岗位描述向量化状态
     "embedding_status" task_status NOT NULL DEFAULT 'PENDING',
+    -- 岗位描述向量化尝试次数
     "embedding_attempts" integer NOT NULL DEFAULT 0,
+    -- 岗位描述向量化下一次尝试时间
     "embedding_next_retry_at" timestamp with time zone,
+    -- 岗位描述向量化错误信息
     "embedding_error" text,
+    -- 岗位描述清洗状态
     "clean_status" task_status
 );
 
