@@ -15,6 +15,9 @@ service AIService {
   // 使用星火模型分析单条 JD，返回经过严格校验的技能对象列表。
   rpc AnalyzeJobDescription(AnalyzeJobDescriptionRequest) returns (AnalyzeJobDescriptionResponse) {}
 
+  // 从 OCR 简历原文抽取结构化信息，只返回经过格式和来源校验的 JSON。
+  rpc AnalyzeResume(AnalyzeResumeRequest) returns (AnalyzeResumeResponse) {}
+
   // 生成单条文本嵌入向量。
   rpc EmbedText(EmbedTextRequest) returns (EmbedTextResponse) {}
 
@@ -38,6 +41,16 @@ message AnalyzedSkill {
   string name = 1;
   string proficiency = 2;
   string evidence = 3;
+}
+
+message AnalyzeResumeRequest {
+  // OCR 提取出的完整简历原文，不接收文件或对象存储地址。
+  string content = 1;
+}
+
+message AnalyzeResumeResponse {
+  // 形状与 format.json 完全一致，且所有非空内容均经过原文来源校验。
+  string resume_json = 1;
 }
 
 message EmbedTextRequest {

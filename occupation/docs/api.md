@@ -51,6 +51,15 @@ REST 登录路径仍为 `POST /api/login`，protobuf 仍为
 `UnlockUser` 将目标账号幂等设为 `NORMAL`，用户不存在时返回 `NOT_FOUND`。
 高校、学院和系部目录均支持分页与名称关键词，学院、高校之间以及系部、学院之间可按可选父级 ID 级联查询。
 
+简历上传使用两阶段接口：`CreateResumeUpload` 只签发浏览器直传 MinIO 的预签名 URL，
+文件字节不经过 gateway；`CompleteResumeUpload` 从 MinIO 读取实际对象，同步完成 PDF/DOCX
+文字提取、ai-service `AnalyzeResume` 调用以及 Java 二次格式/来源校验。只有全部步骤成功后，
+OCR `content` 和五类结构化数组才会在同一事务中写入 `resumes`，记录来源为 `SYSTEM`。
+`EditMyResume` 接收可空 `content` 和完整 `fields_json`，校验格式、日期、长度及 proficiency 后
+新增一条 `EDITED` 记录；该记录的 MinIO 文件字段全部为 `NULL`，不会继承旧文件。
+`GetMyResume`、编辑和上传完成响应均通过一个已经校验的 `fields_json` 传输五类字段，并返回
+`source`；gateway 将其转换为 REST `fields` 对象。接口不暴露 bucket、object key 或摘要。
+
 ## 数据治理 API
 
 REST 路径继续使用 `/api/auth/data-source`，protobuf 继续使用

@@ -4,9 +4,13 @@ package com.baigon.occupation.service.user.resume;
 import cn.hutool.core.lang.Snowflake;
 import com.baigon.occupation.entity.ReviewStatus;
 import com.baigon.occupation.entity.user.Resume;
+import com.baigon.occupation.entity.user.resume.ResumeSource;
 import com.baigon.occupation.error.ApiException;
+import com.baigon.occupation.grpc.client.ai.AIGrpcClient;
 import com.baigon.occupation.repository.user.UserRepository;
 import com.baigon.occupation.repository.user.resume.ResumeRepository;
+import com.baigon.occupation.service.user.resume.analysis.ResumeAnalysisResult;
+import com.baigon.occupation.service.user.resume.analysis.ResumeAnalysisValidator;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -21,10 +25,14 @@ import java.util.Optional;
 @Service
 public class ResumeService {
 
+    private static final int MAX_CONTENT_LENGTH = 50_000;
+
     private final ResumeRepository resumeRepository;
     private final UserRepository userRepository;
     private final ResumeObjectStorage objectStorage;
     private final ResumeDocumentTextExtractor textExtractor;
+    private final AIGrpcClient aiGrpcClient;
+    private final ResumeAnalysisValidator analysisValidator;
     private final Snowflake snowflake;
     private final long maxFileSizeBytes;
     private final int uploadUrlExpirySeconds;
@@ -34,6 +42,8 @@ public class ResumeService {
             UserRepository userRepository,
             ResumeObjectStorage objectStorage,
             ResumeDocumentTextExtractor textExtractor,
+            AIGrpcClient aiGrpcClient,
+            ResumeAnalysisValidator analysisValidator,
             Snowflake snowflake,
             @Value("${resume.max-file-size-bytes:10485760}") long maxFileSizeBytes,
             @Value("${resume.upload-url-expiry-seconds:600}") int uploadUrlExpirySeconds) {
@@ -47,6 +57,8 @@ public class ResumeService {
         this.userRepository = userRepository;
         this.objectStorage = objectStorage;
         this.textExtractor = textExtractor;
+        this.aiGrpcClient = aiGrpcClient;
+        this.analysisValidator = analysisValidator;
         this.snowflake = snowflake;
         this.maxFileSizeBytes = maxFileSizeBytes;
         this.uploadUrlExpirySeconds = uploadUrlExpirySeconds;
@@ -78,10 +90,10 @@ public class ResumeService {
         String fileName = validateFileName(userId, originalFileName);
         requireUser(userId);
 
-        // 完成接口允许安全重试，已落库时不重复 OCR，也不会误删已归档对象。
+        // 完成接口允许安全重试；旧记录只有 OCR 正文时会补做结构化分析。
         var existing = resumeRepository.findByIdAndUserIdAndDeletedAtIsNull(uploadId, userId);
         if (existing.isPresent()) {
-            return toData(existing.get());
+            return completeExisting(existing.get());
         }
 
         ResumeDocumentTextExtractor.DocumentType documentType =
@@ -110,11 +122,19 @@ public class ResumeService {
             resume.setFileName(fileName);
             resume.setFileSize(storedObject.size());
             resume.setMd5(md5(storedObject.content()));
+            resume.setSource(ResumeSource.SYSTEM);
             resume.setReviewStatus(ReviewStatus.PENDING);
+            resume.setEducationExperiences(analysisValidator.emptyArray());
+            resume.setWorkExperiences(analysisValidator.emptyArray());
+            resume.setProjectExperiences(analysisValidator.emptyArray());
+            resume.setProfessionalSkills(analysisValidator.emptyArray());
+            resume.setAwards(analysisValidator.emptyArray());
 
-            // 先建立记录，再同步 OCR 回写 content；事务提交后外部才可见完整结果。
+            // 记录、OCR、AI 校验和 JSONB 写入共用同一事务，对外只暴露完整结果。
             resumeRepository.saveAndFlush(resume);
-            resume.setContent(textExtractor.extract(fileName, storedObject.content()));
+            String content = textExtractor.extract(fileName, storedObject.content());
+            resume.setContent(content);
+            applyAnalysis(resume, analyze(content));
             resume.setUpdatedAt(OffsetDateTime.now());
             Resume saved = resumeRepository.saveAndFlush(resume);
             return toData(saved);
@@ -133,6 +153,32 @@ public class ResumeService {
             throw new IllegalArgumentException("user_id must be > 0");
         }
         return resumeRepository.findFirstByUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(userId).map(this::toData);
+    }
+
+    /** 保存用户人工编辑的新版本；该记录不继承任何 MinIO 文件元数据。 */
+    @Transactional
+    public ResumeData editMyResume(long userId, String content, String fieldsJson) {
+        if (userId <= 0) {
+            throw new IllegalArgumentException("user_id must be > 0");
+        }
+        if (content != null && content.length() > MAX_CONTENT_LENGTH) {
+            throw new IllegalArgumentException("resume content exceeds length limit");
+        }
+        requireUser(userId);
+        ResumeAnalysisResult analysis = analysisValidator.parseEdited(fieldsJson);
+
+        OffsetDateTime now = OffsetDateTime.now();
+        Resume resume = new Resume();
+        resume.setId(snowflake.nextId());
+        resume.setCreatedAt(now);
+        resume.setUpdatedAt(now);
+        resume.setUserId(userId);
+        resume.setContent(content);
+        resume.setSource(ResumeSource.EDITED);
+        resume.setReviewStatus(ReviewStatus.PENDING);
+        applyAnalysis(resume, analysis);
+
+        return toData(resumeRepository.saveAndFlush(resume));
     }
 
     private String validateMetadata(long userId, String fileName, long declaredSize) {
@@ -190,13 +236,67 @@ public class ResumeService {
         }
     }
 
+    private ResumeData completeExisting(Resume resume) {
+        if (isFullyAnalyzed(resume)) {
+            return toData(resume);
+        }
+
+        String content = resume.getContent();
+        if (content == null || content.isBlank()) {
+            ResumeObjectStorage.StoredObject storedObject = objectStorage.read(
+                    resume.getFileKey(), maxFileSizeBytes);
+            content = textExtractor.extract(resume.getFileName(), storedObject.content());
+            resume.setContent(content);
+        }
+        applyAnalysis(resume, analyze(content));
+        resume.setUpdatedAt(OffsetDateTime.now());
+        return toData(resumeRepository.saveAndFlush(resume));
+    }
+
+    private ResumeAnalysisResult analyze(String content) {
+        String resumeJson = aiGrpcClient.analyzeResume(content);
+        return analysisValidator.parseAndValidate(resumeJson, content);
+    }
+
+    private void applyAnalysis(Resume resume, ResumeAnalysisResult analysis) {
+        resume.setEducationExperiences(
+                analysisValidator.toJsonArray(analysis.educationExperience()));
+        resume.setWorkExperiences(
+                analysisValidator.toJsonArray(analysis.workExperience()));
+        resume.setProjectExperiences(
+                analysisValidator.toJsonArray(analysis.projectExperience()));
+        resume.setProfessionalSkills(
+                analysisValidator.toJsonArray(analysis.professionalSkills()));
+        resume.setAwards(analysisValidator.toJsonArray(analysis.awards()));
+    }
+
+    private boolean isFullyAnalyzed(Resume resume) {
+        return resume.getContent() != null
+                && !resume.getContent().isBlank()
+                && resume.getEducationExperiences() != null
+                && resume.getWorkExperiences() != null
+                && resume.getProjectExperiences() != null
+                && resume.getProfessionalSkills() != null
+                && resume.getAwards() != null;
+    }
+
     private ResumeData toData(Resume resume) {
+        ResumeAnalysisResult analysis = analysisValidator.fromStored(
+                resume.getEducationExperiences(),
+                resume.getWorkExperiences(),
+                resume.getProjectExperiences(),
+                resume.getProfessionalSkills(),
+                resume.getAwards(),
+                resume.getContent(),
+                resume.getSource() == ResumeSource.SYSTEM);
         return new ResumeData(
                 resume.getId(),
                 resume.getFileName(),
                 resume.getFileSize(),
                 resume.getContent(),
-                resume.getCreatedAt());
+                resume.getCreatedAt(),
+                analysisValidator.toCanonicalJson(analysis),
+                resume.getSource());
     }
 
     public record ResumeUploadData(
@@ -210,8 +310,10 @@ public class ResumeService {
     public record ResumeData(
             long id,
             String fileName,
-            long fileSize,
+            Long fileSize,
             String content,
-            OffsetDateTime createdAt) {
+            OffsetDateTime createdAt,
+            String fieldsJson,
+            ResumeSource source) {
     }
 }

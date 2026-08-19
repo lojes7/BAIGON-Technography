@@ -14,6 +14,8 @@ import com.baigon.user.CompleteResumeUploadRequest;
 import com.baigon.user.CompleteResumeUploadResponse;
 import com.baigon.user.CreateResumeUploadRequest;
 import com.baigon.user.CreateResumeUploadResponse;
+import com.baigon.user.EditMyResumeRequest;
+import com.baigon.user.EditMyResumeResponse;
 import com.baigon.user.GetUserRequest;
 import com.baigon.user.GetUserResponse;
 import com.baigon.user.ListUsersRequest;
@@ -270,7 +272,7 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
                     .setResume(resumeData(resume))
                     .build());
             logService.info(audit,
-                    "complete resume upload and extract text: id=" + resume.id());
+                    "complete resume upload and analyze content: id=" + resume.id());
         } catch (Exception exception) {
             fail(observer, audit, exception, "complete resume upload failed");
         }
@@ -290,6 +292,26 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
             logService.info(audit, "get my resume: present=" + resume.isPresent());
         } catch (Exception exception) {
             fail(observer, audit, exception, "get my resume failed");
+        }
+    }
+
+    @Override
+    public void editMyResume(EditMyResumeRequest request,
+                             StreamObserver<EditMyResumeResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            ResumeService.ResumeData resume = resumeService.editMyResume(
+                    request.getUserId(),
+                    request.hasContent() ? request.getContent() : null,
+                    request.getFieldsJson());
+            respond(observer, EditMyResumeResponse.newBuilder()
+                    .setResume(resumeData(resume))
+                    .build());
+            logService.info(audit, "edit my resume: id=" + resume.id());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "edit my resume failed");
         }
     }
 
@@ -333,13 +355,21 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
     }
 
     private ResumeData resumeData(ResumeService.ResumeData resume) {
-        return ResumeData.newBuilder()
+        ResumeData.Builder builder = ResumeData.newBuilder()
                 .setId(resume.id())
-                .setFileName(orEmpty(resume.fileName()))
-                .setFileSize(resume.fileSize())
-                .setContent(orEmpty(resume.content()))
                 .setCreatedAt(resume.createdAt() == null ? "" : resume.createdAt().toString())
-                .build();
+                .setFieldsJson(resume.fieldsJson())
+                .setSource(resume.source().name());
+        if (resume.fileName() != null) {
+            builder.setFileName(resume.fileName());
+        }
+        if (resume.fileSize() != null) {
+            builder.setFileSize(resume.fileSize());
+        }
+        if (resume.content() != null) {
+            builder.setContent(resume.content());
+        }
+        return builder.build();
     }
 
     private OrganizationListResponse organizationResponse(

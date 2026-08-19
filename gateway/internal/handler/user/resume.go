@@ -3,6 +3,7 @@ package user
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -29,6 +30,17 @@ type createResumeUploadRequest struct {
 type completeResumeUploadRequest struct {
 	UploadID int64  `json:"uploadId" binding:"required"`
 	FileName string `json:"fileName" binding:"required"`
+}
+
+type editMyResumeRequest struct {
+	Content *string         `json:"content"`
+	Fields  json.RawMessage `json:"fields" binding:"required"`
+}
+
+// editMyResumeRequestDoc 只用于 Swagger 展示；运行时保留 RawMessage 交给后端严格检查重复键。
+type editMyResumeRequestDoc struct {
+	Content *string                `json:"content"`
+	Fields  map[string]interface{} `json:"fields"`
 }
 
 // CreateResumeUploadHandler 签发由浏览器直接 PUT 到 MinIO 的临时上传地址。
@@ -99,15 +111,15 @@ func CreateResumeUploadHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 	}
 }
 
-// CompleteResumeUploadHandler 在前端完成 MinIO 直传后，同步创建记录并执行 OCR。
-// @Summary      完成简历上传并提取文字
-// @Description  前端使用预签名 URL 直传 MinIO 后调用；服务校验实际对象并同步回写 OCR content。
+// CompleteResumeUploadHandler 在前端完成 MinIO 直传后，同步执行 OCR 与结构化分析。
+// @Summary      完成简历上传和结构化分析
+// @Description  前端使用预签名 URL 直传 MinIO 后调用；服务同步提取正文、校验并保存五类简历字段。
 // @Tags         用户简历
 // @Accept       json
 // @Produce      json
 // @Security     Bearer
 // @Param        body body completeResumeUploadRequest true "上传 ID 及原文件名"
-// @Success      200 {object} response.SuccessBody "data 为简历 ID、文件信息及 OCR content"
+// @Success      200 {object} response.SuccessBody "data 为文件信息、OCR content 及五类结构化字段"
 // @Failure      400 {object} response.ErrorBody
 // @Failure      401 {object} response.ErrorBody
 // @Failure      404 {object} response.ErrorBody
@@ -160,11 +172,16 @@ func CompleteResumeUploadHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc 
 			response.Error(c, http.StatusInternalServerError, http.StatusInternalServerError)
 			return
 		}
-		response.Success(c, resumeResponseData(result.GetResume()))
+		data, ok := resumeResponseData(result.GetResume())
+		if !ok {
+			response.Error(c, http.StatusInternalServerError, http.StatusInternalServerError)
+			return
+		}
+		response.Success(c, data)
 	}
 }
 
-// GetMyResumeHandler 查询当前用户最近一份已完成 OCR 的简历。
+// GetMyResumeHandler 查询当前用户最近一份已完成分析的简历。
 // @Summary      查询我的简历
 // @Description  当前用户仅保留一份最新简历，返回单个对象；无简历时 data 为空对象。
 // @Tags         用户简历
@@ -210,7 +227,78 @@ func GetMyResumeHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			response.Success(c, gin.H{})
 			return
 		}
-		response.Success(c, resumeResponseData(resume))
+		data, ok := resumeResponseData(resume)
+		if !ok {
+			response.Error(c, http.StatusInternalServerError, http.StatusInternalServerError)
+			return
+		}
+		response.Success(c, data)
+	}
+}
+
+// EditMyResumeHandler 保存当前用户人工编辑的完整简历字段。
+// @Summary      编辑我的简历
+// @Description  接收 content 与 format.json 对应的 fields；保存一条不绑定文件的 EDITED 记录。
+// @Tags         用户简历
+// @Accept       json
+// @Produce      json
+// @Security     Bearer
+// @Param        body body editMyResumeRequestDoc true "人工编辑的简历正文与结构化字段"
+// @Success      200 {object} response.SuccessBody "data 为保存后的完整简历对象"
+// @Failure      400 {object} response.ErrorBody
+// @Failure      401 {object} response.ErrorBody
+// @Failure      404 {object} response.ErrorBody
+// @Failure      500 {object} response.ErrorBody
+// @Failure      503 {object} response.ErrorBody
+// @Router       /api/auth/resumes [put]
+func EditMyResumeHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := commonhandler.UserIDFromContext(c)
+		if userID <= 0 {
+			response.Error(c, http.StatusUnauthorized, http.StatusUnauthorized)
+			return
+		}
+
+		var body editMyResumeRequest
+		if err := c.ShouldBindJSON(&body); err != nil || len(body.Fields) == 0 {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+
+		conn, err := pool.GetConn("occupation-service")
+		if err != nil {
+			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+		defer cancel()
+		request := &userpb.EditMyResumeRequest{
+			FieldsJson: string(body.Fields),
+			TraceId:    c.GetString("trace_id"), UserId: userID,
+			UserName: c.GetString("uid"), UserIp: c.ClientIP(),
+			RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
+		}
+		if body.Content != nil {
+			request.Content = body.Content
+		}
+		var trailer metadata.MD
+		result, err := userpb.NewUserServiceClient(conn).EditMyResume(
+			ctx, request, grpc.Trailer(&trailer))
+		if err != nil {
+			httpCode, errorCode := commonhandler.GRPCErrorCodes(err, trailer)
+			response.Error(c, httpCode, errorCode)
+			return
+		}
+		if result.GetResume() == nil {
+			response.Error(c, http.StatusInternalServerError, http.StatusInternalServerError)
+			return
+		}
+		data, ok := resumeResponseData(result.GetResume())
+		if !ok {
+			response.Error(c, http.StatusInternalServerError, http.StatusInternalServerError)
+			return
+		}
+		response.Success(c, data)
 	}
 }
 
@@ -221,10 +309,25 @@ func normalizedResumeFileName(value string) (string, bool) {
 		(extension == ".pdf" || extension == ".docx")
 }
 
-func resumeResponseData(resume *userpb.ResumeData) gin.H {
-	return gin.H{
-		"id": resume.GetId(), "fileName": resume.GetFileName(),
-		"fileSize": resume.GetFileSize(), "content": resume.GetContent(),
-		"createdAt": resume.GetCreatedAt(),
+func resumeResponseData(resume *userpb.ResumeData) (gin.H, bool) {
+	var fields map[string]any
+	if err := json.Unmarshal([]byte(resume.GetFieldsJson()), &fields); err != nil || fields == nil {
+		return nil, false
 	}
+
+	data := gin.H{
+		"id": resume.GetId(), "fileName": nil, "fileSize": nil,
+		"content": nil, "createdAt": resume.GetCreatedAt(),
+		"fields": fields, "source": resume.GetSource(),
+	}
+	if resume.FileName != nil {
+		data["fileName"] = resume.GetFileName()
+	}
+	if resume.FileSize != nil {
+		data["fileSize"] = resume.GetFileSize()
+	}
+	if resume.Content != nil {
+		data["content"] = resume.GetContent()
+	}
+	return data, true
 }

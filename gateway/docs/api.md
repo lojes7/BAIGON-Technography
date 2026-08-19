@@ -119,6 +119,41 @@ curl -X POST http://localhost:8000/api/login \
 `university_id / university_name / school_id / school_name / department_id / department_name`。
 未归属的组织 ID 为 `0`，名称为空字符串。
 
+### 当前用户简历（`/api/auth/resumes`）
+
+所有简历接口都要求 Bearer Token，用户身份只从 JWT 获取。文件由浏览器使用预签名 URL 直接
+上传到 MinIO，文件字节不经过 gateway。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/auth/resumes/upload-url` | 获取 PDF/DOCX 的 MinIO 预签名 PUT 地址 |
+| POST | `/api/auth/resumes/upload-complete` | 确认直传完成，同步执行 OCR、AI 抽取、校验和落库 |
+| GET | `/api/auth/resumes` | 返回当前用户最新的简历版本 |
+| PUT | `/api/auth/resumes` | 保存一条不绑定文件的人工编辑版本 |
+
+人工编辑请求只接收用户可编辑字段：
+
+```json
+{
+  "content": null,
+  "fields": {
+    "education_experience": [],
+    "work_experience": [],
+    "project_experience": [],
+    "professional_skills": [],
+    "awards": []
+  }
+}
+```
+
+`content` 和各记录中的可选字符串可以为 `null`；`fields` 的五个根数组必须全部存在。
+`proficiency` 非空时只能为 `Basic`、`Familiar`、`Advanced`、`Expert`。服务端生成记录 ID、
+创建时间及 `EDITED` 来源，不接受客户端指定文件元数据或来源。
+
+查询、编辑和上传完成均返回同一种 `data`：包含 `id/fileName/fileSize/content/createdAt/source/fields`。
+`SYSTEM` 表示 OCR/AI 生成，`EDITED` 表示人工编辑；`EDITED` 的 `fileName/fileSize` 为 `null`。
+无简历时 GET 仍返回 `{"code":200,"data":{}}`。
+
 ### ADMIN 用户管理（`/api/auth/users`）
 
 以下接口均要求 Bearer Token，且只允许 **ADMIN** 角色访问。
