@@ -65,7 +65,7 @@ CREATE TABLE "job_analysis_results" (
     "reviewed_by" bigint,
     CONSTRAINT "ck_job_analysis_results_rank" CHECK ("rank" > 0),
     CONSTRAINT "ck_job_analysis_results_proficiency" CHECK (
-        "skill_proficiency" IN ('Expert', 'Advanced', 'Familiar', 'Basic')
+        "skill_proficiency" IN ('EXPERT', 'ADVANCED', 'FAMILIAR', 'BASIC')
     ),
     CONSTRAINT "ck_job_analysis_results_review_action" CHECK (
         "review_action" IS NULL OR
@@ -73,7 +73,7 @@ CREATE TABLE "job_analysis_results" (
     ),
     CONSTRAINT "ck_job_analysis_results_reviewed_proficiency" CHECK (
         "reviewed_skill_proficiency" IS NULL OR
-        "reviewed_skill_proficiency" IN ('Expert', 'Advanced', 'Familiar', 'Basic')
+        "reviewed_skill_proficiency" IN ('EXPERT', 'ADVANCED', 'FAMILIAR', 'BASIC')
     )
 );
 
@@ -94,7 +94,7 @@ CREATE TABLE "job_skills" (
     "skill_proficiency" varchar(32) NOT NULL,
     "evidence" text NOT NULL,
     CONSTRAINT "ck_job_skills_proficiency" CHECK (
-        "skill_proficiency" IN ('Expert', 'Advanced', 'Familiar', 'Basic')
+        "skill_proficiency" IN ('EXPERT', 'ADVANCED', 'FAMILIAR', 'BASIC')
     )
 );
 
