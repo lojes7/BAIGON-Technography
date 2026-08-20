@@ -7,7 +7,10 @@ import com.baigon.occupation.service.LogService;
 import com.baigon.occupation.service.user.AuthService;
 import com.baigon.occupation.service.user.UserService;
 import com.baigon.occupation.service.user.admin.AdminUserService;
+import com.baigon.occupation.service.user.analysis.UserAnalysisService;
 import com.baigon.occupation.service.user.resume.ResumeService;
+import com.baigon.user.AnalyzeMyResumeSkillsRequest;
+import com.baigon.user.AnalyzeMyResumeSkillsResponse;
 import com.baigon.user.BlockUserRequest;
 import com.baigon.user.BlockUserResponse;
 import com.baigon.user.CompleteResumeUploadRequest;
@@ -20,6 +23,8 @@ import com.baigon.user.GetUserRequest;
 import com.baigon.user.GetUserResponse;
 import com.baigon.user.ListUsersRequest;
 import com.baigon.user.ListUsersResponse;
+import com.baigon.user.ListMySkillsRequest;
+import com.baigon.user.ListMySkillsResponse;
 import com.baigon.user.GetMyResumeRequest;
 import com.baigon.user.GetMyResumeResponse;
 import com.baigon.user.LoginRequest;
@@ -27,10 +32,14 @@ import com.baigon.user.LoginResponse;
 import com.baigon.user.OrganizationData;
 import com.baigon.user.OrganizationListRequest;
 import com.baigon.user.OrganizationListResponse;
+import com.baigon.user.MatchMyResumeToJobRequest;
+import com.baigon.user.MatchMyResumeToJobResponse;
 import com.baigon.user.ResumeData;
+import com.baigon.user.SkillLearningSuggestion;
 import com.baigon.user.UnlockUserRequest;
 import com.baigon.user.UnlockUserResponse;
 import com.baigon.user.UserData;
+import com.baigon.user.UserSkillData;
 import com.baigon.user.UserServiceGrpc;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
@@ -47,17 +56,20 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
     private final UserService userService;
     private final AdminUserService adminUserService;
     private final ResumeService resumeService;
+    private final UserAnalysisService userAnalysisService;
     private final LogService logService;
 
     public UserGrpcService(AuthService authService,
                            UserService userService,
                            AdminUserService adminUserService,
                            ResumeService resumeService,
+                           UserAnalysisService userAnalysisService,
                            LogService logService) {
         this.authService = authService;
         this.userService = userService;
         this.adminUserService = adminUserService;
         this.resumeService = resumeService;
+        this.userAnalysisService = userAnalysisService;
         this.logService = logService;
         logger.info("UserGrpcService 初始化完成");
     }
@@ -315,6 +327,78 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
         }
     }
 
+    @Override
+    public void analyzeMyResumeSkills(
+            AnalyzeMyResumeSkillsRequest request,
+            StreamObserver<AnalyzeMyResumeSkillsResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            UserAnalysisService.SkillAnalysisData result =
+                    userAnalysisService.analyzeMyResumeSkills(request.getUserId(), audit);
+            respond(observer, AnalyzeMyResumeSkillsResponse.newBuilder()
+                    .setResumeId(result.resumeId())
+                    .addAllSkills(result.skills().stream().map(this::userSkillData).toList())
+                    .build());
+            logService.info(audit, "analyze my resume skills: resume_id=" + result.resumeId()
+                    + ", skills=" + result.skills().size());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "analyze my resume skills failed");
+        }
+    }
+
+    @Override
+    public void listMySkills(
+            ListMySkillsRequest request,
+            StreamObserver<ListMySkillsResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            var items = userAnalysisService.listMySkills(request.getUserId());
+            respond(observer, ListMySkillsResponse.newBuilder()
+                    .addAllItems(items.stream().map(this::userSkillData).toList())
+                    .build());
+            logService.info(audit, "list my skills: total=" + items.size());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "list my skills failed");
+        }
+    }
+
+    @Override
+    public void matchMyResumeToJob(
+            MatchMyResumeToJobRequest request,
+            StreamObserver<MatchMyResumeToJobResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            UserAnalysisService.JobMatchData result = userAnalysisService.matchMyResumeToJob(
+                    request.getUserId(), request.getJobId(), audit);
+            MatchMyResumeToJobResponse response = MatchMyResumeToJobResponse.newBuilder()
+                    .setResumeId(result.resumeId())
+                    .setJobId(result.jobId())
+                    .setScore(result.score())
+                    .setSummary(result.summary())
+                    .addAllSkillsToLearn(result.skillsToLearn().stream()
+                            .map(item -> SkillLearningSuggestion.newBuilder()
+                                    .setSkillName(item.skillName())
+                                    .setReason(item.reason())
+                                    .setSuggestion(item.suggestion())
+                                    .build())
+                            .toList())
+                    .addAllActionSuggestions(result.actionSuggestions())
+                    .setCreatedAt(result.createdAt() == null ? "" : result.createdAt().toString())
+                    .build();
+            respond(observer, response);
+            logService.info(audit, "match my resume to job: resume_id=" + result.resumeId()
+                    + ", job_id=" + result.jobId() + ", score=" + result.score());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "match my resume to job failed");
+        }
+    }
+
     private UserData userData(AdminUserService.UserData user) {
         return UserData.newBuilder()
                 .setId(user.id())
@@ -370,6 +454,17 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
             builder.setContent(resume.content());
         }
         return builder.build();
+    }
+
+    private UserSkillData userSkillData(UserAnalysisService.UserSkillData skill) {
+        return UserSkillData.newBuilder()
+                .setId(skill.id())
+                .setResumeId(skill.resumeId())
+                .setSkillName(orEmpty(skill.skillName()))
+                .setProficiency(orEmpty(skill.proficiency()))
+                .setEvidence(orEmpty(skill.evidence()))
+                .setCreatedAt(skill.createdAt() == null ? "" : skill.createdAt().toString())
+                .build();
     }
 
     private OrganizationListResponse organizationResponse(

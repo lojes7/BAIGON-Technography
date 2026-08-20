@@ -7,7 +7,12 @@ import numpy as np
 from src.llm.embedding_model import TextEmbedding
 from src.llm.spark_model import SparkModel
 from src.service.job_analysis import JobAnalysisResult, analyze_job_description
+from src.service.job_match import JobMatchProfile, JobMatchResult, analyze_job_match
 from src.service.resume_analysis import ResumeAnalysisResult, analyze_resume
+from src.service.user_skill_analysis import (
+    UserSkillAnalysisResult,
+    analyze_user_skills,
+)
 
 
 class AIModelService:
@@ -37,6 +42,23 @@ class AIModelService:
     def analyze_resume(self, content: str) -> ResumeAnalysisResult:
         """抽取简历字段，成功时只返回经过结构和来源校验的结果。"""
         return analyze_resume(self.chat_model, content)
+
+    def analyze_user_skills(self, resume_content: str) -> UserSkillAnalysisResult:
+        """抽取有简历原文证据的用户技能。"""
+        return analyze_user_skills(self.chat_model, resume_content)
+
+    def analyze_job_match(
+        self,
+        resume_content: str,
+        job: JobMatchProfile,
+    ) -> JobMatchResult:
+        """只使用简历正文和 jobs 表字段完成人岗匹配。"""
+        return analyze_job_match(self.chat_model, resume_content, job)
+
+    @property
+    def chat_model_name(self) -> str:
+        """返回内部配置的对话模型名，不允许 RPC 请求覆盖。"""
+        return self.chat_model.model_name
 
     def embed_texts(self, texts: list[str | None], **options: Any) -> np.ndarray:
         """批量生成文本向量。"""

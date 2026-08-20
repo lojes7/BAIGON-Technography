@@ -11,7 +11,6 @@ CREATE TYPE "role" AS ENUM (
 );
 
 CREATE TYPE "user_status" AS ENUM ('NORMAL', 'LOCKED');
-CREATE TYPE "proficiency" AS ENUM ('EXPERT', 'ADVANCED', 'FAMILIAR', 'BASIC');
 CREATE TYPE "semester" AS ENUM ('1', '2', '3', '4', '5', '6', '7', '8');
 CREATE TYPE "resume_source" AS ENUM ('EDITED', 'SYSTEM');
 
@@ -115,35 +114,100 @@ CREATE TABLE "grades" (
     "semester" semester
 );
 
+-- 用户简历技能分析、技能时间线与人岗匹配任务。
+-- 本节依赖上方的 users/resumes，以及先于本文件加载的 jobs。
+
+CREATE TYPE "user_analysis_type" AS ENUM ('RESUME_SKILL_ANALYSIS', 'JOB_MATCH');
+CREATE TYPE "proficiency" AS ENUM ('EXPERT', 'ADVANCED', 'FAMILIAR', 'BASIC');
+
 CREATE TABLE "user_analysis_tasks" (
     "created_at" timestamp with time zone NOT NULL DEFAULT now(),
     "updated_at" timestamp with time zone NOT NULL DEFAULT now(),
     "deleted_at" timestamp with time zone,
     "id" bigint PRIMARY KEY,
-    "trace_id" bigint,
-    "user_id" bigint,
+    "trace_id" bigint NOT NULL,
+    "user_id" bigint NOT NULL REFERENCES "users" ("id"),
+    "resume_id" bigint NOT NULL REFERENCES "resumes" ("id"),
+    -- 简历技能分析不指定岗位；人岗匹配只依赖 jobs 表中的正式岗位信息。
+    "job_id" bigint REFERENCES "jobs" ("id"),
+    "task_type" user_analysis_type NOT NULL,
     "task_status" task_status NOT NULL DEFAULT 'PENDING',
-    "model_name" varchar(32),
-    "ai_suggestion" text
+    "model_name" varchar(64),
+    "match_score" integer,
+    "match_summary" text,
+    "skills_to_learn" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "action_suggestions" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "error_msg" text,
+    CONSTRAINT "ck_user_analysis_tasks_target" CHECK (
+        ("task_type" = 'RESUME_SKILL_ANALYSIS' AND "job_id" IS NULL)
+        OR ("task_type" = 'JOB_MATCH' AND "job_id" IS NOT NULL)
+    ),
+    CONSTRAINT "ck_user_analysis_tasks_match_score" CHECK (
+        "match_score" IS NULL OR "match_score" BETWEEN 0 AND 100
+    ),
+    CONSTRAINT "ck_user_analysis_tasks_skills_to_learn_array" CHECK (
+        jsonb_typeof("skills_to_learn") = 'array'
+    ),
+    CONSTRAINT "ck_user_analysis_tasks_action_suggestions_array" CHECK (
+        jsonb_typeof("action_suggestions") = 'array'
+    ),
+    CONSTRAINT "ck_user_analysis_tasks_successful_match" CHECK (
+        "task_type" <> 'JOB_MATCH'
+        OR "task_status" <> 'SUCCESS'
+        OR ("match_score" IS NOT NULL AND NULLIF(BTRIM("match_summary"), '') IS NOT NULL)
+    )
 );
 
 CREATE UNIQUE INDEX "idx_user_analysis_tasks_trace_active"
     ON "user_analysis_tasks" ("trace_id") WHERE "deleted_at" IS NULL;
-CREATE INDEX "idx_user_analysis_tasks_user_id" ON "user_analysis_tasks" ("user_id");
+CREATE INDEX "idx_user_analysis_tasks_user_created_active"
+    ON "user_analysis_tasks" ("user_id", "created_at" DESC)
+    WHERE "deleted_at" IS NULL;
+CREATE INDEX "idx_user_analysis_tasks_resume_created_active"
+    ON "user_analysis_tasks" ("resume_id", "created_at" DESC)
+    WHERE "deleted_at" IS NULL;
+CREATE INDEX "idx_user_analysis_tasks_job_created_active"
+    ON "user_analysis_tasks" ("job_id", "created_at" DESC)
+    WHERE "deleted_at" IS NULL AND "job_id" IS NOT NULL;
+-- 同一用户对同一资源只能有一个执行中的任务，成功或失败后允许再次分析。
+CREATE UNIQUE INDEX "idx_user_analysis_tasks_resume_pending"
+    ON "user_analysis_tasks" ("user_id", "resume_id")
+    WHERE "deleted_at" IS NULL
+      AND "task_status" = 'PENDING'
+      AND "task_type" = 'RESUME_SKILL_ANALYSIS';
+CREATE UNIQUE INDEX "idx_user_analysis_tasks_job_pending"
+    ON "user_analysis_tasks" ("user_id", "resume_id", "job_id")
+    WHERE "deleted_at" IS NULL
+      AND "task_status" = 'PENDING'
+      AND "task_type" = 'JOB_MATCH';
 
 CREATE TABLE "user_graphs" (
     "created_at" timestamp with time zone NOT NULL DEFAULT now(),
     "updated_at" timestamp with time zone NOT NULL DEFAULT now(),
     "deleted_at" timestamp with time zone,
     "id" bigint PRIMARY KEY,
-    "trace_id" bigint,
-    "user_id" bigint REFERENCES "users" ("id"),
-    "ability_id" bigint,
-    "proficiency" proficiency,
+    "task_id" bigint NOT NULL REFERENCES "user_analysis_tasks" ("id"),
+    "user_id" bigint NOT NULL REFERENCES "users" ("id"),
+    "resume_id" bigint NOT NULL REFERENCES "resumes" ("id"),
+    "skill_name" varchar(100) NOT NULL,
+    "proficiency" proficiency NOT NULL,
     "evidence" text NOT NULL,
-    CONSTRAINT "ck_user_graph_proficiency" CHECK (
-        "proficiency" IN ('EXPERT', 'ADVANCED', 'FAMILIAR', 'BASIC')
-        )
+    -- 保存 AI 返回数组的原始顺序，仅用于同批结果的稳定展示。
+    "rank" integer NOT NULL,
+    CONSTRAINT "ck_user_graphs_skill_name" CHECK (
+        NULLIF(BTRIM("skill_name"), '') IS NOT NULL
+    ),
+    CONSTRAINT "ck_user_graphs_evidence" CHECK (
+        NULLIF(BTRIM("evidence"), '') IS NOT NULL
+    ),
+    CONSTRAINT "ck_user_graphs_rank" CHECK ("rank" > 0)
 );
 
-CREATE INDEX "idx_user_graphs_user_id" ON "user_graphs" ("user_id");
+CREATE UNIQUE INDEX "idx_user_graphs_task_rank_active"
+    ON "user_graphs" ("task_id", "rank") WHERE "deleted_at" IS NULL;
+CREATE UNIQUE INDEX "idx_user_graphs_task_skill_active"
+    ON "user_graphs" ("task_id", lower("skill_name")) WHERE "deleted_at" IS NULL;
+-- 覆盖用户技能时间线的固定排序：时间、批内顺序、主键。
+CREATE INDEX "idx_user_graphs_user_timeline_active"
+    ON "user_graphs" ("user_id", "created_at", "rank", "id")
+    WHERE "deleted_at" IS NULL;

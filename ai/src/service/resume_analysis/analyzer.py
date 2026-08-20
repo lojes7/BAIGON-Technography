@@ -2,6 +2,7 @@
 
 import json
 
+from src.config import model_config
 from src.llm.spark_model import SparkModel
 from src.service.resume_analysis.grounding import ground_resume_analysis
 from src.service.resume_analysis.models import (
@@ -63,6 +64,7 @@ def analyze_resume(chat_model: SparkModel, content: str) -> ResumeAnalysisResult
         temperature=0.1,
         max_tokens=8192,
         response_function=RESUME_ANALYSIS_RESPONSE_FUNCTION,
+        timeout_seconds=model_config.provider_long_timeout_seconds,
     )
     # 模型参数先做严格结构校验，再清空没有原文依据的字段。
     untrusted_result = ResumeAnalysisResult.model_validate(strict_json_object(arguments))

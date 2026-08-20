@@ -12,6 +12,7 @@
 - 事务提交后由本地线程池先完成职业匹配，再串行调用 AI-service 分析真实 JD。
 - 管理专业、职业目录及名称向量化任务。
 - 校验用户账号密码并签发 JWT，为 ADMIN 提供用户及组织目录查询。
+- 使用当前用户最新简历识别技能、保留能力时间线，并仅依据 `jobs` 表完成人岗匹配。
 - 通过 Consul 发现 crawler-service 与 ai-service。
 - 所有领域共用一张 `logs` 业务审计表。
 
@@ -23,6 +24,7 @@
 - 岗位域：`entity/job`、`repository/job`。
 - 岗位分析域：`entity/jobanalysis`、`repository/jobanalysis`、`service/jobanalysis`。
 - 用户域：`entity/user`、`repository/user`、`service/user`、`grpc/service/user`。
+- 用户分析域：`entity/user/analysis`、`repository/user/analysis`、`service/user/analysis`。
 - gRPC 客户端：`grpc/client/ai`、`grpc/client/crawler`；服务端按业务域放在 `grpc/service/*`。
 - 各层根包只保留共享基类、通用状态、审计上下文和跨领域协调器。
 
@@ -32,8 +34,9 @@ REST 登录路径仍为 `POST /api/login`，protobuf 仍为
 `baigon.user.UserService.Login`。gateway 只把 Consul 发现目标切换为 `occupation-service`，
 请求、响应、JWT claims 和错误码保持不变。
 
-用户、学校、院系、简历和用户分析相关表位于 `sql/init-user.sql`，开发种子账号位于
-`sql/data-user.sql`。JWT 使用 `JWT_SECRET` 与 `JWT_EXPIRATION_HOURS` 配置，并与 gateway
+用户、学校、院系、简历与用户分析表均位于 `sql/init-user.sql`；开发种子账号位于
+`sql/data-user.sql`。JWT 使用
+`JWT_SECRET` 与 `JWT_EXPIRATION_HOURS` 配置，并与 gateway
 共享签名密钥。
 
 `students / teachers / student_affairs` 三张身份映射表已取消，高校、学院和系部外键直接保存在
@@ -59,6 +62,33 @@ OCR `content` 和五类结构化数组才会在同一事务中写入 `resumes`�
 新增一条 `EDITED` 记录；该记录的 MinIO 文件字段全部为 `NULL`，不会继承旧文件。
 `GetMyResume`、编辑和上传完成响应均通过一个已经校验的 `fields_json` 传输五类字段，并返回
 `source`；gateway 将其转换为 REST `fields` 对象。接口不暴露 bucket、object key 或摘要。
+
+## 用户技能分析与人岗匹配
+
+三项接口均要求 JWT 鉴权，服务端只接受 gateway 从 JWT 得到的当前用户，不允许客户端提交
+任意用户 ID、简历正文或岗位快照：
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/auth/resumes/analyze-skills` | 分析当前用户最新简历并返回本次技能快照 |
+| GET | `/api/auth/me/skills` | 按分析时间和批内顺序返回全部历史技能记录 |
+| POST | `/api/jobs/{id}/match` | 使用当前用户最新简历匹配指定正式岗位 |
+
+最新简历不存在时返回 404；最新记录的 `content` 为空时返回 400，不回退到旧简历。技能结果以
+`skill_name / proficiency / evidence / rank` 扁平写入 `user_graphs`，历史批次只追加不覆盖，
+`created_at` 即本次系统识别时间。熟练度统一为
+`EXPERT / ADVANCED / FAMILIAR / BASIC`，证据必须可按 NFKC 与空白归一化规则回溯简历原文。
+
+两类分析均先在短事务创建 `PENDING` 的 `user_analysis_tasks`，在事务外调用 AI，再用独立短事务
+原子写结果和 `SUCCESS`；失败任务只保存脱敏错误码。超过 AI deadline 再加一分钟的遗留
+`PENDING`（默认三分钟）会在下一次同目标请求中先标记 `FAILED` 再重试，未超时的重复请求返回 403。
+
+人岗匹配只查询 `JobRepository`，发送给 AI 的快照只由 `jobs` 的以下业务字段构造：
+`name`、`publish_date`、`source_platform`、`source_url`、`tags`、`major`、`nature`、`salary`、
+`company_name`、`company_size`、`city`、`province`、`education`、`experience`、
+`job_description`、`occupation_id`。实现不会读取 `job_analysis_results`、`job_skills` 或职业详情。
+响应仅公开简历 ID、岗位 ID、0～100 分、摘要、学习建议、行动建议和创建时间，不公开模型名、
+trace、内部错误或正文。
 
 ## 数据治理 API
 
@@ -170,7 +200,8 @@ REST 位于 `/api/auth/occupation`。目录读取和岗位分析允许 `ADMIN / 
 - `occupation/data.sql`：在同一事务中加载 `sql/data-major.sql`、
   `sql/data-occupation.sql` 与 `sql/data-user.sql`。
 
-PostgreSQL 初始化只创建 `baigon_occupation`，不再创建 `baigon_data_source`。
+PostgreSQL 初始化会分别创建 crawler、AI 与 occupation 三个服务数据库；AI 数据库只保存脱敏的
+`logs` 业务审计记录，不保存简历、岗位、证据或建议正文。
 
 ## gRPC 错误映射
 
@@ -179,6 +210,7 @@ PostgreSQL 初始化只创建 `baigon_occupation`，不再创建 `baigon_data_so
 | `INVALID_ARGUMENT` | 400 | 请求参数非法 |
 | `FAILED_PRECONDITION` | 40301 | 清洗岗位已审核 |
 | `FAILED_PRECONDITION` | 40302 | 岗位分析任务已审核 |
+| `FAILED_PRECONDITION` | 403 | 同一简历或岗位分析任务仍在执行 |
 | `NOT_FOUND` | 404 | 记录或职业不存在 |
 | `INTERNAL` | 500 | 服务内部错误 |
 | `UNAVAILABLE` | 503 | crawler、AI 或服务发现不可用 |

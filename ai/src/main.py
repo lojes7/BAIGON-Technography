@@ -12,8 +12,10 @@ from fastapi import FastAPI
 
 from src.config import config
 from src.pb import ai_pb2_grpc
+from src.repository.log import LogRepository
 from src.server.grpc_server import AIServicer
 from src.server.health import router as health_router
+from src.service.log_service import LogService
 
 logging.basicConfig(
     level=logging.INFO,
@@ -56,7 +58,8 @@ def deregister_from_consul(consul_client, service_id):
             pass
 
 
-def create_grpc_server() -> grpc.Server:
+def create_grpc_server(log_service: LogService | None = None) -> grpc.Server:
+    """创建 gRPC 服务；测试可不注入数据库日志服务。"""
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=10),
         options=[
@@ -64,7 +67,10 @@ def create_grpc_server() -> grpc.Server:
             ("grpc.max_receive_message_length", 50 * 1024 * 1024),
         ],
     )
-    ai_pb2_grpc.add_AIServiceServicer_to_server(AIServicer(), server)
+    ai_pb2_grpc.add_AIServiceServicer_to_server(
+        AIServicer(log_service=log_service),
+        server,
+    )
     return server
 
 
@@ -79,7 +85,9 @@ async def run_grpc_server(server: grpc.Server):
 async def main():
     logger.info("正在启动 ai_service...")
     consul_client, service_id = register_to_consul()
-    grpc_server = create_grpc_server()
+    log_repository = LogRepository(config.db_url_sync)
+    log_service = LogService(log_repository)
+    grpc_server = create_grpc_server(log_service)
 
     try:
         grpc_task = asyncio.create_task(run_grpc_server(grpc_server))
@@ -90,6 +98,8 @@ async def main():
     finally:
         deregister_from_consul(consul_client, service_id)
         grpc_server.stop(grace=5)
+        log_service.close()
+        log_repository.close()
         logger.info("ai_service 已安全关闭")
 
 

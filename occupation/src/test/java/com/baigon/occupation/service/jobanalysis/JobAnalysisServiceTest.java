@@ -84,7 +84,7 @@ class JobAnalysisServiceTest {
         when(jobRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(job));
         when(aiGrpcClient.startJobDescriptionAnalysis(job.getJobDescription())).thenReturn(jdCall);
         when(jdCall.await()).thenReturn(List.of(new AIGrpcClient.AnalyzedSkillResult(
-                "Java", "Advanced", "熟练使用 Java")));
+                "Java", "ADVANCED", "熟练使用 Java")));
         when(taskRepository.markJdAnalysisSucceeded(20L)).thenReturn(1);
 
         service.analyze(20L, audit());
@@ -101,6 +101,7 @@ class JobAnalysisServiceTest {
         verify(resultRepository).save(resultCaptor.capture());
         assertEquals(10L, resultCaptor.getValue().getJobId());
         assertEquals("Java", resultCaptor.getValue().getSkillName());
+        assertEquals("ADVANCED", resultCaptor.getValue().getSkillProficiency());
     }
 
     @Test

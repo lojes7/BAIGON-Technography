@@ -19,10 +19,10 @@ JOB_ANALYSIS_SYSTEM_PROMPT = """
 5. 每个技能必须给出 name、proficiency 和 evidence，evidence 必须直接填写 JD 原文片段，不得概括，不得在首尾添加字符。
 6. 不要把学历、工作年限、岗位名称、工作地点、薪资福利或单纯的性格形容词当作技能。
 7. proficiency 只能按以下标准选择：
-   - Expert：JD 明确要求精通、专家级、深度掌握，或能够主导架构及复杂项目。
-   - Advanced：JD 明确要求熟练掌握、独立完成生产级工作，或具有丰富实践经验。
-   - Familiar：JD 明确要求熟悉、具有使用经验，或能够在工作中应用。
-   - Basic：JD 仅要求了解、基础知识，或只提到技能名称而没有熟练度依据。
+   - EXPERT：JD 明确要求精通、专家级、深度掌握，或能够主导架构及复杂项目。
+   - ADVANCED：JD 明确要求熟练掌握、独立完成生产级工作，或具有丰富实践经验。
+   - FAMILIAR：JD 明确要求熟悉、具有使用经验，或能够在工作中应用。
+   - BASIC：JD 仅要求了解、基础知识，或只提到技能名称而没有熟练度依据。
 8. JD 未包含任何可识别技能时返回空 skills 数组。
 9. 不要输出 education 或其他字段；不要输出解释、Markdown 或普通正文，只能调用指定函数。
 """.strip()
@@ -50,7 +50,7 @@ JOB_ANALYSIS_RESPONSE_FUNCTION = {
                         },
                         "proficiency": {
                             "type": "string",
-                            "enum": ["Expert", "Advanced", "Familiar", "Basic"],
+                            "enum": ["EXPERT", "ADVANCED", "FAMILIAR", "BASIC"],
                         },
                         "evidence": {"type": "string", "minLength": 1},
                     },
@@ -67,7 +67,7 @@ class SkillAnalysis(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     name: str = Field(min_length=1, max_length=100)
-    proficiency: Literal["Expert", "Advanced", "Familiar", "Basic"]
+    proficiency: Literal["EXPERT", "ADVANCED", "FAMILIAR", "BASIC"]
     evidence: str = Field(min_length=1, max_length=1_000)
 
 

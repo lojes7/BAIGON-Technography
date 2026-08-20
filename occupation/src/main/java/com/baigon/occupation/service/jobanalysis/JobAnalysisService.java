@@ -32,7 +32,7 @@ import java.util.concurrent.ExecutorService;
 public class JobAnalysisService {
 
     private static final Set<String> PROFICIENCIES =
-            Set.of("Expert", "Advanced", "Familiar", "Basic");
+            Set.of("EXPERT", "ADVANCED", "FAMILIAR", "BASIC");
 
     private final JobAnalysisTaskRepository taskRepository;
     private final JobAnalysisCandidateRepository candidateRepository;
@@ -189,13 +189,13 @@ public class JobAnalysisService {
             OffsetDateTime now = OffsetDateTime.now();
             int rank = 1;
             for (AIGrpcClient.AnalyzedSkillResult skill : skills) {
-                validateSkill(skill);
+                String proficiency = validateSkill(skill);
                 JobAnalysisResult result = new JobAnalysisResult();
                 result.setId(snowflake.nextId());
                 result.setTaskId(taskId);
                 result.setJobId(jobId);
                 result.setSkillName(skill.name().trim());
-                result.setSkillProficiency(skill.proficiency());
+                result.setSkillProficiency(proficiency);
                 result.setEvidence(skill.evidence().trim());
                 result.setRank(rank++);
                 result.setCreatedAt(now);
@@ -208,17 +208,24 @@ public class JobAnalysisService {
         });
     }
 
-    private void validateSkill(AIGrpcClient.AnalyzedSkillResult skill) {
+    private String validateSkill(AIGrpcClient.AnalyzedSkillResult skill) {
         if (skill == null || skill.name() == null || skill.name().isBlank()
                 || skill.name().trim().length() > 100) {
             throw new IllegalArgumentException("AI skill name is invalid");
         }
-        if (!PROFICIENCIES.contains(skill.proficiency())) {
+        String proficiency = normalizedProficiency(skill.proficiency());
+        if (!PROFICIENCIES.contains(proficiency)) {
             throw new IllegalArgumentException("AI skill proficiency is invalid");
         }
         if (skill.evidence() == null || skill.evidence().isBlank()) {
             throw new IllegalArgumentException("AI skill evidence is empty");
         }
+        return proficiency;
+    }
+
+    /** AI 技能契约和数据库均使用全大写；trim/uppercase 只作防御性边界规范化。 */
+    private String normalizedProficiency(String value) {
+        return value == null ? "" : value.trim().toUpperCase(java.util.Locale.ROOT);
     }
 
     private String vectorLiteral(List<Float> vector) {

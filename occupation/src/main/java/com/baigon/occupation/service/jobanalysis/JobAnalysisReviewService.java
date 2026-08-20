@@ -34,7 +34,7 @@ import java.util.Set;
 public class JobAnalysisReviewService {
 
     private static final Set<String> PROFICIENCIES =
-            Set.of("Expert", "Advanced", "Familiar", "Basic");
+            Set.of("EXPERT", "ADVANCED", "FAMILIAR", "BASIC");
 
     private final JobAnalysisTaskRepository taskRepository;
     private final JobAnalysisResultRepository resultRepository;
@@ -161,19 +161,20 @@ public class JobAnalysisReviewService {
             switch (decision.action()) {
                 case APPROVE -> {
                     result.setReviewStatus(ReviewStatus.PASSED);
-                    saveJobSkill(result, result.getSkillName(), result.getSkillProficiency(),
+                    saveJobSkill(result, result.getSkillName(),
+                            normalizedProficiency(result.getSkillProficiency()),
                             result.getEvidence(), now);
                     approved++;
                 }
                 case APPROVE_WITH_EDIT -> {
-                    validateEditedSkill(decision);
+                    String proficiency = validateEditedSkill(decision);
                     String name = decision.skillName().trim();
                     String evidence = decision.evidence().trim();
                     result.setReviewStatus(ReviewStatus.PASSED);
                     result.setReviewedSkillName(name);
-                    result.setReviewedSkillProficiency(decision.skillProficiency());
+                    result.setReviewedSkillProficiency(proficiency);
                     result.setReviewedEvidence(evidence);
-                    saveJobSkill(result, name, decision.skillProficiency(), evidence, now);
+                    saveJobSkill(result, name, proficiency, evidence, now);
                     approved++;
                 }
                 case REJECT -> result.setReviewStatus(ReviewStatus.REJECTED);
@@ -200,13 +201,14 @@ public class JobAnalysisReviewService {
         jobSkillRepository.save(skill);
     }
 
-    private void validateEditedSkill(SkillReviewDecision decision) {
+    private String validateEditedSkill(SkillReviewDecision decision) {
         if (decision.skillName() == null || decision.skillName().isBlank()
                 || decision.skillName().trim().length() > 100) {
             throw new ApiException(ApiException.ErrorCode.BAD_REQUEST,
                     "edited skill name is invalid");
         }
-        if (!PROFICIENCIES.contains(decision.skillProficiency())) {
+        String proficiency = normalizedProficiency(decision.skillProficiency());
+        if (!PROFICIENCIES.contains(proficiency)) {
             throw new ApiException(ApiException.ErrorCode.BAD_REQUEST,
                     "edited skill proficiency is invalid");
         }
@@ -214,6 +216,12 @@ public class JobAnalysisReviewService {
             throw new ApiException(ApiException.ErrorCode.BAD_REQUEST,
                     "edited skill evidence is empty");
         }
+        return proficiency;
+    }
+
+    /** 审核输入在领域边界统一为数据库采用的全大写熟练度。 */
+    private String normalizedProficiency(String value) {
+        return value == null ? "" : value.trim().toUpperCase(java.util.Locale.ROOT);
     }
 
     private JobOccupationAlias updateAlias(Job job,

@@ -52,6 +52,7 @@ class SparkModel:
         max_tokens: int = 4096,
         uid: str = "baigon-ai-service",
         response_function: dict[str, Any] | None = None,
+        timeout_seconds: float | None = None,
     ) -> str:
         """向星火发送一轮对话；指定响应函数时返回其 JSON 参数。"""
         if not h_msg or not h_msg.strip():
@@ -81,6 +82,8 @@ class SparkModel:
             "stream": stream,
             "temperature": temperature,
             "max_tokens": max_tokens,
+            # 每类业务在其上游 gRPC deadline 前主动释放同步 worker。
+            "timeout": timeout_seconds or model_config.provider_default_timeout_seconds,
         }
         if enable_web_search:
             request_params["tools"] = [

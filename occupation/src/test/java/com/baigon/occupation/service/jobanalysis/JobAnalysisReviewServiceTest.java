@@ -64,9 +64,9 @@ class JobAnalysisReviewServiceTest {
         Job job = job();
         Occupation occupation = occupation();
         List<JobAnalysisResult> results = List.of(
-                result(101L, 1, "Java", "Advanced", "熟练使用 Java"),
-                result(102L, 2, "Word", "Basic", "了解 Word"),
-                result(103L, 3, "学历", "Basic", "本科及以上"));
+                result(101L, 1, "Java", "ADVANCED", "熟练使用 Java"),
+                result(102L, 2, "Word", "BASIC", "了解 Word"),
+                result(103L, 3, "学历", "BASIC", "本科及以上"));
 
         when(taskRepository.findByIdForReview(20L)).thenReturn(Optional.of(task));
         when(occupationRepository.findByIdAndDeletedAtIsNull(99L)).thenReturn(Optional.of(occupation));
@@ -82,7 +82,7 @@ class JobAnalysisReviewServiceTest {
         service.review(20L, 99L, List.of(
                 decision(101L, JobAnalysisReviewAction.APPROVE, null, null, null),
                 decision(102L, JobAnalysisReviewAction.APPROVE_WITH_EDIT,
-                        "Microsoft Word", "Familiar", "能够使用 Word 编写文档"),
+                        "Microsoft Word", "FAMILIAR", "能够使用 Word 编写文档"),
                 decision(103L, JobAnalysisReviewAction.REJECT, null, null, null)
         ), audit()).orElseThrow();
 
@@ -100,6 +100,7 @@ class JobAnalysisReviewServiceTest {
         verify(jobSkillRepository, org.mockito.Mockito.times(2)).save(skillCaptor.capture());
         assertEquals("Java", skillCaptor.getAllValues().get(0).getSkillName());
         assertEquals("Microsoft Word", skillCaptor.getAllValues().get(1).getSkillName());
+        assertEquals("FAMILIAR", skillCaptor.getAllValues().get(1).getSkillProficiency());
         assertEquals(102L, skillCaptor.getAllValues().get(1).getAnalysisResultId());
 
         ArgumentCaptor<JobOccupationAlias> aliasCaptor =
@@ -118,8 +119,8 @@ class JobAnalysisReviewServiceTest {
         when(jobRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(job()));
         when(resultRepository.findByTaskIdAndDeletedAtIsNullOrderByRankAsc(20L))
                 .thenReturn(List.of(
-                        result(101L, 1, "Java", "Advanced", "熟练使用 Java"),
-                        result(102L, 2, "Word", "Basic", "了解 Word")));
+                        result(101L, 1, "Java", "ADVANCED", "熟练使用 Java"),
+                        result(102L, 2, "Word", "BASIC", "了解 Word")));
 
         ApiException exception = assertThrows(ApiException.class, () -> service.review(
                 20L, 99L,
