@@ -142,7 +142,7 @@ CREATE TABLE "user_graphs" (
     "proficiency" proficiency,
     "evidence" text NOT NULL,
     CONSTRAINT "ck_user_graph_proficiency" CHECK (
-        "proficiency" IN ('Expert', 'Advanced', 'Familiar', 'Basic')
+        "proficiency" IN ('EXPERT', 'ADVANCED', 'FAMILIAR', 'BASIC')
         )
 );
 
