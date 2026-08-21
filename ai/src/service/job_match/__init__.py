@@ -5,6 +5,7 @@ from src.service.job_match.analyzer import (
     JOB_MATCH_SYSTEM_PROMPT,
     JobMatchProfile,
     JobMatchResult,
+    ResumeMatchProfile,
     SkillLearningSuggestion,
     analyze_job_match,
 )
@@ -14,6 +15,7 @@ __all__ = [
     "JOB_MATCH_SYSTEM_PROMPT",
     "JobMatchProfile",
     "JobMatchResult",
+    "ResumeMatchProfile",
     "SkillLearningSuggestion",
     "analyze_job_match",
 ]

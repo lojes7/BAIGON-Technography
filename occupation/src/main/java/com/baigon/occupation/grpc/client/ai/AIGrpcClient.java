@@ -15,6 +15,7 @@ import com.baigon.ai.BatchEmbedTextRequest;
 import com.baigon.ai.BatchEmbedTextResponse;
 import com.baigon.ai.EmbeddingVector;
 import com.baigon.ai.JobMatchProfile;
+import com.baigon.ai.ResumeMatchProfile;
 import com.baigon.ai.SkillLearningSuggestion;
 import com.baigon.occupation.service.AuditContext;
 import com.baigon.occupation.error.ApiException;
@@ -194,15 +195,22 @@ public class AIGrpcClient {
         }
     }
 
-    /** 人岗匹配只发送 jobs 表的业务字段，不读取岗位分析或技能结果表。 */
+    /** 人岗匹配只发送简历结构化字段和 jobs 业务字段，不读取简历正文或岗位分析表。 */
     public JobMatchAnalysisResult analyzeJobMatch(
-            String resumeContent,
+            ResumeMatchInput resume,
             JobMatchInput job,
             AuditContext audit) {
-        if (resumeContent == null || resumeContent.isBlank() || job == null) {
+        if (resume == null || job == null) {
             throw new IllegalArgumentException("job match input is incomplete");
         }
         try {
+            ResumeMatchProfile resumeProfile = ResumeMatchProfile.newBuilder()
+                    .setEducationExperiences(orEmpty(resume.educationExperiences()))
+                    .setWorkExperiences(orEmpty(resume.workExperiences()))
+                    .setProjectExperiences(orEmpty(resume.projectExperiences()))
+                    .setProfessionalSkills(orEmpty(resume.professionalSkills()))
+                    .setAwards(orEmpty(resume.awards()))
+                    .build();
             JobMatchProfile.Builder profile = JobMatchProfile.newBuilder()
                     .setName(orEmpty(job.name()))
                     .setPublishDate(orEmpty(job.publishDate()))
@@ -224,7 +232,7 @@ public class AIGrpcClient {
             AnalyzeJobMatchResponse response = AIServiceGrpc.newBlockingStub(activeChannel)
                     .withDeadlineAfter(userAnalysisTimeoutSeconds, TimeUnit.SECONDS)
                     .analyzeJobMatch(AnalyzeJobMatchRequest.newBuilder()
-                            .setResumeContent(resumeContent)
+                            .setResume(resumeProfile)
                             .setJob(profile)
                             .setTraceId(audit.traceId() == null ? "" : String.valueOf(audit.traceId()))
                             .setUserId(audit.userId())
@@ -393,6 +401,15 @@ public class AIGrpcClient {
     public record UserSkillAnalysisResult(
             List<AnalyzedSkillResult> skills,
             String modelName) {
+    }
+
+    /** 与 resumes 表五个 JSONB 列一一对应，不包含可能为空的 content。 */
+    public record ResumeMatchInput(
+            String educationExperiences,
+            String workExperiences,
+            String projectExperiences,
+            String professionalSkills,
+            String awards) {
     }
 
     /** 与 jobs 表业务列一一对应，不包含岗位分析表或内部审计字段。 */

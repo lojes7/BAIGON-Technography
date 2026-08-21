@@ -62,6 +62,8 @@ public class MinioResumeObjectStorage implements ResumeObjectStorage {
                     .build();
             Request request = new Request.Builder()
                     .url(uploadUrl)
+                    // Host 是 SigV4 预签名的必签头，非默认端口也必须参与签名。
+                    .header("Host", hostHeader(uploadUrl))
                     .header("x-amz-date", ZonedDateTime.now(Time.UTC)
                             .format(Time.AMZ_DATE_FORMAT))
                     .put(RequestBody.create(new byte[0]))
@@ -75,6 +77,15 @@ public class MinioResumeObjectStorage implements ResumeObjectStorage {
                     ApiException.ErrorCode.SERVICE_UNAVAILABLE,
                     "resume storage unavailable");
         }
+    }
+
+    private static String hostHeader(HttpUrl url) {
+        String host = url.host();
+        if (host.contains(":")) {
+            host = "[" + host + "]";
+        }
+        int defaultPort = "https".equals(url.scheme()) ? 443 : 80;
+        return url.port() == defaultPort ? host : host + ":" + url.port();
     }
 
     @Override

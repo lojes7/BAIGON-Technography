@@ -1,5 +1,6 @@
 """用户技能分析与人岗匹配 gRPC Handler 测试。"""
 
+import json
 import unittest
 
 import grpc
@@ -56,8 +57,8 @@ class FakeAIModelService:
             }
         )
 
-    def analyze_job_match(self, resume_content, job):
-        self.match_content = resume_content
+    def analyze_job_match(self, resume, job):
+        self.match_resume = resume
         self.match_job = job
         return JobMatchResult.model_validate(
             {
@@ -83,8 +84,8 @@ class FailingAIModelService:
     def analyze_user_skills(self, resume_content):
         raise ValueError(f"非法简历：{resume_content}")
 
-    def analyze_job_match(self, resume_content, job):
-        raise ValueError(f"非法匹配输入：{resume_content} / {job.job_description}")
+    def analyze_job_match(self, resume, job):
+        raise ValueError(f"非法匹配输入：{resume.model_dump_json()} / {job.job_description}")
 
 
 class RaisingAIModelService:
@@ -98,7 +99,7 @@ class RaisingAIModelService:
     def analyze_user_skills(self, resume_content):
         raise self.exception
 
-    def analyze_job_match(self, resume_content, job):
+    def analyze_job_match(self, resume, job):
         raise self.exception
 
 
@@ -123,6 +124,26 @@ def job_message(**overrides):
     }
     values.update(overrides)
     return ai_pb2.JobMatchProfile(**values)
+
+
+def resume_message(**overrides):
+    values = {
+        "education_experiences": [],
+        "work_experiences": [],
+        "project_experiences": [],
+        "professional_skills": [
+            {"skill_name": "Java", "proficiency": "Advanced"}
+        ],
+        "awards": [],
+    }
+    values.update(overrides)
+    encoded = {
+        key: value
+        if isinstance(value, str)
+        else json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+        for key, value in values.items()
+    }
+    return ai_pb2.ResumeMatchProfile(**encoded)
 
 
 class GrpcUserAnalysisTest(unittest.TestCase):
@@ -240,8 +261,8 @@ class GrpcUserAnalysisTest(unittest.TestCase):
         self.assertEqual(
             request_fields,
             [
-                "resume_content",
                 "job",
+                "resume",
                 "trace_id",
                 "user_id",
                 "user_name",
@@ -261,10 +282,21 @@ class GrpcUserAnalysisTest(unittest.TestCase):
             ],
         )
 
+        self.assertEqual(
+            [field.name for field in ai_pb2.ResumeMatchProfile.DESCRIPTOR.fields],
+            [
+                "education_experiences",
+                "work_experiences",
+                "project_experiences",
+                "professional_skills",
+                "awards",
+            ],
+        )
+
     def test_analyze_job_match_maps_profile_and_result(self):
         response = self.servicer.AnalyzeJobMatch(
             ai_pb2.AnalyzeJobMatchRequest(
-                resume_content="  熟练使用 Java 开发后端服务。  ",
+                resume=resume_message(),
                 job=job_message(occupation_id=456),
                 trace_id="10002",
                 user_id=123,
@@ -283,7 +315,10 @@ class GrpcUserAnalysisTest(unittest.TestCase):
             ["在简历中补充可核验的部署成果。"],
         )
         self.assertEqual(response.model, "spark-test")
-        self.assertEqual(self.model_service.match_content, "熟练使用 Java 开发后端服务。")
+        self.assertEqual(
+            self.model_service.match_resume.professional_skills[0].skill_name,
+            "Java",
+        )
         self.assertEqual(self.model_service.match_job.occupation_id, 456)
         self.assertEqual(self.model_service.match_job.job_description, "熟练使用 Java，了解 Kubernetes。")
         audit_entry = self.log_service.entries[0]
@@ -314,7 +349,7 @@ class GrpcUserAnalysisTest(unittest.TestCase):
         with self.assertRaises(AbortError) as raised:
             self.servicer.AnalyzeJobMatch(
                 ai_pb2.AnalyzeJobMatchRequest(
-                    resume_content="熟练使用 Java",
+                    resume=resume_message(),
                     job=ai_pb2.JobMatchProfile(),
                 ),
                 self.context,
@@ -327,10 +362,24 @@ class GrpcUserAnalysisTest(unittest.TestCase):
             "AnalyzeJobMatch 失败",
         )
 
+    def test_analyze_job_match_rejects_invalid_structured_resume(self):
+        with self.assertRaises(AbortError) as raised:
+            self.servicer.AnalyzeJobMatch(
+                ai_pb2.AnalyzeJobMatchRequest(
+                    resume=resume_message(professional_skills="not-json"),
+                    job=job_message(),
+                ),
+                self.context,
+            )
+
+        self.assertEqual(raised.exception.code, grpc.StatusCode.INVALID_ARGUMENT)
+        self.assertEqual(self.log_service.entries[0][1]["error_msg"], "INVALID_ARGUMENT")
+
     def test_failure_logs_do_not_include_resume_or_job_content(self):
         log_service = FakeLogService()
         servicer = AIServicer(FailingAIModelService(), log_service)
         resume_content = "私密简历正文-不可写入日志"
+        resume_secret = "私密结构化项目-不可写入日志"
         job_description = "私密岗位正文-不可写入日志"
 
         with self.assertLogs("src.server.grpc_server", level="ERROR") as skill_logs:
@@ -346,7 +395,16 @@ class GrpcUserAnalysisTest(unittest.TestCase):
             with self.assertRaises(AbortError) as match_error:
                 servicer.AnalyzeJobMatch(
                     ai_pb2.AnalyzeJobMatchRequest(
-                        resume_content=resume_content,
+                        resume=resume_message(
+                            project_experiences=[
+                                {
+                                    "project_name": "内部项目",
+                                    "start_date": "",
+                                    "end_date": "",
+                                    "description": resume_secret,
+                                }
+                            ]
+                        ),
                         job=job_message(job_description=job_description),
                         trace_id="trace-safe-2",
                     ),
@@ -357,11 +415,13 @@ class GrpcUserAnalysisTest(unittest.TestCase):
         self.assertEqual(skill_error.exception.code, grpc.StatusCode.INTERNAL)
         self.assertEqual(match_error.exception.code, grpc.StatusCode.INTERNAL)
         self.assertNotIn(resume_content, logs)
+        self.assertNotIn(resume_secret, logs)
         self.assertNotIn(job_description, logs)
         self.assertIn("trace-safe-1", logs)
         self.assertIn("trace-safe-2", logs)
         persisted_log_text = repr(log_service.entries)
         self.assertNotIn(resume_content, persisted_log_text)
+        self.assertNotIn(resume_secret, persisted_log_text)
         self.assertNotIn(job_description, persisted_log_text)
         self.assertEqual(
             [entry[1]["error_msg"] for entry in log_service.entries],
@@ -389,7 +449,7 @@ class GrpcUserAnalysisTest(unittest.TestCase):
                     else:
                         servicer.AnalyzeJobMatch(
                             ai_pb2.AnalyzeJobMatchRequest(
-                                resume_content="熟练使用 Java",
+                                resume=resume_message(),
                                 job=job_message(),
                                 trace_id="20002",
                             ),
@@ -426,7 +486,7 @@ class GrpcUserAnalysisTest(unittest.TestCase):
                     else:
                         servicer.AnalyzeJobMatch(
                             ai_pb2.AnalyzeJobMatchRequest(
-                                resume_content="熟练使用 Java",
+                                resume=resume_message(),
                                 job=job_message(),
                                 trace_id="30002",
                             ),
@@ -439,40 +499,25 @@ class GrpcUserAnalysisTest(unittest.TestCase):
                     "UNAVAILABLE",
                 )
 
-    def test_overlong_resume_maps_both_rpcs_to_invalid_argument(self):
-        """超长简历在调用模型前由两类 RPC 一致拒绝。"""
+    def test_overlong_user_skill_resume_maps_to_invalid_argument(self):
+        """技能分析仍在调用模型前拒绝超长简历正文。"""
         overlong_resume = "技" * (MAX_RESUME_CONTENT_LENGTH + 1)
-        for operation in ("skills", "match"):
-            with self.subTest(operation=operation):
-                log_service = FakeLogService()
-                servicer = AIServicer(FakeAIModelService(), log_service)
-                with self.assertRaises(AbortError) as raised:
-                    if operation == "skills":
-                        servicer.AnalyzeUserSkills(
-                            ai_pb2.AnalyzeUserSkillsRequest(
-                                resume_content=overlong_resume,
-                                trace_id="40001",
-                            ),
-                            self.context,
-                        )
-                    else:
-                        servicer.AnalyzeJobMatch(
-                            ai_pb2.AnalyzeJobMatchRequest(
-                                resume_content=overlong_resume,
-                                job=job_message(),
-                                trace_id="40002",
-                            ),
-                            self.context,
-                        )
+        log_service = FakeLogService()
+        servicer = AIServicer(FakeAIModelService(), log_service)
+        with self.assertRaises(AbortError) as raised:
+            servicer.AnalyzeUserSkills(
+                ai_pb2.AnalyzeUserSkillsRequest(
+                    resume_content=overlong_resume,
+                    trace_id="40001",
+                ),
+                self.context,
+            )
 
-                self.assertEqual(
-                    raised.exception.code,
-                    grpc.StatusCode.INVALID_ARGUMENT,
-                )
-                self.assertEqual(
-                    log_service.entries[0][1]["error_msg"],
-                    "INVALID_ARGUMENT",
-                )
+        self.assertEqual(raised.exception.code, grpc.StatusCode.INVALID_ARGUMENT)
+        self.assertEqual(
+            log_service.entries[0][1]["error_msg"],
+            "INVALID_ARGUMENT",
+        )
 
 
 if __name__ == "__main__":
