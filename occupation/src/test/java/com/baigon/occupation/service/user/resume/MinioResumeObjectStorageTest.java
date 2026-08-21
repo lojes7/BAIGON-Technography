@@ -3,8 +3,10 @@ package com.baigon.occupation.service.user.resume;
 
 import io.minio.BucketExistsArgs;
 import io.minio.MinioClient;
+import okhttp3.HttpUrl;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -24,10 +26,11 @@ class MinioResumeObjectStorageTest {
                 "12345678",
                 "us-east-1");
 
-        String uploadUrl = storage.createPresignedPutUrl(
-                "users/7/resumes/101.pdf", 600);
+        HttpUrl uploadUrl = HttpUrl.get(storage.createPresignedPutUrl(
+                "users/7/resumes/101.pdf", 600));
 
-        assertTrue(uploadUrl.startsWith(
+        assertTrue(uploadUrl.toString().startsWith(
                 "http://localhost:9000/resumes/users/7/resumes/101.pdf?"));
+        assertEquals("host", uploadUrl.queryParameter("X-Amz-SignedHeaders"));
     }
 }

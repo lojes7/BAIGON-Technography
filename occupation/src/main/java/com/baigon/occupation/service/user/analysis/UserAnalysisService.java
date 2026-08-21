@@ -134,7 +134,7 @@ public class UserAnalysisService {
         String modelName;
         try {
             result = aiGrpcClient.analyzeJobMatch(
-                    prepared.resumeContent(), prepared.jobInput(), audit);
+                    prepared.resumeInput(), prepared.jobInput(), audit);
             match = validateMatch(result);
             modelName = requiredText(
                     result.modelName(), MAX_MODEL_NAME_LENGTH, "model name");
@@ -167,14 +167,21 @@ public class UserAnalysisService {
                         .findFirstByUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(userId)
                         .orElseThrow(() -> new ApiException(
                                 ApiException.ErrorCode.NOT_FOUND, "resume not found"));
-                if (resume.getContent() == null || resume.getContent().isBlank()) {
-                    throw new ApiException(
-                            ApiException.ErrorCode.BAD_REQUEST, "latest resume content is empty");
-                }
 
+                String resumeContent = null;
+                AIGrpcClient.ResumeMatchInput resumeInput = null;
                 Job job = null;
                 AIGrpcClient.JobMatchInput jobInput = null;
-                if (type == UserAnalysisType.JOB_MATCH) {
+                if (type == UserAnalysisType.RESUME_SKILL_ANALYSIS) {
+                    if (resume.getContent() == null || resume.getContent().isBlank()) {
+                        throw new ApiException(
+                                ApiException.ErrorCode.BAD_REQUEST,
+                                "latest resume content is empty");
+                    }
+                    resumeContent = resume.getContent();
+                } else {
+                    // 人岗匹配不读取可能为空的 content，只使用五组结构化简历字段。
+                    resumeInput = toResumeMatchInput(resume);
                     job = jobRepository.findByIdAndDeletedAtIsNull(jobId)
                             .orElseThrow(() -> new ApiException(
                                     ApiException.ErrorCode.NOT_FOUND, "job not found"));
@@ -199,7 +206,8 @@ public class UserAnalysisService {
                 task.setActionSuggestions(objectMapper.createArrayNode());
                 taskRepository.saveAndFlush(task);
                 return new PreparedAnalysis(
-                        taskId, resume.getId(), resume.getContent(), job == null ? null : job.getId(), jobInput);
+                        taskId, resume.getId(), resumeContent, resumeInput,
+                        job == null ? null : job.getId(), jobInput);
             });
             if (prepared == null) {
                 throw new IllegalStateException("user analysis transaction returned no result");
@@ -488,6 +496,39 @@ public class UserAnalysisService {
                 job.getOccupationId());
     }
 
+    private AIGrpcClient.ResumeMatchInput toResumeMatchInput(Resume resume) {
+        JsonNode education = resumeArrayOrEmpty(
+                resume.getEducationExperiences(), "education_experiences");
+        JsonNode work = resumeArrayOrEmpty(
+                resume.getWorkExperiences(), "work_experiences");
+        JsonNode project = resumeArrayOrEmpty(
+                resume.getProjectExperiences(), "project_experiences");
+        JsonNode skills = resumeArrayOrEmpty(
+                resume.getProfessionalSkills(), "professional_skills");
+        JsonNode awards = resumeArrayOrEmpty(resume.getAwards(), "awards");
+        if (education.isEmpty() && work.isEmpty() && project.isEmpty()
+                && skills.isEmpty() && awards.isEmpty()) {
+            throw new ApiException(
+                    ApiException.ErrorCode.BAD_REQUEST,
+                    "latest resume structured fields are empty");
+        }
+        return new AIGrpcClient.ResumeMatchInput(
+                education.toString(), work.toString(), project.toString(),
+                skills.toString(), awards.toString());
+    }
+
+    private JsonNode resumeArrayOrEmpty(JsonNode value, String field) {
+        if (value == null) {
+            return objectMapper.createArrayNode();
+        }
+        if (!value.isArray()) {
+            throw new ApiException(
+                    ApiException.ErrorCode.BAD_REQUEST,
+                    "latest resume " + field + " is not an array");
+        }
+        return value;
+    }
+
     private UserSkillData toSkillData(UserGraph graph) {
         return new UserSkillData(
                 graph.getId(), graph.getResumeId(), graph.getSkillName(),
@@ -498,6 +539,7 @@ public class UserAnalysisService {
             long taskId,
             long resumeId,
             String resumeContent,
+            AIGrpcClient.ResumeMatchInput resumeInput,
             Long jobId,
             AIGrpcClient.JobMatchInput jobInput) {
     }

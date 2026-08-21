@@ -1,5 +1,6 @@
 # 百工谱 — ai_service gRPC 服务端实现
 
+import json
 import logging
 from typing import Any
 
@@ -10,7 +11,7 @@ from src.config import model_config
 from src.llm.exceptions import ModelConfigurationError
 from src.pb import ai_pb2, ai_pb2_grpc
 from src.service.job_analysis import MAX_JD_LENGTH
-from src.service.job_match import JobMatchProfile
+from src.service.job_match import JobMatchProfile, ResumeMatchProfile
 from src.service.log_service import LogService
 from src.service.model_service import AIModelService
 from src.service.resume_analysis import MAX_RESUME_CONTENT_LENGTH
@@ -163,17 +164,27 @@ class AIServicer(ai_pb2_grpc.AIServiceServicer):
             context.abort(grpc.StatusCode.INTERNAL, "用户技能分析服务暂不可用")
 
     def AnalyzeJobMatch(self, request, context):
-        """只使用简历正文及 jobs 表公开字段进行匹配。"""
-        resume_content = request.resume_content.strip()
-        if not resume_content:
-            self._audit_failure(request, "AnalyzeJobMatch", "INVALID_ARGUMENT")
-            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "resume_content 不能为空")
-        if len(resume_content) > MAX_RESUME_CONTENT_LENGTH:
-            self._audit_failure(request, "AnalyzeJobMatch", "INVALID_ARGUMENT")
-            context.abort(
-                grpc.StatusCode.INVALID_ARGUMENT,
-                "resume_content 长度超过上限",
+        """只使用简历五组结构化字段及 jobs 表公开字段进行匹配。"""
+        try:
+            # JSONB 经 protobuf 以规范 JSON 文本传输，进入模型前恢复并严格校验结构。
+            resume = ResumeMatchProfile.model_validate(
+                {
+                    "education_experiences": json.loads(
+                        request.resume.education_experiences
+                    ),
+                    "work_experiences": json.loads(request.resume.work_experiences),
+                    "project_experiences": json.loads(
+                        request.resume.project_experiences
+                    ),
+                    "professional_skills": json.loads(
+                        request.resume.professional_skills
+                    ),
+                    "awards": json.loads(request.resume.awards),
+                }
             )
+        except Exception:
+            self._audit_failure(request, "AnalyzeJobMatch", "INVALID_ARGUMENT")
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "resume 字段不合法")
 
         try:
             # 显式枚举字段，防止后续 protobuf 扩展被无意传给模型。
@@ -202,7 +213,7 @@ class AIServicer(ai_pb2_grpc.AIServiceServicer):
             context.abort(grpc.StatusCode.INVALID_ARGUMENT, "job 字段不合法")
 
         try:
-            analysis = self.model_service.analyze_job_match(resume_content, job)
+            analysis = self.model_service.analyze_job_match(resume, job)
             model_name = self.model_service.chat_model_name
             response = ai_pb2.AnalyzeJobMatchResponse(
                 score=analysis.score,
@@ -219,11 +230,21 @@ class AIServicer(ai_pb2_grpc.AIServiceServicer):
                 model=model_name,
             )
             self._audit_success(request, "AnalyzeJobMatch")
+            resume_items = sum(
+                len(items)
+                for items in (
+                    resume.education_experiences,
+                    resume.work_experiences,
+                    resume.project_experiences,
+                    resume.professional_skills,
+                    resume.awards,
+                )
+            )
             logger.info(
-                "AnalyzeJobMatch 完成: trace_id=%s, resume_length=%d, "
+                "AnalyzeJobMatch 完成: trace_id=%s, resume_items=%d, "
                 "job_description_length=%d, learning_count=%d, action_count=%d, model=%s",
                 request.trace_id,
-                len(resume_content),
+                resume_items,
                 len(job.job_description),
                 len(analysis.skills_to_learn),
                 len(analysis.action_suggestions),

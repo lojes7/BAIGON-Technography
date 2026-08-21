@@ -66,7 +66,13 @@ class AIGrpcClientTest {
     }
 
     @Test
-    void analyzeJobMatchShouldForwardOnlyJobsSnapshotAndMapSuggestions() {
+    void analyzeJobMatchShouldForwardStructuredResumeAndOnlyJobsSnapshot() {
+        AIGrpcClient.ResumeMatchInput resume = new AIGrpcClient.ResumeMatchInput(
+                "[]",
+                "[]",
+                "[]",
+                "[{\"skill_name\":\"Java\",\"proficiency\":\"Advanced\"}]",
+                "[]");
         AIGrpcClient.JobMatchInput input = new AIGrpcClient.JobMatchInput(
                 "Java 后端工程师",
                 "2026-08-20T10:00:00+08:00",
@@ -86,13 +92,20 @@ class AIGrpcClientTest {
                 301L);
 
         AIGrpcClient.JobMatchAnalysisResult result = client.analyzeJobMatch(
-                "三年 Java 后端开发经验", input, audit("/api/jobs/201/match"));
+                resume, input, audit("/api/jobs/201/match"));
 
         assertEquals(82, result.score());
         assertEquals("Kubernetes", result.skillsToLearn().get(0).skillName());
         assertEquals("补充量化项目成果", result.actionSuggestions().get(0));
         AnalyzeJobMatchRequest request = backend.matchRequest;
-        assertEquals("三年 Java 后端开发经验", request.getResumeContent());
+        assertEquals(resume.educationExperiences(),
+                request.getResume().getEducationExperiences());
+        assertEquals(resume.workExperiences(), request.getResume().getWorkExperiences());
+        assertEquals(resume.projectExperiences(),
+                request.getResume().getProjectExperiences());
+        assertEquals(resume.professionalSkills(),
+                request.getResume().getProfessionalSkills());
+        assertEquals(resume.awards(), request.getResume().getAwards());
         assertEquals(input.name(), request.getJob().getName());
         assertEquals(input.publishDate(), request.getJob().getPublishDate());
         assertEquals(input.sourcePlatform(), request.getJob().getSourcePlatform());

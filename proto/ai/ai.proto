@@ -21,7 +21,7 @@ service AIService {
   // 从当前用户的简历正文中提取有原文证据的技能。
   rpc AnalyzeUserSkills(AnalyzeUserSkillsRequest) returns (AnalyzeUserSkillsResponse) {}
 
-  // 只使用简历正文和 jobs 表公开业务字段完成人岗匹配。
+  // 只使用简历五组结构化字段和 jobs 表公开业务字段完成人岗匹配。
   rpc AnalyzeJobMatch(AnalyzeJobMatchRequest) returns (AnalyzeJobMatchResponse) {}
 
   // 生成单条文本嵌入向量。
@@ -78,10 +78,13 @@ message AnalyzeUserSkillsResponse {
 }
 
 message AnalyzeJobMatchRequest {
-  // 当前用户最新简历的完整正文。
-  string resume_content = 1;
+  // 旧版简历正文不再用于人岗匹配，避免 EDITED 简历 content 为空时无法分析。
+  reserved 1;
+  reserved "resume_content";
   // 岗位快照只允许由 jobs 表的公开业务字段构造。
   JobMatchProfile job = 2;
+  // 当前用户最新简历的五组 JSONB 结构化字段。
+  ResumeMatchProfile resume = 3;
 
   // 调用链审计字段：由 gateway 经 occupation-service 透传。
   string trace_id = 10;
@@ -90,6 +93,15 @@ message AnalyzeJobMatchRequest {
   string user_ip = 13;
   string request_method = 14;
   string request_url = 15;
+}
+
+message ResumeMatchProfile {
+  // 以下字段分别是 resumes 对应 JSONB 数组的规范 JSON 文本。
+  string education_experiences = 1;
+  string work_experiences = 2;
+  string project_experiences = 3;
+  string professional_skills = 4;
+  string awards = 5;
 }
 
 message JobMatchProfile {

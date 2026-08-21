@@ -7,7 +7,12 @@ import numpy as np
 from src.llm.embedding_model import TextEmbedding
 from src.llm.spark_model import SparkModel
 from src.service.job_analysis import JobAnalysisResult, analyze_job_description
-from src.service.job_match import JobMatchProfile, JobMatchResult, analyze_job_match
+from src.service.job_match import (
+    JobMatchProfile,
+    JobMatchResult,
+    ResumeMatchProfile,
+    analyze_job_match,
+)
 from src.service.resume_analysis import ResumeAnalysisResult, analyze_resume
 from src.service.user_skill_analysis import (
     UserSkillAnalysisResult,
@@ -49,11 +54,11 @@ class AIModelService:
 
     def analyze_job_match(
         self,
-        resume_content: str,
+        resume: ResumeMatchProfile,
         job: JobMatchProfile,
     ) -> JobMatchResult:
-        """只使用简历正文和 jobs 表字段完成人岗匹配。"""
-        return analyze_job_match(self.chat_model, resume_content, job)
+        """只使用简历结构化字段和 jobs 表字段完成人岗匹配。"""
+        return analyze_job_match(self.chat_model, resume, job)
 
     @property
     def chat_model_name(self) -> str:

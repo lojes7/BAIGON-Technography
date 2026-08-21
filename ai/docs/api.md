@@ -20,7 +20,7 @@ AI 服务已接入以下内部模型适配器，供后续 gRPC Handler 调用：
 | `AnalyzeJobDescription` | 仅 `jd` | `skills` 对象列表 | 使用星火完整抽取技能，并返回强类型对象 |
 | `AnalyzeResume` | 仅 OCR `content` | `resume_json` | 返回符合 `format.json` 且经过原文来源校验的 JSON |
 | `AnalyzeUserSkills` | `resume_content`、审计字段 | `skills`、`model` | 提取有简历原文证据的用户技能 |
-| `AnalyzeJobMatch` | `resume_content`、`job`、审计字段 | 分数、摘要、建议、`model` | 只使用简历与 `jobs` 表公开字段完成人岗匹配 |
+| `AnalyzeJobMatch` | `resume`、`job`、审计字段 | 分数、摘要、建议、`model` | 只使用五组结构化简历字段与 `jobs` 表公开字段完成人岗匹配 |
 | `EmbedText` | `text`、可选 `dimensions` | 单条 `embedding` | 为一段非空文本生成 Qwen 向量 |
 | `BatchEmbedText` | `texts`、可选 `dimensions` / `chunk_size` | `embeddings` | 批量生成向量，返回顺序严格对应输入顺序 |
 
@@ -93,6 +93,11 @@ Pydantic 严格结构校验，再对每个非空名称、描述和日期执行�
 
 ### 人岗匹配
 
+`AnalyzeJobMatch.resume` 的 `ResumeMatchProfile` 只包含当前最新 `resumes` 记录的
+`education_experiences`、`work_experiences`、`project_experiences`、
+`professional_skills`、`awards` 五个 JSONB 数组。接口不接收也不读取可能为空的
+`resumes.content`；五组结构化数据同时为空或结构不合法时拒绝请求。
+
 `AnalyzeJobMatch.job` 的 `JobMatchProfile` 只包含以下 `jobs` 表公开业务字段：
 
 `name`、`publish_date`、`source_platform`、`source_url`、`tags`、`major`、
@@ -100,8 +105,8 @@ Pydantic 严格结构校验，再对每个非空名称、描述和日期执行�
 `education`、`experience`、`job_description`、`occupation_id`。
 
 `occupation_id` 为空时传 `0`。请求没有 `job_analysis_results`、`job_skills`、职业详情、
-`trace_id`（岗位来源字段）、`job_number` 或表审计时间等内容。AI 只比较本次请求中的简历与
-岗位快照，不读取岗位分析结果，也不联网。两份正文都按不可信数据处理，其中的提示词不能
+`trace_id`（岗位来源字段）、`job_number` 或表审计时间等内容。AI 只比较本次请求中的结构化简历与
+岗位快照，不读取岗位分析结果，也不联网。两份数据都按不可信数据处理，其中的提示词不能
 覆盖系统规则；姓名、性别、年龄等无关属性不得影响分数。
 
 ```json
@@ -123,8 +128,8 @@ Pydantic 严格结构校验，再对每个非空名称、描述和日期执行�
 ```
 
 `score` 必须是 `0` 至 `100` 的整数；摘要和每项建议均不能为空，技能建议按技能名去重，
-行动建议在自身列表内去重。完全匹配时两个建议数组可以为空。日志只记录输入长度、建议数量、模型名和
-`trace_id`，不记录简历、岗位正文、模型原始响应或具体建议。
+行动建议在自身列表内去重。完全匹配时两个建议数组可以为空。日志只记录结构化简历条目数、建议数量、模型名和
+`trace_id`，不记录简历字段、岗位正文、模型原始响应或具体建议。
 
 ## 实体链接流程
 
@@ -132,7 +137,7 @@ Pydantic 严格结构校验，再对每个非空名称、描述和日期执行�
 ## 错误码
 | 错误码 | 含义 |
 |--------|------|
-| `INVALID_ARGUMENT` | 文本为空、岗位无可分析信息、字段超长、批量过大、维度或分批大小非法 |
+| `INVALID_ARGUMENT` | 文本为空、结构化简历或岗位无可分析信息、字段结构或长度非法、批量过大、维度或分批大小非法 |
 | `FAILED_PRECONDITION` | 未配置对应接口需要的模型密钥 |
 | `UNAVAILABLE` | 用户技能分析或人岗匹配的模型供应商暂时不可用 |
 | `INTERNAL` | 模型输出不符合契约、证据无法回溯，或向量数量/维度异常 |

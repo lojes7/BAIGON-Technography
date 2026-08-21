@@ -74,7 +74,9 @@ OCR `content` 和五类结构化数组才会在同一事务中写入 `resumes`�
 | GET | `/api/auth/me/skills` | 按分析时间和批内顺序返回全部历史技能记录 |
 | POST | `/api/jobs/{id}/match` | 使用当前用户最新简历匹配指定正式岗位 |
 
-最新简历不存在时返回 404；最新记录的 `content` 为空时返回 400，不回退到旧简历。技能结果以
+最新简历不存在时返回 404。技能分析要求最新记录的 `content` 非空；人岗匹配不读取
+`content`，改用 `education_experiences`、`work_experiences`、`project_experiences`、
+`professional_skills`、`awards` 五个 JSONB 数组，五组数据同时为空时返回 400。技能结果以
 `skill_name / proficiency / evidence / rank` 扁平写入 `user_graphs`，历史批次只追加不覆盖，
 `created_at` 即本次系统识别时间。熟练度统一为
 `EXPERT / ADVANCED / FAMILIAR / BASIC`，证据必须可按 NFKC 与空白归一化规则回溯简历原文。
@@ -83,7 +85,8 @@ OCR `content` 和五类结构化数组才会在同一事务中写入 `resumes`�
 原子写结果和 `SUCCESS`；失败任务只保存脱敏错误码。超过 AI deadline 再加一分钟的遗留
 `PENDING`（默认三分钟）会在下一次同目标请求中先标记 `FAILED` 再重试，未超时的重复请求返回 403。
 
-人岗匹配只查询 `JobRepository`，发送给 AI 的快照只由 `jobs` 的以下业务字段构造：
+人岗匹配的简历快照只由上述五个 `resumes` JSONB 字段构造；岗位侧只查询
+`JobRepository`，发送给 AI 的岗位快照只由 `jobs` 的以下业务字段构造：
 `name`、`publish_date`、`source_platform`、`source_url`、`tags`、`major`、`nature`、`salary`、
 `company_name`、`company_size`、`city`、`province`、`education`、`experience`、
 `job_description`、`occupation_id`。实现不会读取 `job_analysis_results`、`job_skills` 或职业详情。

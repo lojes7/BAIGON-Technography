@@ -105,13 +105,13 @@ class UserAnalysisServiceTest {
     }
 
     @Test
-    void matchShouldBuildInputOnlyFromJobsEntityAndPersistStructuredResult() {
-        Resume resume = resume(101L, "三年 Java 后端开发经验");
+    void matchShouldUseStructuredResumeWhenContentIsNullAndPersistResult() {
+        Resume resume = resume(101L, null);
         Job job = job(201L);
         when(resumeRepository.findFirstByUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(7L))
                 .thenReturn(Optional.of(resume));
         when(jobRepository.findByIdAndDeletedAtIsNull(201L)).thenReturn(Optional.of(job));
-        when(aiGrpcClient.analyzeJobMatch(eq(resume.getContent()), any(), eq(audit())))
+        when(aiGrpcClient.analyzeJobMatch(any(), any(), eq(audit())))
                 .thenReturn(new AIGrpcClient.JobMatchAnalysisResult(
                         82,
                         "后端基础匹配，需要补充容器实践",
@@ -130,25 +130,32 @@ class UserAnalysisServiceTest {
         assertEquals(1, task.get().getSkillsToLearn().size());
         verify(graphRepository, never()).saveAllAndFlush(any());
 
-        ArgumentCaptor<AIGrpcClient.JobMatchInput> input =
+        ArgumentCaptor<AIGrpcClient.ResumeMatchInput> resumeInput =
+                ArgumentCaptor.forClass(AIGrpcClient.ResumeMatchInput.class);
+        ArgumentCaptor<AIGrpcClient.JobMatchInput> jobInput =
                 ArgumentCaptor.forClass(AIGrpcClient.JobMatchInput.class);
-        verify(aiGrpcClient).analyzeJobMatch(eq(resume.getContent()), input.capture(), eq(audit()));
-        assertEquals(job.getName(), input.getValue().name());
-        assertEquals(job.getPublishDate().toString(), input.getValue().publishDate());
-        assertEquals(job.getSourcePlatform(), input.getValue().sourcePlatform());
-        assertEquals(job.getSourceUrl(), input.getValue().sourceUrl());
-        assertEquals(job.getTags(), input.getValue().tags());
-        assertEquals(job.getMajor(), input.getValue().major());
-        assertEquals(job.getNature(), input.getValue().nature());
-        assertEquals(job.getSalary(), input.getValue().salary());
-        assertEquals(job.getJobDescription(), input.getValue().jobDescription());
-        assertEquals(job.getCompanyName(), input.getValue().companyName());
-        assertEquals(job.getCompanySize(), input.getValue().companySize());
-        assertEquals(job.getCity(), input.getValue().city());
-        assertEquals(job.getProvince(), input.getValue().province());
-        assertEquals(job.getEducation(), input.getValue().education());
-        assertEquals(job.getExperience(), input.getValue().experience());
-        assertEquals(job.getOccupationId(), input.getValue().occupationId());
+        verify(aiGrpcClient).analyzeJobMatch(
+                resumeInput.capture(), jobInput.capture(), eq(audit()));
+        assertEquals("[]", resumeInput.getValue().educationExperiences());
+        assertEquals(
+                "[{\"skill_name\":\"Java\",\"proficiency\":\"Advanced\"}]",
+                resumeInput.getValue().professionalSkills());
+        assertEquals(job.getName(), jobInput.getValue().name());
+        assertEquals(job.getPublishDate().toString(), jobInput.getValue().publishDate());
+        assertEquals(job.getSourcePlatform(), jobInput.getValue().sourcePlatform());
+        assertEquals(job.getSourceUrl(), jobInput.getValue().sourceUrl());
+        assertEquals(job.getTags(), jobInput.getValue().tags());
+        assertEquals(job.getMajor(), jobInput.getValue().major());
+        assertEquals(job.getNature(), jobInput.getValue().nature());
+        assertEquals(job.getSalary(), jobInput.getValue().salary());
+        assertEquals(job.getJobDescription(), jobInput.getValue().jobDescription());
+        assertEquals(job.getCompanyName(), jobInput.getValue().companyName());
+        assertEquals(job.getCompanySize(), jobInput.getValue().companySize());
+        assertEquals(job.getCity(), jobInput.getValue().city());
+        assertEquals(job.getProvince(), jobInput.getValue().province());
+        assertEquals(job.getEducation(), jobInput.getValue().education());
+        assertEquals(job.getExperience(), jobInput.getValue().experience());
+        assertEquals(job.getOccupationId(), jobInput.getValue().occupationId());
     }
 
     @Test
@@ -180,6 +187,22 @@ class UserAnalysisServiceTest {
         assertEquals(ApiException.ErrorCode.BAD_REQUEST, exception.getErrorCode());
         verify(taskRepository, never()).saveAndFlush(any());
         verify(aiGrpcClient, never()).analyzeUserSkills(any(), any());
+    }
+
+    @Test
+    void matchShouldRejectResumeWhenAllStructuredFieldsAreEmpty() {
+        Resume resume = resume(101L, null);
+        resume.setProfessionalSkills(new ObjectMapper().createArrayNode());
+        when(resumeRepository.findFirstByUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(7L))
+                .thenReturn(Optional.of(resume));
+
+        ApiException exception = assertThrows(ApiException.class,
+                () -> service.matchMyResumeToJob(7L, 201L, audit()));
+
+        assertEquals(ApiException.ErrorCode.BAD_REQUEST, exception.getErrorCode());
+        verify(taskRepository, never()).saveAndFlush(any());
+        verify(jobRepository, never()).findByIdAndDeletedAtIsNull(any());
+        verify(aiGrpcClient, never()).analyzeJobMatch(any(), any(), any());
     }
 
     @Test
@@ -333,7 +356,7 @@ class UserAnalysisServiceTest {
                 .thenReturn(Optional.of(resume));
         when(jobRepository.findByIdAndDeletedAtIsNull(201L))
                 .thenReturn(Optional.of(job(201L)));
-        when(aiGrpcClient.analyzeJobMatch(eq(resume.getContent()), any(), eq(audit())))
+        when(aiGrpcClient.analyzeJobMatch(any(), any(), eq(audit())))
                 .thenReturn(new AIGrpcClient.JobMatchAnalysisResult(
                         101, "非法分数", List.of(), List.of(), "spark-x"));
 
@@ -392,6 +415,16 @@ class UserAnalysisServiceTest {
         resume.setId(id);
         resume.setUserId(7L);
         resume.setContent(content);
+        ObjectMapper mapper = new ObjectMapper();
+        resume.setEducationExperiences(mapper.createArrayNode());
+        resume.setWorkExperiences(mapper.createArrayNode());
+        resume.setProjectExperiences(mapper.createArrayNode());
+        var skills = mapper.createArrayNode();
+        skills.addObject()
+                .put("skill_name", "Java")
+                .put("proficiency", "Advanced");
+        resume.setProfessionalSkills(skills);
+        resume.setAwards(mapper.createArrayNode());
         return resume;
     }
 
