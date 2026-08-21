@@ -22,6 +22,10 @@ class ModelConfig:
     embedding_max_batch_size: int = 1000
     # 当前要求模型供应商调用只执行一次，关闭 OpenAI SDK 内置重试。
     provider_max_retries: int = 0
+    # 默认值必须短于 JD/普通生成的 30 秒上游 deadline。
+    provider_default_timeout_seconds: float = 25.0
+    # 简历及用户分析允许更长推理，但仍短于对应的 120 秒上游 deadline。
+    provider_long_timeout_seconds: float = 110.0
 
 
 class Config:
@@ -59,9 +63,10 @@ class Config:
         self.dashscope_api_key: str = os.getenv("DASHSCOPE_API_KEY", "")
 
     @property
-    def db_url(self) -> str:
+    def db_url_sync(self) -> str:
+        """同步 SQLAlchemy DSN（psycopg2 驱动）。"""
         return (
-            f"postgresql+asyncpg://{self.db_user}:{self.db_password}"
+            f"postgresql+psycopg2://{self.db_user}:{self.db_password}"
             f"@{self.db_host}:{self.db_port}/{self.db_name}"
         )
 

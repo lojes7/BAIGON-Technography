@@ -11,6 +11,7 @@ import (
 	commonhandler "baigon-technography/gateway/internal/handler"
 	"baigon-technography/gateway/internal/response"
 	occupationpb "baigon-technography/gateway/pb/occupationpb"
+	"baigon-technography/gateway/pb/userpb"
 
 	"github.com/gin-gonic/gin"
 	"google.golang.org/grpc"
@@ -194,5 +195,95 @@ func jobSkillData(skill *occupationpb.JobSkillData) gin.H {
 	return gin.H{
 		"id": skill.GetId(), "skillName": skill.GetSkillName(),
 		"skillProficiency": skill.GetSkillProficiency(), "evidence": skill.GetEvidence(),
+	}
+}
+
+// MatchMyResumeToJobHandler 使用当前用户最新简历与指定 jobs 记录进行匹配。
+// @Summary      匹配我的简历与岗位
+// @Description  服务端自动选取当前用户最新简历，并仅使用指定 jobs 记录的岗位信息进行匹配。
+// @Tags         岗位
+// @Produce      json
+// @Security     Bearer
+// @Param        id path int true "jobs.id"
+// @Success      200 {object} response.SuccessBody "data 内含分数、摘要、待学习技能和行动建议"
+// @Failure      400 {object} response.ErrorBody
+// @Failure      401 {object} response.ErrorBody
+// @Failure      403 {object} response.ErrorBody
+// @Failure      404 {object} response.ErrorBody
+// @Failure      500 {object} response.ErrorBody
+// @Failure      503 {object} response.ErrorBody
+// @Router       /api/jobs/{id}/match [post]
+func MatchMyResumeToJobHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := commonhandler.UserIDFromContext(c)
+		if userID <= 0 {
+			response.Error(c, http.StatusUnauthorized, http.StatusUnauthorized)
+			return
+		}
+		jobID, ok := parsePositiveJobID(c.Param("id"))
+		if !ok {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+
+		conn, err := pool.GetConn("occupation-service")
+		if err != nil {
+			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
+			return
+		}
+		// 人岗匹配包含 AI 调用，不在远程分析完成前提前结束请求。
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Minute)
+		defer cancel()
+		var trailer metadata.MD
+		result, err := userpb.NewUserServiceClient(conn).MatchMyResumeToJob(
+			ctx,
+			&userpb.MatchMyResumeToJobRequest{
+				JobId: jobID, TraceId: c.GetString("trace_id"), UserId: userID,
+				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
+				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
+			},
+			grpc.Trailer(&trailer),
+		)
+		if err != nil {
+			httpCode, errorCode := commonhandler.GRPCErrorCodes(err, trailer)
+			response.Error(c, httpCode, errorCode)
+			return
+		}
+		if result == nil || result.GetResumeId() <= 0 || result.GetJobId() != jobID ||
+			result.GetScore() < 0 || result.GetScore() > 100 {
+			response.Error(c, http.StatusInternalServerError, http.StatusInternalServerError)
+			return
+		}
+
+		response.Success(c, matchResponseData(result))
+	}
+}
+
+func parsePositiveJobID(value string) (int64, bool) {
+	id, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, false
+	}
+	return id, true
+}
+
+func matchResponseData(result *userpb.MatchMyResumeToJobResponse) gin.H {
+	skills := make([]gin.H, 0, len(result.GetSkillsToLearn()))
+	for _, skill := range result.GetSkillsToLearn() {
+		if skill == nil {
+			continue
+		}
+		skills = append(skills, gin.H{
+			"skillName": skill.GetSkillName(), "reason": skill.GetReason(),
+			"suggestion": skill.GetSuggestion(),
+		})
+	}
+	actions := make([]string, 0, len(result.GetActionSuggestions()))
+	actions = append(actions, result.GetActionSuggestions()...)
+	return gin.H{
+		"resumeId": result.GetResumeId(), "jobId": result.GetJobId(),
+		"score": result.GetScore(), "summary": result.GetSummary(),
+		"skillsToLearn": skills, "actionSuggestions": actions,
+		"createdAt": result.GetCreatedAt(),
 	}
 }

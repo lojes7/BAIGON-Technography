@@ -32,6 +32,15 @@ service UserService {
   // 当前用户提交人工编辑的完整简历字段，保存为一条不绑定文件的新记录。
   rpc EditMyResume(EditMyResumeRequest) returns (EditMyResumeResponse);
 
+  // 使用当前用户最新简历识别技能，并保存本次技能快照。
+  rpc AnalyzeMyResumeSkills(AnalyzeMyResumeSkillsRequest) returns (AnalyzeMyResumeSkillsResponse);
+
+  // 查询当前用户按识别时间保留的全部技能记录。
+  rpc ListMySkills(ListMySkillsRequest) returns (ListMySkillsResponse);
+
+  // 使用当前用户最新简历与指定 jobs 记录进行人岗匹配。
+  rpc MatchMyResumeToJob(MatchMyResumeToJobRequest) returns (MatchMyResumeToJobResponse);
+
   // ADMIN 按用户 ID 封禁账号。
   rpc BlockUser(BlockUserRequest) returns (BlockUserResponse);
 
@@ -255,4 +264,71 @@ message GetMyResumeResponse {
 
 message EditMyResumeResponse {
   ResumeData resume = 1;
+}
+
+// 简历技能分析只依赖服务端确定的当前用户和最新简历，不接收客户端正文或简历 ID。
+message AnalyzeMyResumeSkillsRequest {
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+// 技能时间线查询仅使用 gateway 透传的当前用户上下文。
+message ListMySkillsRequest {
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+// 人岗匹配的唯一业务参数是 jobs.id；简历仍由服务端选取。
+message MatchMyResumeToJobRequest {
+  int64 job_id = 1;
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+// 对外技能记录不包含内部任务、模型、trace 或简历正文。
+message UserSkillData {
+  int64 id = 1;
+  int64 resume_id = 2;
+  string skill_name = 3;
+  string proficiency = 4;
+  string evidence = 5;
+  string created_at = 6;
+}
+
+message AnalyzeMyResumeSkillsResponse {
+  int64 resume_id = 1;
+  repeated UserSkillData skills = 2;
+}
+
+message ListMySkillsResponse {
+  repeated UserSkillData items = 1;
+}
+
+message SkillLearningSuggestion {
+  string skill_name = 1;
+  string reason = 2;
+  string suggestion = 3;
+}
+
+message MatchMyResumeToJobResponse {
+  int64 resume_id = 1;
+  int64 job_id = 2;
+  int32 score = 3;
+  string summary = 4;
+  repeated SkillLearningSuggestion skills_to_learn = 5;
+  repeated string action_suggestions = 6;
+  string created_at = 7;
 }

@@ -18,6 +18,12 @@ service AIService {
   // 从 OCR 简历原文抽取结构化信息，只返回经过格式和来源校验的 JSON。
   rpc AnalyzeResume(AnalyzeResumeRequest) returns (AnalyzeResumeResponse) {}
 
+  // 从当前用户的简历正文中提取有原文证据的技能。
+  rpc AnalyzeUserSkills(AnalyzeUserSkillsRequest) returns (AnalyzeUserSkillsResponse) {}
+
+  // 只使用简历正文和 jobs 表公开业务字段完成人岗匹配。
+  rpc AnalyzeJobMatch(AnalyzeJobMatchRequest) returns (AnalyzeJobMatchResponse) {}
+
   // 生成单条文本嵌入向量。
   rpc EmbedText(EmbedTextRequest) returns (EmbedTextResponse) {}
 
@@ -51,6 +57,73 @@ message AnalyzeResumeRequest {
 message AnalyzeResumeResponse {
   // 形状与 format.json 完全一致，且所有非空内容均经过原文来源校验。
   string resume_json = 1;
+}
+
+message AnalyzeUserSkillsRequest {
+  // 当前用户最新简历的完整正文。
+  string resume_content = 1;
+
+  // 调用链审计字段：由 gateway 经 occupation-service 透传。
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+message AnalyzeUserSkillsResponse {
+  repeated AnalyzedSkill skills = 1;
+  string model = 2;
+}
+
+message AnalyzeJobMatchRequest {
+  // 当前用户最新简历的完整正文。
+  string resume_content = 1;
+  // 岗位快照只允许由 jobs 表的公开业务字段构造。
+  JobMatchProfile job = 2;
+
+  // 调用链审计字段：由 gateway 经 occupation-service 透传。
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+message JobMatchProfile {
+  string name = 1;
+  string publish_date = 2;
+  string source_platform = 3;
+  string source_url = 4;
+  string tags = 5;
+  string major = 6;
+  string nature = 7;
+  string salary = 8;
+  string company_name = 9;
+  string company_size = 10;
+  string city = 11;
+  string province = 12;
+  string education = 13;
+  string experience = 14;
+  string job_description = 15;
+  // jobs.occupation_id 为空时由 proto3 零值 0 表示。
+  int64 occupation_id = 16;
+}
+
+message AnalyzeJobMatchResponse {
+  int32 score = 1;
+  string summary = 2;
+  repeated SkillLearningSuggestion skills_to_learn = 3;
+  repeated string action_suggestions = 4;
+  string model = 5;
+}
+
+message SkillLearningSuggestion {
+  string skill_name = 1;
+  string reason = 2;
+  string suggestion = 3;
 }
 
 message EmbedTextRequest {

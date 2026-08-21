@@ -76,6 +76,7 @@ services:
       - ./docker/postgres/init.sh:/docker-entrypoint-initdb.d/01-init.sh:ro
       - pgdata:/var/lib/postgresql/data
       - ./crawler/init.sql:/service-init/crawler_init.sql:ro
+      - ./ai/init.sql:/service-init/ai_init.sql:ro
       - ./occupation/init.sql:/service-init/occupation/init.sql:ro
       - ./occupation/data.sql:/service-init/occupation/data.sql:ro
       - ./occupation/sql:/service-init/occupation/sql:ro

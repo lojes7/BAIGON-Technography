@@ -31,12 +31,12 @@ class JobAnalysisTest(unittest.TestCase):
                 "skills": [
                     {
                         "name": "Java 编程",
-                        "proficiency": "Advanced",
+                        "proficiency": "ADVANCED",
                         "evidence": "熟练掌握 Java 并能独立开发生产系统。",
                     },
                     {
                         "name": "微软 Word 文档处理",
-                        "proficiency": "Familiar",
+                        "proficiency": "FAMILIAR",
                         "evidence": "能够使用 MS Word 编写项目文档。",
                     }
                 ],
@@ -47,7 +47,7 @@ class JobAnalysisTest(unittest.TestCase):
 
         self.assertEqual(len(result.skills), 2)
         self.assertEqual(result.skills[1].name, "微软 Word 文档处理")
-        self.assertEqual(result.skills[0].proficiency, "Advanced")
+        self.assertEqual(result.skills[0].proficiency, "ADVANCED")
         self.assertEqual(model.call[1], "招聘 Java 工程师")
         self.assertEqual(model.call[2]["temperature"], 0.1)
         self.assertEqual(
@@ -96,8 +96,8 @@ class JobAnalysisTest(unittest.TestCase):
         model = FakeSparkModel(
             {
                 "skills": [
-                    {"name": "Java 编程", "proficiency": "Basic", "evidence": "了解 Java"},
-                    {"name": "java 编程", "proficiency": "Advanced", "evidence": "熟练使用 Java"},
+                    {"name": "Java 编程", "proficiency": "BASIC", "evidence": "了解 Java"},
+                    {"name": "java 编程", "proficiency": "ADVANCED", "evidence": "熟练使用 Java"},
                 ],
             }
         )
@@ -111,7 +111,7 @@ class JobAnalysisTest(unittest.TestCase):
                 "skills": [
                     {
                         "name": "RAG",
-                        "proficiency": "Familiar",
+                        "proficiency": "FAMILIAR",
                         "evidence": "熟悉 RAG。",
                     }
                 ]
@@ -130,6 +130,29 @@ class JobAnalysisTest(unittest.TestCase):
         self.assertNotIn("maxItems", parameters["properties"]["skills"])
         self.assertIn("MS Word", JOB_ANALYSIS_SYSTEM_PROMPT)
         self.assertIn("不得遗漏", JOB_ANALYSIS_SYSTEM_PROMPT)
+        proficiency_schema = parameters["properties"]["skills"]["items"][
+            "properties"
+        ]["proficiency"]
+        self.assertEqual(
+            proficiency_schema["enum"],
+            ["EXPERT", "ADVANCED", "FAMILIAR", "BASIC"],
+        )
+
+    def test_analyze_job_description_rejects_legacy_title_case_proficiency(self):
+        model = FakeSparkModel(
+            {
+                "skills": [
+                    {
+                        "name": "Java 编程",
+                        "proficiency": "Advanced",
+                        "evidence": "熟练使用 Java",
+                    }
+                ]
+            }
+        )
+
+        with self.assertRaises(ValidationError):
+            analyze_job_description(model, "熟练使用 Java")
 
     def test_analyze_job_description_rejects_empty_jd(self):
         model = FakeSparkModel({"skills": []})

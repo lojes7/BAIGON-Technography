@@ -84,6 +84,9 @@ class ModelAdapterTest(unittest.TestCase):
         self.assertEqual(completions.request["model"], model_config.spark_model)
         self.assertEqual(completions.request["messages"][0]["role"], "system")
         self.assertEqual(completions.request["tools"][0]["type"], "web_search")
+        self.assertEqual(
+            completions.request["timeout"], model_config.provider_default_timeout_seconds
+        )
 
     def test_embedding_batch_restores_input_order(self):
         client = SimpleNamespace(embeddings=FakeEmbeddings())

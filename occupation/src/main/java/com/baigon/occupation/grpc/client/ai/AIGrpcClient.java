@@ -6,10 +6,16 @@ import com.baigon.ai.AnalyzeJobDescriptionRequest;
 import com.baigon.ai.AnalyzeJobDescriptionResponse;
 import com.baigon.ai.AnalyzeResumeRequest;
 import com.baigon.ai.AnalyzeResumeResponse;
+import com.baigon.ai.AnalyzeJobMatchRequest;
+import com.baigon.ai.AnalyzeJobMatchResponse;
+import com.baigon.ai.AnalyzeUserSkillsRequest;
+import com.baigon.ai.AnalyzeUserSkillsResponse;
 import com.baigon.ai.AnalyzedSkill;
 import com.baigon.ai.BatchEmbedTextRequest;
 import com.baigon.ai.BatchEmbedTextResponse;
 import com.baigon.ai.EmbeddingVector;
+import com.baigon.ai.JobMatchProfile;
+import com.baigon.ai.SkillLearningSuggestion;
 import com.baigon.occupation.service.AuditContext;
 import com.baigon.occupation.error.ApiException;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -38,6 +44,7 @@ public class AIGrpcClient {
     private final int configuredBatchSize;
     private final long timeoutSeconds;
     private final long resumeTimeoutSeconds;
+    private final long userAnalysisTimeoutSeconds;
 
     private final Object channelLock = new Object();
     private ManagedChannel channel;
@@ -48,7 +55,8 @@ public class AIGrpcClient {
                         @Value("${ai.dimensions:1024}") int dimensions,
                         @Value("${ai.batch-size:20}") int configuredBatchSize,
                         @Value("${ai.timeout-seconds:30}") long timeoutSeconds,
-                        @Value("${ai.resume-timeout-seconds:120}") long resumeTimeoutSeconds) {
+                        @Value("${ai.resume-timeout-seconds:120}") long resumeTimeoutSeconds,
+                        @Value("${ai.user-analysis-timeout-seconds:120}") long userAnalysisTimeoutSeconds) {
         if (dimensions != 1024) {
             throw new IllegalArgumentException("ai.dimensions must match vector(1024)");
         }
@@ -61,12 +69,16 @@ public class AIGrpcClient {
         if (resumeTimeoutSeconds <= 0) {
             throw new IllegalArgumentException("ai.resume-timeout-seconds must be > 0");
         }
+        if (userAnalysisTimeoutSeconds <= 0) {
+            throw new IllegalArgumentException("ai.user-analysis-timeout-seconds must be > 0");
+        }
         this.discoveryClient = discoveryClient;
         this.serviceName = serviceName;
         this.dimensions = dimensions;
         this.configuredBatchSize = configuredBatchSize;
         this.timeoutSeconds = timeoutSeconds;
         this.resumeTimeoutSeconds = resumeTimeoutSeconds;
+        this.userAnalysisTimeoutSeconds = userAnalysisTimeoutSeconds;
     }
 
     public int getConfiguredBatchSize() {
@@ -145,6 +157,104 @@ public class AIGrpcClient {
         }
     }
 
+    /** 从当前简历正文提取带证据的用户技能；审计字段只用于链路日志。 */
+    public UserSkillAnalysisResult analyzeUserSkills(String content, AuditContext audit) {
+        if (content == null || content.isBlank()) {
+            throw new IllegalArgumentException("resume content is empty");
+        }
+        try {
+            ManagedChannel activeChannel = channelFor(discoverTarget());
+            AnalyzeUserSkillsResponse response = AIServiceGrpc.newBlockingStub(activeChannel)
+                    .withDeadlineAfter(userAnalysisTimeoutSeconds, TimeUnit.SECONDS)
+                    .analyzeUserSkills(AnalyzeUserSkillsRequest.newBuilder()
+                            .setResumeContent(content)
+                            .setTraceId(audit.traceId() == null ? "" : String.valueOf(audit.traceId()))
+                            .setUserId(audit.userId())
+                            .setUserName(audit.userName())
+                            .setUserIp(audit.userIp())
+                            .setRequestMethod(audit.requestMethod())
+                            .setRequestUrl(audit.requestUrl())
+                            .build());
+            List<AnalyzedSkillResult> skills = new ArrayList<>(response.getSkillsCount());
+            for (AnalyzedSkill skill : response.getSkillsList()) {
+                skills.add(new AnalyzedSkillResult(
+                        skill.getName(), skill.getProficiency(), skill.getEvidence()));
+            }
+            return new UserSkillAnalysisResult(List.copyOf(skills), response.getModel());
+        } catch (StatusRuntimeException exception) {
+            throw new ApiException(
+                    ApiException.ErrorCode.SERVICE_UNAVAILABLE,
+                    "user skill analysis unavailable");
+        } catch (ApiException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw new ApiException(
+                    ApiException.ErrorCode.SERVICE_UNAVAILABLE,
+                    "user skill analysis unavailable");
+        }
+    }
+
+    /** 人岗匹配只发送 jobs 表的业务字段，不读取岗位分析或技能结果表。 */
+    public JobMatchAnalysisResult analyzeJobMatch(
+            String resumeContent,
+            JobMatchInput job,
+            AuditContext audit) {
+        if (resumeContent == null || resumeContent.isBlank() || job == null) {
+            throw new IllegalArgumentException("job match input is incomplete");
+        }
+        try {
+            JobMatchProfile.Builder profile = JobMatchProfile.newBuilder()
+                    .setName(orEmpty(job.name()))
+                    .setPublishDate(orEmpty(job.publishDate()))
+                    .setSourcePlatform(orEmpty(job.sourcePlatform()))
+                    .setSourceUrl(orEmpty(job.sourceUrl()))
+                    .setTags(orEmpty(job.tags()))
+                    .setMajor(orEmpty(job.major()))
+                    .setNature(orEmpty(job.nature()))
+                    .setSalary(orEmpty(job.salary()))
+                    .setCompanyName(orEmpty(job.companyName()))
+                    .setCompanySize(orEmpty(job.companySize()))
+                    .setCity(orEmpty(job.city()))
+                    .setProvince(orEmpty(job.province()))
+                    .setEducation(orEmpty(job.education()))
+                    .setExperience(orEmpty(job.experience()))
+                    .setJobDescription(orEmpty(job.jobDescription()))
+                    .setOccupationId(job.occupationId() == null ? 0L : job.occupationId());
+            ManagedChannel activeChannel = channelFor(discoverTarget());
+            AnalyzeJobMatchResponse response = AIServiceGrpc.newBlockingStub(activeChannel)
+                    .withDeadlineAfter(userAnalysisTimeoutSeconds, TimeUnit.SECONDS)
+                    .analyzeJobMatch(AnalyzeJobMatchRequest.newBuilder()
+                            .setResumeContent(resumeContent)
+                            .setJob(profile)
+                            .setTraceId(audit.traceId() == null ? "" : String.valueOf(audit.traceId()))
+                            .setUserId(audit.userId())
+                            .setUserName(audit.userName())
+                            .setUserIp(audit.userIp())
+                            .setRequestMethod(audit.requestMethod())
+                            .setRequestUrl(audit.requestUrl())
+                            .build());
+            List<SkillLearningSuggestionResult> learning =
+                    new ArrayList<>(response.getSkillsToLearnCount());
+            for (SkillLearningSuggestion item : response.getSkillsToLearnList()) {
+                learning.add(new SkillLearningSuggestionResult(
+                        item.getSkillName(), item.getReason(), item.getSuggestion()));
+            }
+            return new JobMatchAnalysisResult(
+                    response.getScore(), response.getSummary(), List.copyOf(learning),
+                    List.copyOf(response.getActionSuggestionsList()), response.getModel());
+        } catch (StatusRuntimeException exception) {
+            throw new ApiException(
+                    ApiException.ErrorCode.SERVICE_UNAVAILABLE,
+                    "job match analysis unavailable");
+        } catch (ApiException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw new ApiException(
+                    ApiException.ErrorCode.SERVICE_UNAVAILABLE,
+                    "job match analysis unavailable");
+        }
+    }
+
     private String discoverTarget() {
         List<ServiceInstance> instances = discoveryClient.getInstances(serviceName);
         if (instances == null || instances.isEmpty()) {
@@ -152,6 +262,10 @@ public class AIGrpcClient {
         }
         ServiceInstance instance = instances.get(0);
         return instance.getHost() + ":" + instance.getPort();
+    }
+
+    private String orEmpty(String value) {
+        return value == null ? "" : value;
     }
 
     private ManagedChannel channelFor(String target) {
@@ -274,5 +388,44 @@ public class AIGrpcClient {
     }
 
     public record AnalyzedSkillResult(String name, String proficiency, String evidence) {
+    }
+
+    public record UserSkillAnalysisResult(
+            List<AnalyzedSkillResult> skills,
+            String modelName) {
+    }
+
+    /** 与 jobs 表业务列一一对应，不包含岗位分析表或内部审计字段。 */
+    public record JobMatchInput(
+            String name,
+            String publishDate,
+            String sourcePlatform,
+            String sourceUrl,
+            String tags,
+            String major,
+            String nature,
+            String salary,
+            String companyName,
+            String companySize,
+            String city,
+            String province,
+            String education,
+            String experience,
+            String jobDescription,
+            Long occupationId) {
+    }
+
+    public record SkillLearningSuggestionResult(
+            String skillName,
+            String reason,
+            String suggestion) {
+    }
+
+    public record JobMatchAnalysisResult(
+            int score,
+            String summary,
+            List<SkillLearningSuggestionResult> skillsToLearn,
+            List<String> actionSuggestions,
+            String modelName) {
     }
 }

@@ -10,6 +10,8 @@ from src.config import model_config
 from src.llm.exceptions import ModelConfigurationError
 from src.pb import ai_pb2, ai_pb2_grpc
 from src.service.job_analysis import MAX_JD_LENGTH
+from src.service.job_match import JobMatchProfile
+from src.service.log_service import LogService
 from src.service.model_service import AIModelService
 from src.service.resume_analysis import MAX_RESUME_CONTENT_LENGTH
 
@@ -25,9 +27,15 @@ MAX_CHUNK_SIZE = model_config.embedding_max_chunk_size
 class AIServicer(ai_pb2_grpc.AIServiceServicer):
     """AIService gRPC 实现：提供结构化分析和文本向量能力。"""
 
-    def __init__(self, model_service: AIModelService | Any | None = None):
+    def __init__(
+        self,
+        model_service: AIModelService | Any | None = None,
+        log_service: LogService | Any | None = None,
+    ):
         # 支持注入,在不调用外部模型的情况下测试 Handler。
         self.model_service = model_service or AIModelService()
+        # 单元测试使用内存 fake；未注入时保持既有纯模型测试无需数据库。
+        self.log_service = log_service
 
     def AnalyzeJobDescription(self, request, context):
         """调用星火分析 JD；请求只接收 jd 一个业务参数。"""
@@ -92,6 +100,160 @@ class AIServicer(ai_pb2_grpc.AIServiceServicer):
             # ValidationError 可能包含模型原值，日志只记录类型，避免泄露简历内容。
             logger.error("AnalyzeResume 校验失败: type=%s", type(exception).__name__)
             context.abort(grpc.StatusCode.INTERNAL, "简历分析服务暂不可用")
+
+    def AnalyzeUserSkills(self, request, context):
+        """从简历正文提取技能；证据已在业务层完成原文来源校验。"""
+        resume_content = request.resume_content.strip()
+        if not resume_content:
+            self._audit_failure(request, "AnalyzeUserSkills", "INVALID_ARGUMENT")
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "resume_content 不能为空")
+        if len(resume_content) > MAX_RESUME_CONTENT_LENGTH:
+            self._audit_failure(request, "AnalyzeUserSkills", "INVALID_ARGUMENT")
+            context.abort(
+                grpc.StatusCode.INVALID_ARGUMENT,
+                "resume_content 长度超过上限",
+            )
+
+        try:
+            analysis = self.model_service.analyze_user_skills(resume_content)
+            model_name = self.model_service.chat_model_name
+            response = ai_pb2.AnalyzeUserSkillsResponse(
+                skills=[
+                    ai_pb2.AnalyzedSkill(
+                        name=skill.name,
+                        proficiency=skill.proficiency,
+                        evidence=skill.evidence,
+                    )
+                    for skill in analysis.skills
+                ],
+                model=model_name,
+            )
+            self._audit_success(request, "AnalyzeUserSkills")
+            logger.info(
+                "AnalyzeUserSkills 完成: trace_id=%s, resume_length=%d, skill_count=%d, model=%s",
+                request.trace_id,
+                len(resume_content),
+                len(analysis.skills),
+                model_name,
+            )
+            return response
+        except ModelConfigurationError:
+            self._audit_failure(request, "AnalyzeUserSkills", "FAILED_PRECONDITION")
+            logger.error(
+                "AnalyzeUserSkills 失败：星火模型未配置, trace_id=%s",
+                request.trace_id,
+            )
+            context.abort(grpc.StatusCode.FAILED_PRECONDITION, "星火模型未配置")
+        except OpenAIError as exception:
+            self._audit_failure(request, "AnalyzeUserSkills", "UNAVAILABLE")
+            logger.error(
+                "AnalyzeUserSkills 供应商调用失败: trace_id=%s, type=%s",
+                request.trace_id,
+                type(exception).__name__,
+            )
+            context.abort(grpc.StatusCode.UNAVAILABLE, "用户技能分析模型暂不可用")
+        except Exception as exception:
+            self._audit_failure(request, "AnalyzeUserSkills", "INTERNAL")
+            # ValidationError 可能携带模型原值，只记录异常类型，避免泄露简历正文或证据。
+            logger.error(
+                "AnalyzeUserSkills 校验失败: trace_id=%s, type=%s",
+                request.trace_id,
+                type(exception).__name__,
+            )
+            context.abort(grpc.StatusCode.INTERNAL, "用户技能分析服务暂不可用")
+
+    def AnalyzeJobMatch(self, request, context):
+        """只使用简历正文及 jobs 表公开字段进行匹配。"""
+        resume_content = request.resume_content.strip()
+        if not resume_content:
+            self._audit_failure(request, "AnalyzeJobMatch", "INVALID_ARGUMENT")
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "resume_content 不能为空")
+        if len(resume_content) > MAX_RESUME_CONTENT_LENGTH:
+            self._audit_failure(request, "AnalyzeJobMatch", "INVALID_ARGUMENT")
+            context.abort(
+                grpc.StatusCode.INVALID_ARGUMENT,
+                "resume_content 长度超过上限",
+            )
+
+        try:
+            # 显式枚举字段，防止后续 protobuf 扩展被无意传给模型。
+            job = JobMatchProfile.model_validate(
+                {
+                    "name": request.job.name,
+                    "publish_date": request.job.publish_date,
+                    "source_platform": request.job.source_platform,
+                    "source_url": request.job.source_url,
+                    "tags": request.job.tags,
+                    "major": request.job.major,
+                    "nature": request.job.nature,
+                    "salary": request.job.salary,
+                    "company_name": request.job.company_name,
+                    "company_size": request.job.company_size,
+                    "city": request.job.city,
+                    "province": request.job.province,
+                    "education": request.job.education,
+                    "experience": request.job.experience,
+                    "job_description": request.job.job_description,
+                    "occupation_id": request.job.occupation_id,
+                }
+            )
+        except Exception:
+            self._audit_failure(request, "AnalyzeJobMatch", "INVALID_ARGUMENT")
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "job 字段不合法")
+
+        try:
+            analysis = self.model_service.analyze_job_match(resume_content, job)
+            model_name = self.model_service.chat_model_name
+            response = ai_pb2.AnalyzeJobMatchResponse(
+                score=analysis.score,
+                summary=analysis.summary,
+                skills_to_learn=[
+                    ai_pb2.SkillLearningSuggestion(
+                        skill_name=item.skill_name,
+                        reason=item.reason,
+                        suggestion=item.suggestion,
+                    )
+                    for item in analysis.skills_to_learn
+                ],
+                action_suggestions=analysis.action_suggestions,
+                model=model_name,
+            )
+            self._audit_success(request, "AnalyzeJobMatch")
+            logger.info(
+                "AnalyzeJobMatch 完成: trace_id=%s, resume_length=%d, "
+                "job_description_length=%d, learning_count=%d, action_count=%d, model=%s",
+                request.trace_id,
+                len(resume_content),
+                len(job.job_description),
+                len(analysis.skills_to_learn),
+                len(analysis.action_suggestions),
+                model_name,
+            )
+            return response
+        except ModelConfigurationError:
+            self._audit_failure(request, "AnalyzeJobMatch", "FAILED_PRECONDITION")
+            logger.error(
+                "AnalyzeJobMatch 失败：星火模型未配置, trace_id=%s",
+                request.trace_id,
+            )
+            context.abort(grpc.StatusCode.FAILED_PRECONDITION, "星火模型未配置")
+        except OpenAIError as exception:
+            self._audit_failure(request, "AnalyzeJobMatch", "UNAVAILABLE")
+            logger.error(
+                "AnalyzeJobMatch 供应商调用失败: trace_id=%s, type=%s",
+                request.trace_id,
+                type(exception).__name__,
+            )
+            context.abort(grpc.StatusCode.UNAVAILABLE, "人岗匹配模型暂不可用")
+        except Exception as exception:
+            self._audit_failure(request, "AnalyzeJobMatch", "INTERNAL")
+            # 不记录异常正文，避免 Pydantic 错误把简历或岗位原文写入日志。
+            logger.error(
+                "AnalyzeJobMatch 校验失败: trace_id=%s, type=%s",
+                request.trace_id,
+                type(exception).__name__,
+            )
+            context.abort(grpc.StatusCode.INTERNAL, "人岗匹配服务暂不可用")
 
     def EmbedText(self, request, context):
         """调用 Qwen 生成单条文本的嵌入向量。"""
@@ -173,6 +335,50 @@ class AIServicer(ai_pb2_grpc.AIServiceServicer):
         except Exception:
             logger.exception("BatchEmbedText 失败, trace_id=%s", request.trace_id)
             context.abort(grpc.StatusCode.INTERNAL, "嵌入服务暂不可用")
+
+    def _audit_success(self, request: Any, operation: str) -> None:
+        """只记录操作名和六项审计上下文，绝不传入模型业务正文。"""
+        if self.log_service is None:
+            return
+        try:
+            self.log_service.info(
+                **self._audit_fields(request),
+                detail=f"{operation} 成功",
+            )
+        except Exception as exception:
+            # 注入实现即使不遵守 LogService 的吞错约定，也不能阻断 RPC。
+            logger.error(
+                "调用 AI 审计日志服务失败（已忽略）: type=%s",
+                type(exception).__name__,
+            )
+
+    def _audit_failure(self, request: Any, operation: str, code: str) -> None:
+        """记录脱敏失败码；不记录异常消息、简历、岗位或建议内容。"""
+        if self.log_service is None:
+            return
+        try:
+            self.log_service.error(
+                **self._audit_fields(request),
+                error_msg=code,
+                detail=f"{operation} 失败",
+            )
+        except Exception as exception:
+            logger.error(
+                "调用 AI 审计日志服务失败（已忽略）: type=%s",
+                type(exception).__name__,
+            )
+
+    @staticmethod
+    def _audit_fields(request: Any) -> dict[str, Any]:
+        """显式白名单六项网关审计字段，防止 protobuf 新字段自动落库。"""
+        return {
+            "trace_id": request.trace_id,
+            "user_id": request.user_id,
+            "user_name": request.user_name,
+            "user_ip": request.user_ip,
+            "request_method": request.request_method,
+            "request_url": request.request_url,
+        }
 
     @staticmethod
     def _validate_dimensions(dimensions: int, context) -> None:

@@ -61,6 +61,8 @@ ai:
   timeout-seconds: ${AI_GRPC_TIMEOUT_SECONDS:30}
   # 简历抽取是单次同步 LLM 调用，使用独立超时且不自动重试。
   resume-timeout-seconds: 120
+  # 用户技能识别与人岗匹配均为单次同步 LLM 调用，不自动重试。
+  user-analysis-timeout-seconds: 120
   
 management:
   endpoints:

@@ -22,6 +22,11 @@ type GrpcClientPool struct {
 	consul *consulapi.Client
 }
 
+// ConnectionProvider 是 handler 所需的最小连接能力，便于用真实 gRPC 测试替身验证契约。
+type ConnectionProvider interface {
+	GetConn(serviceName string) (*grpc.ClientConn, error)
+}
+
 // NewGrpcClientPool 创建 gRPC 连接池
 func NewGrpcClientPool(consulClient *consulapi.Client) *GrpcClientPool {
 	return &GrpcClientPool{

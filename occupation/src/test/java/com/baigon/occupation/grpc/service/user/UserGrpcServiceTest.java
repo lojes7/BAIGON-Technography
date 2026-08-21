@@ -7,7 +7,10 @@ import com.baigon.occupation.service.LogService;
 import com.baigon.occupation.service.user.AuthService;
 import com.baigon.occupation.service.user.UserService;
 import com.baigon.occupation.service.user.admin.AdminUserService;
+import com.baigon.occupation.service.user.analysis.UserAnalysisService;
 import com.baigon.occupation.service.user.resume.ResumeService;
+import com.baigon.user.AnalyzeMyResumeSkillsRequest;
+import com.baigon.user.AnalyzeMyResumeSkillsResponse;
 import com.baigon.user.BlockUserRequest;
 import com.baigon.user.BlockUserResponse;
 import com.baigon.user.CompleteResumeUploadRequest;
@@ -20,10 +23,14 @@ import com.baigon.user.GetUserRequest;
 import com.baigon.user.GetUserResponse;
 import com.baigon.user.GetMyResumeRequest;
 import com.baigon.user.GetMyResumeResponse;
+import com.baigon.user.ListMySkillsRequest;
+import com.baigon.user.ListMySkillsResponse;
 import com.baigon.user.ListUsersRequest;
 import com.baigon.user.ListUsersResponse;
 import com.baigon.user.LoginRequest;
 import com.baigon.user.LoginResponse;
+import com.baigon.user.MatchMyResumeToJobRequest;
+import com.baigon.user.MatchMyResumeToJobResponse;
 import com.baigon.user.OrganizationListRequest;
 import com.baigon.user.OrganizationListResponse;
 import com.baigon.user.UnlockUserRequest;
@@ -54,6 +61,7 @@ class UserGrpcServiceTest {
     private UserService userService;
     private AdminUserService adminUserService;
     private ResumeService resumeService;
+    private UserAnalysisService userAnalysisService;
     private LogService logService;
     private UserGrpcService service;
 
@@ -63,9 +71,11 @@ class UserGrpcServiceTest {
         userService = mock(UserService.class);
         adminUserService = mock(AdminUserService.class);
         resumeService = mock(ResumeService.class);
+        userAnalysisService = mock(UserAnalysisService.class);
         logService = mock(LogService.class);
         service = new UserGrpcService(
-                authService, userService, adminUserService, resumeService, logService);
+                authService, userService, adminUserService, resumeService,
+                userAnalysisService, logService);
     }
 
     @Test
@@ -337,6 +347,90 @@ class UserGrpcServiceTest {
         assertEquals(false, response.getValue().getResume().hasFileSize());
         assertEquals(false, response.getValue().getResume().hasContent());
         verify(logService).info(any(), eq("edit my resume: id=102"));
+    }
+
+    @Test
+    void analyzeMyResumeSkillsShouldReturnPersistedSkillSnapshot() {
+        OffsetDateTime createdAt = OffsetDateTime.parse("2026-08-20T10:00:00+08:00");
+        when(userAnalysisService.analyzeMyResumeSkills(eq(8L), any())).thenReturn(
+                new UserAnalysisService.SkillAnalysisData(
+                        101L,
+                        List.of(new UserAnalysisService.UserSkillData(
+                                501L, 101L, "Java", "ADVANCED",
+                                "负责 Java 后端开发", createdAt))));
+        @SuppressWarnings("unchecked")
+        StreamObserver<AnalyzeMyResumeSkillsResponse> observer = mock(StreamObserver.class);
+
+        service.analyzeMyResumeSkills(AnalyzeMyResumeSkillsRequest.newBuilder()
+                .setUserId(8L)
+                .setRequestMethod("POST")
+                .setRequestUrl("/api/auth/resumes/analyze-skills")
+                .build(), observer);
+
+        ArgumentCaptor<AnalyzeMyResumeSkillsResponse> response =
+                ArgumentCaptor.forClass(AnalyzeMyResumeSkillsResponse.class);
+        verify(observer).onNext(response.capture());
+        verify(observer).onCompleted();
+        assertEquals(101L, response.getValue().getResumeId());
+        assertEquals(1, response.getValue().getSkillsCount());
+        assertEquals("Java", response.getValue().getSkills(0).getSkillName());
+        assertEquals("ADVANCED", response.getValue().getSkills(0).getProficiency());
+        assertEquals(createdAt.toString(), response.getValue().getSkills(0).getCreatedAt());
+    }
+
+    @Test
+    void listMySkillsShouldReturnStableEmptyItems() {
+        when(userAnalysisService.listMySkills(8L)).thenReturn(List.of());
+        @SuppressWarnings("unchecked")
+        StreamObserver<ListMySkillsResponse> observer = mock(StreamObserver.class);
+
+        service.listMySkills(ListMySkillsRequest.newBuilder()
+                .setUserId(8L)
+                .setRequestMethod("GET")
+                .setRequestUrl("/api/auth/me/skills")
+                .build(), observer);
+
+        ArgumentCaptor<ListMySkillsResponse> response =
+                ArgumentCaptor.forClass(ListMySkillsResponse.class);
+        verify(observer).onNext(response.capture());
+        verify(observer).onCompleted();
+        assertEquals(0, response.getValue().getItemsCount());
+    }
+
+    @Test
+    void matchMyResumeToJobShouldReturnScoreAndSuggestions() {
+        OffsetDateTime createdAt = OffsetDateTime.parse("2026-08-20T11:00:00+08:00");
+        when(userAnalysisService.matchMyResumeToJob(eq(8L), eq(201L), any())).thenReturn(
+                new UserAnalysisService.JobMatchData(
+                        101L,
+                        201L,
+                        82,
+                        "核心后端经验匹配，云原生经验仍需补足。",
+                        List.of(new UserAnalysisService.LearningSuggestionData(
+                                "Kubernetes", "岗位要求容器编排", "完成一次集群部署实践")),
+                        List.of("补充项目量化结果"),
+                        createdAt));
+        @SuppressWarnings("unchecked")
+        StreamObserver<MatchMyResumeToJobResponse> observer = mock(StreamObserver.class);
+
+        service.matchMyResumeToJob(MatchMyResumeToJobRequest.newBuilder()
+                .setJobId(201L)
+                .setUserId(8L)
+                .setRequestMethod("POST")
+                .setRequestUrl("/api/jobs/201/match")
+                .build(), observer);
+
+        ArgumentCaptor<MatchMyResumeToJobResponse> response =
+                ArgumentCaptor.forClass(MatchMyResumeToJobResponse.class);
+        verify(observer).onNext(response.capture());
+        verify(observer).onCompleted();
+        assertEquals(101L, response.getValue().getResumeId());
+        assertEquals(201L, response.getValue().getJobId());
+        assertEquals(82, response.getValue().getScore());
+        assertEquals("Kubernetes",
+                response.getValue().getSkillsToLearn(0).getSkillName());
+        assertEquals("补充项目量化结果", response.getValue().getActionSuggestions(0));
+        assertEquals(createdAt.toString(), response.getValue().getCreatedAt());
     }
 
     @Test

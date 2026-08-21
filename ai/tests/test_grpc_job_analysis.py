@@ -30,12 +30,12 @@ class FakeAIModelService:
                 "skills": [
                     {
                         "name": "JavaScript Web 开发",
-                        "proficiency": "Expert",
+                        "proficiency": "EXPERT",
                         "evidence": "能够使用 JavaScript 构建多个 Web 应用。",
                     },
                     {
                         "name": "微软 Word 文档处理",
-                        "proficiency": "Familiar",
+                        "proficiency": "FAMILIAR",
                         "evidence": "能够使用 MS Word 编写项目文档。",
                     }
                 ],
@@ -73,7 +73,7 @@ class GrpcJobAnalysisTest(unittest.TestCase):
 
         self.assertEqual(len(response.skills), 2)
         self.assertEqual(response.skills[0].name, "JavaScript Web 开发")
-        self.assertEqual(response.skills[0].proficiency, "Expert")
+        self.assertEqual(response.skills[0].proficiency, "EXPERT")
         self.assertEqual(response.skills[1].name, "微软 Word 文档处理")
         self.assertEqual(self.service.jd, "JD 原文")
 
