@@ -26,6 +26,8 @@ import SkillAnalysisPage from "./pages/SkillAnalysis";
 import ProcessingErrorsPage from "./pages/ProcessingErrors";
 import AiAnalysesPage from "./pages/AiAnalyses";
 import JobDictPage from "./pages/JobDict";
+import JobAnalysisPage from "./pages/JobAnalysis";
+import JobsPage from "./pages/Jobs";
 import GraphSnapshotsPage from "./pages/GraphSnapshots";
 import RelationEvidencePage from "./pages/RelationEvidence";
 import EvolutionEventsPage from "./pages/EvolutionEvents";
@@ -40,6 +42,7 @@ import TaxonomyPage from "./pages/Taxonomy";
 import DisciplineCategoriesPage from "./pages/DisciplineCategories";
 import UserProfilePage from "./pages/UserProfile";
 import MyResume from "./pages/MyResume";
+import MySkills from "./pages/MySkills";
 import AccountSettings from "./pages/AccountSettings";
 import SkillCompare from "./pages/SkillCompare";
 import GapReport from "./pages/GapReport";
@@ -107,6 +110,8 @@ export default function App() {
             <Route path="auto-import" element={<AutoImportPage />} />
             <Route path="processing-errors" element={<ProcessingErrorsPage />} />
             <Route path="ai-analyses" element={<AiAnalysesPage />} />
+            <Route path="job-analysis" element={<JobAnalysisPage />} />
+            <Route path="jobs" element={<JobsPage />} />
             <Route path="job-dict" element={<JobDictPage />} />
             <Route path="graph-snapshots" element={<GraphSnapshotsPage />} />
             <Route path="relation-evidence" element={<RelationEvidencePage />} />
@@ -123,6 +128,7 @@ export default function App() {
             <Route path="profile" element={<UserProfilePage />} />
             {/* 学生专属路由 */}
             <Route path="my-resume" element={<MyResume />} />
+            <Route path="my-skills" element={<MySkills />} />
             <Route path="account-settings" element={<AccountSettings />} />
             <Route path="skill-compare" element={<SkillCompare />} />
             <Route path="gap-report" element={<GapReport />} />

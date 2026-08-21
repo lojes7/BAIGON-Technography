@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { ChevronLeft, Pencil, X } from "lucide-react";
@@ -7,6 +7,8 @@ import { useAuth } from "../auth/AuthContext";
 import { PAGE_PERMISSIONS, ROLES, type RoleKey } from "../auth/roles";
 import { auditEntries, actionTypeColors } from "../data";
 import { Btn, Card, StatusBadge } from "../components/ui";
+import { getMe } from "../services/user";
+import type { CurrentUser } from "../types/api";
 
 // ── 各角色的 Mock 详细资料 ──
 const PROFILE: Record<RoleKey, {
@@ -146,12 +148,22 @@ function UserProfilePage() {
   const { user, logout } = useAuth();
   const [editOpen, setEditOpen] = useState(false);
   const [bio, setBio] = useState("");
+  const [me, setMe] = useState<CurrentUser | null>(null);
+
+  // 接入 GET /api/auth/me，获取真实的校园归属（大学/学院/系部）
+  useEffect(() => {
+    getMe().then((res) => setMe(res.data)).catch(() => {});
+  }, []);
 
   const role = user?.role ?? "admin";
-  const name = user?.name ?? "未知用户";
+  const name = me?.name || user?.name || "未知用户";
   const roleLabel = ROLES.find(r => r.key === role)?.labelKey ?? "未知角色";
   const profile = PROFILE[role] ?? PROFILE.admin;
   const myEntries = auditEntries.filter(e => e.user === name);
+
+  // 组织归属：优先真实数据（me），缺省回退 mock
+  const institution = me?.university_name || profile.institution;
+  const department = [me?.school_name, me?.department_name].filter(Boolean).join(" · ") || profile.department;
 
   // 从权限表生成模块访问列表
   const moduleAccess = (PAGE_PERMISSIONS[role] ?? [])
@@ -182,7 +194,7 @@ function UserProfilePage() {
               <StatusBadge status="confirmed" />
             </div>
             <div className="text-[13px] mb-1" style={{ color: T.info }}>
-              {profile.email} · {profile.institution} · {profile.department}
+              {profile.email} · {institution} · {department}
             </div>
             <p className="text-[13px] leading-relaxed mt-1 text-[12px]" style={{ color: T.info }}>
               {bio || "这个人很懒，什么都没写。"}

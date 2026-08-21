@@ -58,9 +58,11 @@
     "extractionTasks": "Extraction Tasks",
     "reviewQueue": "Review Queue",
     "aiAnalyses": "AI Analysis Records",
+    "jobAnalysis": "Job Analysis Review",
     "processingErrors": "Processing Errors",
     "dictionaries": "Standard Dictionary",
     "jobDict": "Occupation Dictionary",
+    "jobs": "Job Search",
     "skillDict": "Skill Dictionary",
     "taxonomy": "Taxonomy",
     "discipline": "Discipline Categories",
@@ -87,6 +89,7 @@
     "auditLog": "Audit Log",
     "personalCenter": "Personal Centre",
     "myResume": "My CV",
+    "mySkills": "My Skills",
     "myStudents": "My Students",
     "accountSettings": "Account Settings",
     "jobExplore": "Job Exploration",
@@ -883,7 +886,10 @@
       "extractedSkills": "Extracted Skills",
       "projectExp": "Project Experience",
       "confirmUpdate": "Confirm and Update My Skill Profile",
-      "reparse": "Re-parse"
+      "reparse": "Re-parse",
+      "editTitle": "Edit Resume Fields",
+      "sourceSystem": "System Parsed",
+      "sourceEdited": "Manually Edited"
     },
     "accountSettings": {
       "title": "Account Settings",
