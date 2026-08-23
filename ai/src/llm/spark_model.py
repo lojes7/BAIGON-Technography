@@ -1,12 +1,22 @@
 """讯飞星火 OpenAI 兼容接口适配器。"""
 
 from collections.abc import Iterator
+from dataclasses import dataclass
+import json
 from typing import Any
 
 from openai import OpenAI
 
 from src.config import config, model_config
-from src.llm.exceptions import ModelConfigurationError
+from src.llm.exceptions import ModelConfigurationError, ModelResponseError
+
+
+@dataclass(frozen=True, slots=True)
+class LLMResponse:
+    """模型可供业务消费的输出及供应商返回的原始助手消息。"""
+
+    output: str
+    source_llm_response: str
 
 
 class SparkModel:
@@ -53,8 +63,8 @@ class SparkModel:
         uid: str = "baigon-ai-service",
         response_function: dict[str, Any] | None = None,
         timeout_seconds: float | None = None,
-    ) -> str:
-        """向星火发送一轮对话；指定响应函数时返回其 JSON 参数。"""
+    ) -> LLMResponse:
+        """向星火发送一轮对话，并保留未经业务校验的原始助手消息。"""
         if not h_msg or not h_msg.strip():
             raise ValueError("用户消息不能为空")
         if not 0 <= temperature <= 1:
@@ -108,14 +118,61 @@ class SparkModel:
 
         completion = self._get_client().chat.completions.create(**request_params)
         if stream:
-            return self._collect_stream(completion)
+            output = self._collect_stream(completion)
+            return LLMResponse(output=output, source_llm_response=output)
 
         if not completion.choices:
-            raise RuntimeError("星火模型未返回可用结果")
+            raise ModelResponseError(
+                "星火模型未返回可用结果",
+                self._serialize_source_response(completion),
+            )
         message = completion.choices[0].message
-        if response_function is not None:
-            return self._function_arguments(message, response_function["name"])
-        return message.content or ""
+        source_llm_response = self._serialize_source_response(message)
+        try:
+            output = (
+                self._function_arguments(message, response_function["name"])
+                if response_function is not None
+                else message.content or ""
+            )
+        except RuntimeError as exception:
+            raise ModelResponseError(str(exception), source_llm_response) from exception
+        return LLMResponse(
+            output=output,
+            source_llm_response=source_llm_response,
+        )
+
+    @classmethod
+    def _serialize_source_response(cls, value: Any) -> str:
+        """序列化供应商原始响应；生产环境优先使用 SDK 的模型导出。"""
+        model_dump_json = getattr(value, "model_dump_json", None)
+        if callable(model_dump_json):
+            return model_dump_json()
+        return json.dumps(
+            cls._json_compatible(value),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+
+    @classmethod
+    def _json_compatible(cls, value: Any) -> Any:
+        """为单元测试假对象提供确定性的 JSON 兼容转换。"""
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+        if isinstance(value, dict):
+            return {str(key): cls._json_compatible(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [cls._json_compatible(item) for item in value]
+        model_dump = getattr(value, "model_dump", None)
+        if callable(model_dump):
+            return cls._json_compatible(model_dump())
+        values = getattr(value, "__dict__", None)
+        if isinstance(values, dict):
+            return {
+                key: cls._json_compatible(item)
+                for key, item in values.items()
+                if not key.startswith("_")
+            }
+        return str(value)
 
     @staticmethod
     def _validate_response_function(response_function: dict[str, Any]) -> None:

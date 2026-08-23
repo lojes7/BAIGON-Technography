@@ -15,7 +15,7 @@ service AIService {
   // 使用星火模型分析单条 JD，返回经过严格校验的技能对象列表。
   rpc AnalyzeJobDescription(AnalyzeJobDescriptionRequest) returns (AnalyzeJobDescriptionResponse) {}
 
-  // 从 OCR 简历原文抽取结构化信息，只返回经过格式和来源校验的 JSON。
+  // 从 OCR 简历原文抽取结构化信息，业务结果只返回经过格式和来源校验的 JSON。
   rpc AnalyzeResume(AnalyzeResumeRequest) returns (AnalyzeResumeResponse) {}
 
   // 从当前用户的简历正文中提取有原文证据的技能。
@@ -40,6 +40,10 @@ message AnalyzeJobDescriptionResponse {
   reserved 1;
   reserved "analysis_json";
   repeated AnalyzedSkill skills = 2;
+  // 供应商返回的原始助手消息，仅供内部分析任务审查，不对外暴露。
+  string source_llm_response = 3;
+  // 空字符串表示成功；非空时调用方必须把对应任务标记为 FAILED。
+  string error_code = 4;
 }
 
 message AnalyzedSkill {
@@ -57,6 +61,9 @@ message AnalyzeResumeRequest {
 message AnalyzeResumeResponse {
   // 形状与 format.json 完全一致，且所有非空内容均经过原文来源校验。
   string resume_json = 1;
+  // 以下两项只供内部任务审查；不得映射到公开简历响应。
+  string source_llm_response = 2;
+  string error_code = 3;
 }
 
 message AnalyzeUserSkillsRequest {
@@ -75,6 +82,9 @@ message AnalyzeUserSkillsRequest {
 message AnalyzeUserSkillsResponse {
   repeated AnalyzedSkill skills = 1;
   string model = 2;
+  // 原始响应和校验错误只由 occupation-service 消费并写任务表。
+  string source_llm_response = 3;
+  string error_code = 4;
 }
 
 message AnalyzeJobMatchRequest {
@@ -130,6 +140,9 @@ message AnalyzeJobMatchResponse {
   repeated SkillLearningSuggestion skills_to_learn = 3;
   repeated string action_suggestions = 4;
   string model = 5;
+  // 原始响应和校验错误不属于面向用户的匹配结果。
+  string source_llm_response = 6;
+  string error_code = 7;
 }
 
 message SkillLearningSuggestion {

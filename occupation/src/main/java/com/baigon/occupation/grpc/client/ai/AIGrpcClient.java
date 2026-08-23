@@ -129,7 +129,7 @@ public class AIGrpcClient {
     }
 
     /** 同步分析 OCR 简历正文；单次上传不自动重试模型请求。 */
-    public String analyzeResume(String content) {
+    public ResumeAnalysisResult analyzeResume(String content) {
         if (content == null || content.isBlank()) {
             throw new IllegalArgumentException("resume content is empty");
         }
@@ -141,10 +141,17 @@ public class AIGrpcClient {
                     .analyzeResume(AnalyzeResumeRequest.newBuilder()
                             .setContent(content)
                             .build());
+            rejectInvalidResponse(
+                    response.getErrorCode(),
+                    response.getSourceLlmResponse(),
+                    "resume analysis response is invalid");
             if (response.getResumeJson().isBlank()) {
                 throw new IllegalStateException("AI 返回空简历 JSON");
             }
-            return response.getResumeJson();
+            return new ResumeAnalysisResult(
+                    response.getResumeJson(), response.getSourceLlmResponse());
+        } catch (AIAnalysisException exception) {
+            throw exception;
         } catch (StatusRuntimeException exception) {
             throw new ApiException(
                     ApiException.ErrorCode.SERVICE_UNAVAILABLE,
@@ -176,12 +183,19 @@ public class AIGrpcClient {
                             .setRequestMethod(audit.requestMethod())
                             .setRequestUrl(audit.requestUrl())
                             .build());
+            rejectInvalidResponse(
+                    response.getErrorCode(),
+                    response.getSourceLlmResponse(),
+                    "user skill analysis response is invalid");
             List<AnalyzedSkillResult> skills = new ArrayList<>(response.getSkillsCount());
             for (AnalyzedSkill skill : response.getSkillsList()) {
                 skills.add(new AnalyzedSkillResult(
                         skill.getName(), skill.getProficiency(), skill.getEvidence()));
             }
-            return new UserSkillAnalysisResult(List.copyOf(skills), response.getModel());
+            return new UserSkillAnalysisResult(
+                    List.copyOf(skills), response.getModel(), response.getSourceLlmResponse());
+        } catch (AIAnalysisException exception) {
+            throw exception;
         } catch (StatusRuntimeException exception) {
             throw new ApiException(
                     ApiException.ErrorCode.SERVICE_UNAVAILABLE,
@@ -241,6 +255,10 @@ public class AIGrpcClient {
                             .setRequestMethod(audit.requestMethod())
                             .setRequestUrl(audit.requestUrl())
                             .build());
+            rejectInvalidResponse(
+                    response.getErrorCode(),
+                    response.getSourceLlmResponse(),
+                    "job match analysis response is invalid");
             List<SkillLearningSuggestionResult> learning =
                     new ArrayList<>(response.getSkillsToLearnCount());
             for (SkillLearningSuggestion item : response.getSkillsToLearnList()) {
@@ -249,7 +267,10 @@ public class AIGrpcClient {
             }
             return new JobMatchAnalysisResult(
                     response.getScore(), response.getSummary(), List.copyOf(learning),
-                    List.copyOf(response.getActionSuggestionsList()), response.getModel());
+                    List.copyOf(response.getActionSuggestionsList()), response.getModel(),
+                    response.getSourceLlmResponse());
+        } catch (AIAnalysisException exception) {
+            throw exception;
         } catch (StatusRuntimeException exception) {
             throw new ApiException(
                     ApiException.ErrorCode.SERVICE_UNAVAILABLE,
@@ -274,6 +295,16 @@ public class AIGrpcClient {
 
     private String orEmpty(String value) {
         return value == null ? "" : value;
+    }
+
+    /** AI 已返回内容但明确标记校验失败时，保留原始响应用于任务落库。 */
+    private void rejectInvalidResponse(
+            String errorCode,
+            String sourceLlmResponse,
+            String message) {
+        if (errorCode != null && !errorCode.isBlank()) {
+            throw new AIAnalysisException(message, sourceLlmResponse);
+        }
     }
 
     private ManagedChannel channelFor(String target) {
@@ -374,15 +405,21 @@ public class AIGrpcClient {
             this.future = future;
         }
 
-        public List<AnalyzedSkillResult> await() throws Exception {
+        public JobDescriptionAnalysisResult await() throws Exception {
             try {
                 AnalyzeJobDescriptionResponse response = future.get();
+                if (!response.getErrorCode().isBlank()) {
+                    throw new AIAnalysisException(
+                            "job description analysis response is invalid",
+                            response.getSourceLlmResponse());
+                }
                 List<AnalyzedSkillResult> results = new ArrayList<>(response.getSkillsCount());
                 for (AnalyzedSkill skill : response.getSkillsList()) {
                     results.add(new AnalyzedSkillResult(
                             skill.getName(), skill.getProficiency(), skill.getEvidence()));
                 }
-                return List.copyOf(results);
+                return new JobDescriptionAnalysisResult(
+                        List.copyOf(results), response.getSourceLlmResponse());
             } catch (CancellationException exception) {
                 throw exception;
             } catch (ExecutionException exception) {
@@ -398,9 +435,20 @@ public class AIGrpcClient {
     public record AnalyzedSkillResult(String name, String proficiency, String evidence) {
     }
 
+    public record JobDescriptionAnalysisResult(
+            List<AnalyzedSkillResult> skills,
+            String sourceLlmResponse) {
+    }
+
+    public record ResumeAnalysisResult(
+            String resumeJson,
+            String sourceLlmResponse) {
+    }
+
     public record UserSkillAnalysisResult(
             List<AnalyzedSkillResult> skills,
-            String modelName) {
+            String modelName,
+            String sourceLlmResponse) {
     }
 
     /** 与 resumes 表五个 JSONB 列一一对应，不包含可能为空的 content。 */
@@ -443,6 +491,7 @@ public class AIGrpcClient {
             String summary,
             List<SkillLearningSuggestionResult> skillsToLearn,
             List<String> actionSuggestions,
-            String modelName) {
+            String modelName,
+            String sourceLlmResponse) {
     }
 }

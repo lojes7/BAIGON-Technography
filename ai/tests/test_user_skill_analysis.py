@@ -3,8 +3,8 @@
 import json
 import unittest
 
-from pydantic import ValidationError
-
+from src.llm.exceptions import ModelResponseError
+from src.llm.spark_model import LLMResponse
 from src.service.user_skill_analysis import analyze_user_skills
 from src.service.user_skill_analysis.analyzer import (
     USER_SKILL_ANALYSIS_RESPONSE_FUNCTION,
@@ -22,7 +22,7 @@ class FakeSparkModel:
 
     def question(self, system_prompt, user_prompt, **options):
         self.call = (system_prompt, user_prompt, options)
-        return self.arguments
+        return LLMResponse(self.arguments, self.arguments)
 
 
 class UserSkillAnalysisTest(unittest.TestCase):
@@ -45,7 +45,8 @@ class UserSkillAnalysisTest(unittest.TestCase):
             }
         )
 
-        result = analyze_user_skills(model, f"  {content}  ")
+        analyzed = analyze_user_skills(model, f"  {content}  ")
+        result = analyzed.value
 
         self.assertEqual([item.name for item in result.skills], ["Java", "Kubernetes"])
         self.assertEqual(result.skills[0].proficiency, "ADVANCED")
@@ -55,6 +56,7 @@ class UserSkillAnalysisTest(unittest.TestCase):
             model.call[2]["response_function"]["name"],
             "submit_user_skill_analysis",
         )
+        self.assertEqual(analyzed.source_llm_response, model.arguments)
 
     def test_evidence_allows_only_normalized_original_fragment(self):
         model = FakeSparkModel(
@@ -69,7 +71,7 @@ class UserSkillAnalysisTest(unittest.TestCase):
             }
         )
 
-        result = analyze_user_skills(model, "使用  Python\n开发数据服务")
+        result = analyze_user_skills(model, "使用  Python\n开发数据服务").value
 
         self.assertEqual(result.skills[0].name, "Python")
 
@@ -86,7 +88,7 @@ class UserSkillAnalysisTest(unittest.TestCase):
             }
         )
 
-        with self.assertRaisesRegex(ValueError, "无法在简历原文中定位"):
+        with self.assertRaises(ModelResponseError):
             analyze_user_skills(model, "了解 Go")
 
     def test_rejects_legacy_title_case_and_extra_fields(self):
@@ -103,9 +105,9 @@ class UserSkillAnalysisTest(unittest.TestCase):
         )
         extra_model = FakeSparkModel({"skills": [], "summary": "无"})
 
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(ModelResponseError):
             analyze_user_skills(legacy_model, "熟练使用 Java")
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(ModelResponseError):
             analyze_user_skills(extra_model, "候选人简历")
 
     def test_rejects_duplicate_skills(self):
@@ -118,8 +120,9 @@ class UserSkillAnalysisTest(unittest.TestCase):
             }
         )
 
-        with self.assertRaisesRegex(ValidationError, "重复技能"):
+        with self.assertRaises(ModelResponseError) as raised:
             analyze_user_skills(model, "了解 Java，也曾熟练 Java")
+        self.assertEqual(raised.exception.source_llm_response, model.arguments)
 
     def test_empty_resume_is_rejected_before_model_call(self):
         model = FakeSparkModel({"skills": []})

@@ -266,7 +266,7 @@ class UserGrpcServiceTest {
 
     @Test
     void completeResumeUploadShouldReturnExtractedContentWithoutStorageFields() {
-        when(resumeService.completeUpload(8L, 101L, "张三.pdf"))
+        when(resumeService.completeUpload(eq(8L), eq(101L), eq("张三.pdf"), any()))
                 .thenReturn(new ResumeService.ResumeData(
                         101L, "张三.pdf", 128L, "OCR 简历正文",
                         OffsetDateTime.parse("2026-08-17T10:00:00+08:00"),

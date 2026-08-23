@@ -6,7 +6,9 @@ from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from src.config import model_config
+from src.llm.exceptions import ModelResponseError
 from src.llm.spark_model import SparkModel
+from src.service.analysis_result import LLMAnalysisResult
 from src.service.resume_analysis.models import (
     MAX_RESUME_ITEMS,
     Award,
@@ -223,7 +225,7 @@ def analyze_job_match(
     chat_model: SparkModel,
     resume: ResumeMatchProfile,
     job: JobMatchProfile,
-) -> JobMatchResult:
+) -> LLMAnalysisResult[JobMatchResult]:
     """把结构化简历和受限岗位快照作为不可信 JSON 数据交给模型匹配。"""
     # JSON 序列化明确区分两个数据对象；数据中的文字不能充当系统指令。
     user_prompt = json.dumps(
@@ -234,7 +236,7 @@ def analyze_job_match(
         ensure_ascii=False,
         separators=(",", ":"),
     )
-    arguments = chat_model.question(
+    response = chat_model.question(
         JOB_MATCH_SYSTEM_PROMPT,
         user_prompt,
         temperature=0.1,
@@ -242,5 +244,11 @@ def analyze_job_match(
         response_function=JOB_MATCH_RESPONSE_FUNCTION,
         timeout_seconds=model_config.provider_long_timeout_seconds,
     )
-    # 供应商输出不可信：只有通过严格契约后才能返回给调用方。
-    return JobMatchResult.model_validate_json(arguments)
+    # 供应商输出不可信：失败时仍把原始响应交给任务表审查。
+    try:
+        result = JobMatchResult.model_validate_json(response.output)
+    except ValueError as exception:
+        raise ModelResponseError(
+            "人岗匹配响应校验失败", response.source_llm_response
+        ) from exception
+    return LLMAnalysisResult(result, response.source_llm_response)

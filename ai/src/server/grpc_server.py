@@ -8,7 +8,7 @@ import grpc
 from openai import OpenAIError
 
 from src.config import model_config
-from src.llm.exceptions import ModelConfigurationError
+from src.llm.exceptions import ModelConfigurationError, ModelResponseError
 from src.pb import ai_pb2, ai_pb2_grpc
 from src.service.job_analysis import MAX_JD_LENGTH
 from src.service.job_match import JobMatchProfile, ResumeMatchProfile
@@ -23,6 +23,7 @@ DEFAULT_DIMENSIONS = model_config.embedding_default_dimensions
 DEFAULT_CHUNK_SIZE = model_config.embedding_default_chunk_size
 MAX_BATCH_SIZE = model_config.embedding_max_batch_size
 MAX_CHUNK_SIZE = model_config.embedding_max_chunk_size
+LLM_RESPONSE_INVALID = "LLM_RESPONSE_INVALID"
 
 
 class AIServicer(ai_pb2_grpc.AIServiceServicer):
@@ -47,7 +48,8 @@ class AIServicer(ai_pb2_grpc.AIServiceServicer):
             context.abort(grpc.StatusCode.INVALID_ARGUMENT, "jd 长度超过上限")
 
         try:
-            analysis = self.model_service.analyze_job_description(jd)
+            result = self.model_service.analyze_job_description(jd)
+            analysis = result.value
             logger.info("AnalyzeJobDescription 完成: jd_length=%d", len(jd))
             return ai_pb2.AnalyzeJobDescriptionResponse(
                 skills=[
@@ -58,6 +60,13 @@ class AIServicer(ai_pb2_grpc.AIServiceServicer):
                     )
                     for skill in analysis.skills
                 ],
+                source_llm_response=result.source_llm_response,
+            )
+        except ModelResponseError as exception:
+            logger.error("AnalyzeJobDescription 响应校验失败")
+            return ai_pb2.AnalyzeJobDescriptionResponse(
+                source_llm_response=exception.source_llm_response,
+                error_code=LLM_RESPONSE_INVALID,
             )
         except ModelConfigurationError:
             logger.exception("AnalyzeJobDescription 失败：星火模型未配置")
@@ -67,7 +76,7 @@ class AIServicer(ai_pb2_grpc.AIServiceServicer):
             context.abort(grpc.StatusCode.INTERNAL, "JD 分析服务暂不可用")
 
     def AnalyzeResume(self, request, context):
-        """抽取简历字段，只返回服务端最终校验后的 JSON。"""
+        """抽取简历字段，并将原始响应仅透传给内部任务表审查。"""
         content = request.content.strip()
         if not content:
             context.abort(grpc.StatusCode.INVALID_ARGUMENT, "content 不能为空")
@@ -75,7 +84,8 @@ class AIServicer(ai_pb2_grpc.AIServiceServicer):
             context.abort(grpc.StatusCode.INVALID_ARGUMENT, "content 长度超过上限")
 
         try:
-            analysis = self.model_service.analyze_resume(content)
+            result = self.model_service.analyze_resume(content)
+            analysis = result.value
             counts = {
                 "education": len(analysis.education_experience),
                 "work": len(analysis.work_experience),
@@ -90,6 +100,13 @@ class AIServicer(ai_pb2_grpc.AIServiceServicer):
             )
             return ai_pb2.AnalyzeResumeResponse(
                 resume_json=analysis.model_dump_json(),
+                source_llm_response=result.source_llm_response,
+            )
+        except ModelResponseError as exception:
+            logger.error("AnalyzeResume 响应校验失败")
+            return ai_pb2.AnalyzeResumeResponse(
+                source_llm_response=exception.source_llm_response,
+                error_code=LLM_RESPONSE_INVALID,
             )
         except ModelConfigurationError:
             logger.exception("AnalyzeResume 失败：星火模型未配置")
@@ -116,7 +133,8 @@ class AIServicer(ai_pb2_grpc.AIServiceServicer):
             )
 
         try:
-            analysis = self.model_service.analyze_user_skills(resume_content)
+            result = self.model_service.analyze_user_skills(resume_content)
+            analysis = result.value
             model_name = self.model_service.chat_model_name
             response = ai_pb2.AnalyzeUserSkillsResponse(
                 skills=[
@@ -128,6 +146,7 @@ class AIServicer(ai_pb2_grpc.AIServiceServicer):
                     for skill in analysis.skills
                 ],
                 model=model_name,
+                source_llm_response=result.source_llm_response,
             )
             self._audit_success(request, "AnalyzeUserSkills")
             logger.info(
@@ -138,6 +157,16 @@ class AIServicer(ai_pb2_grpc.AIServiceServicer):
                 model_name,
             )
             return response
+        except ModelResponseError as exception:
+            self._audit_failure(request, "AnalyzeUserSkills", LLM_RESPONSE_INVALID)
+            logger.error(
+                "AnalyzeUserSkills 响应校验失败: trace_id=%s",
+                request.trace_id,
+            )
+            return ai_pb2.AnalyzeUserSkillsResponse(
+                source_llm_response=exception.source_llm_response,
+                error_code=LLM_RESPONSE_INVALID,
+            )
         except ModelConfigurationError:
             self._audit_failure(request, "AnalyzeUserSkills", "FAILED_PRECONDITION")
             logger.error(
@@ -213,7 +242,8 @@ class AIServicer(ai_pb2_grpc.AIServiceServicer):
             context.abort(grpc.StatusCode.INVALID_ARGUMENT, "job 字段不合法")
 
         try:
-            analysis = self.model_service.analyze_job_match(resume, job)
+            result = self.model_service.analyze_job_match(resume, job)
+            analysis = result.value
             model_name = self.model_service.chat_model_name
             response = ai_pb2.AnalyzeJobMatchResponse(
                 score=analysis.score,
@@ -228,6 +258,7 @@ class AIServicer(ai_pb2_grpc.AIServiceServicer):
                 ],
                 action_suggestions=analysis.action_suggestions,
                 model=model_name,
+                source_llm_response=result.source_llm_response,
             )
             self._audit_success(request, "AnalyzeJobMatch")
             resume_items = sum(
@@ -251,6 +282,16 @@ class AIServicer(ai_pb2_grpc.AIServiceServicer):
                 model_name,
             )
             return response
+        except ModelResponseError as exception:
+            self._audit_failure(request, "AnalyzeJobMatch", LLM_RESPONSE_INVALID)
+            logger.error(
+                "AnalyzeJobMatch 响应校验失败: trace_id=%s",
+                request.trace_id,
+            )
+            return ai_pb2.AnalyzeJobMatchResponse(
+                source_llm_response=exception.source_llm_response,
+                error_code=LLM_RESPONSE_INVALID,
+            )
         except ModelConfigurationError:
             self._audit_failure(request, "AnalyzeJobMatch", "FAILED_PRECONDITION")
             logger.error(

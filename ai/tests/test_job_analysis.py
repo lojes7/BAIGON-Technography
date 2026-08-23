@@ -3,8 +3,8 @@
 import json
 import unittest
 
-from pydantic import ValidationError
-
+from src.llm.exceptions import ModelResponseError
+from src.llm.spark_model import LLMResponse
 from src.service.job_analysis import analyze_job_description
 from src.service.job_analysis.analyzer import (
     JOB_ANALYSIS_RESPONSE_FUNCTION,
@@ -21,7 +21,7 @@ class FakeSparkModel:
 
     def question(self, system_prompt, user_prompt, **options):
         self.call = (system_prompt, user_prompt, options)
-        return self.arguments
+        return LLMResponse(self.arguments, self.arguments)
 
 
 class JobAnalysisTest(unittest.TestCase):
@@ -43,7 +43,8 @@ class JobAnalysisTest(unittest.TestCase):
             }
         )
 
-        result = analyze_job_description(model, "  招聘 Java 工程师  ")
+        analyzed = analyze_job_description(model, "  招聘 Java 工程师  ")
+        result = analyzed.value
 
         self.assertEqual(len(result.skills), 2)
         self.assertEqual(result.skills[1].name, "微软 Word 文档处理")
@@ -54,6 +55,7 @@ class JobAnalysisTest(unittest.TestCase):
             model.call[2]["response_function"]["name"],
             "submit_job_description_analysis",
         )
+        self.assertEqual(analyzed.source_llm_response, model.arguments)
 
     def test_analyze_job_description_rejects_invalid_proficiency(self):
         model = FakeSparkModel(
@@ -68,7 +70,7 @@ class JobAnalysisTest(unittest.TestCase):
             }
         )
 
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(ModelResponseError):
             analyze_job_description(model, "熟悉 RAG")
 
     def test_analyze_job_description_requires_evidence(self):
@@ -78,7 +80,7 @@ class JobAnalysisTest(unittest.TestCase):
             }
         )
 
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(ModelResponseError):
             analyze_job_description(model, "了解 Python")
 
     def test_analyze_job_description_rejects_extra_fields(self):
@@ -89,7 +91,7 @@ class JobAnalysisTest(unittest.TestCase):
             }
         )
 
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(ModelResponseError):
             analyze_job_description(model, "岗位描述")
 
     def test_analyze_job_description_rejects_duplicate_skills(self):
@@ -102,7 +104,7 @@ class JobAnalysisTest(unittest.TestCase):
             }
         )
 
-        with self.assertRaisesRegex(ValidationError, "重复技能"):
+        with self.assertRaises(ModelResponseError):
             analyze_job_description(model, "了解并熟练使用 Java")
 
     def test_analyze_job_description_accepts_english_technical_term(self):
@@ -118,7 +120,7 @@ class JobAnalysisTest(unittest.TestCase):
             }
         )
 
-        result = analyze_job_description(model, "熟悉 RAG")
+        result = analyze_job_description(model, "熟悉 RAG").value
 
         self.assertEqual(result.skills[0].name, "RAG")
 
@@ -151,7 +153,7 @@ class JobAnalysisTest(unittest.TestCase):
             }
         )
 
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(ModelResponseError):
             analyze_job_description(model, "熟练使用 Java")
 
     def test_analyze_job_description_rejects_empty_jd(self):

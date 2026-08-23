@@ -5,6 +5,8 @@ import unittest
 
 from pydantic import ValidationError
 
+from src.llm.exceptions import ModelResponseError
+from src.llm.spark_model import LLMResponse
 from src.service.job_match import (
     JobMatchProfile,
     ResumeMatchProfile,
@@ -25,7 +27,7 @@ class FakeSparkModel:
 
     def question(self, system_prompt, user_prompt, **options):
         self.call = (system_prompt, user_prompt, options)
-        return self.arguments
+        return LLMResponse(self.arguments, self.arguments)
 
 
 def job_profile(**overrides) -> JobMatchProfile:
@@ -85,7 +87,8 @@ class JobMatchTest(unittest.TestCase):
         model = FakeSparkModel(valid_result())
         profile = job_profile(occupation_id=123)
 
-        result = analyze_job_match(model, resume_profile(), profile)
+        analyzed = analyze_job_match(model, resume_profile(), profile)
+        result = analyzed.value
 
         self.assertEqual(result.score, 82)
         self.assertEqual(result.skills_to_learn[0].skill_name, "Kubernetes")
@@ -105,6 +108,7 @@ class JobMatchTest(unittest.TestCase):
             model.call[2]["response_function"]["name"],
             "submit_job_match_analysis",
         )
+        self.assertEqual(analyzed.source_llm_response, model.arguments)
 
     def test_prompt_marks_resume_and_job_as_untrusted_data(self):
         model = FakeSparkModel(valid_result())
@@ -130,7 +134,9 @@ class JobMatchTest(unittest.TestCase):
         for invalid_score in (-1, 101, "82", 82.5):
             result = valid_result()
             result["score"] = invalid_score
-            with self.subTest(score=invalid_score), self.assertRaises(ValidationError):
+            with self.subTest(score=invalid_score), self.assertRaises(
+                ModelResponseError
+            ):
                 analyze_job_match(
                     FakeSparkModel(result),
                     resume_profile(),
@@ -143,9 +149,9 @@ class JobMatchTest(unittest.TestCase):
         extra = valid_result()
         extra["analysis"] = "额外字段"
 
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(ModelResponseError):
             analyze_job_match(FakeSparkModel(missing), resume_profile(), job_profile())
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(ModelResponseError):
             analyze_job_match(FakeSparkModel(extra), resume_profile(), job_profile())
 
     def test_rejects_duplicate_suggestions(self):
@@ -162,13 +168,13 @@ class JobMatchTest(unittest.TestCase):
             duplicate_action["action_suggestions"][0]
         )
 
-        with self.assertRaisesRegex(ValidationError, "重复技能"):
+        with self.assertRaises(ModelResponseError):
             analyze_job_match(
                 FakeSparkModel(duplicate_skill),
                 resume_profile(),
                 job_profile(),
             )
-        with self.assertRaisesRegex(ValidationError, "重复建议"):
+        with self.assertRaises(ModelResponseError):
             analyze_job_match(
                 FakeSparkModel(duplicate_action),
                 resume_profile(),

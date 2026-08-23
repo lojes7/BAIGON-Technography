@@ -56,8 +56,10 @@ REST 登录路径仍为 `POST /api/login`，protobuf 仍为
 
 简历上传使用两阶段接口：`CreateResumeUpload` 只签发浏览器直传 MinIO 的预签名 URL，
 文件字节不经过 gateway；`CompleteResumeUpload` 从 MinIO 读取实际对象，同步完成 PDF/DOCX
-文字提取、ai-service `AnalyzeResume` 调用以及 Java 二次格式/来源校验。只有全部步骤成功后，
-OCR `content` 和五类结构化数组才会在同一事务中写入 `resumes`，记录来源为 `SYSTEM`。
+文字提取、ai-service `AnalyzeResume` 调用以及 Java 二次格式/来源校验。OCR 完成后先在短事务创建
+软删除的简历占位记录和 `RESUME_EXTRACTION/PENDING` 任务；只有全部步骤成功后，占位记录才写入
+OCR `content`、五类结构化数组并恢复为可见的 `SYSTEM` 简历。失败时任务标记 `FAILED`，新占位记录
+保持软删除。
 `EditMyResume` 接收可空 `content` 和完整 `fields_json`，校验格式、日期、长度及 proficiency 后
 新增一条 `EDITED` 记录；该记录的 MinIO 文件字段全部为 `NULL`，不会继承旧文件。
 `GetMyResume`、编辑和上传完成响应均通过一个已经校验的 `fields_json` 传输五类字段，并返回
@@ -81,8 +83,9 @@ OCR `content` 和五类结构化数组才会在同一事务中写入 `resumes`�
 `created_at` 即本次系统识别时间。熟练度统一为
 `EXPERT / ADVANCED / FAMILIAR / BASIC`，证据必须可按 NFKC 与空白归一化规则回溯简历原文。
 
-两类分析均先在短事务创建 `PENDING` 的 `user_analysis_tasks`，在事务外调用 AI，再用独立短事务
-原子写结果和 `SUCCESS`；失败任务只保存脱敏错误码。超过 AI deadline 再加一分钟的遗留
+简历抽取、简历技能分析和人岗匹配均在调用 LLM 前创建 `PENDING` 的 `user_analysis_tasks`，在事务外
+调用 AI，再用独立短事务原子写结果、`source_llm_response` 和 `SUCCESS`；失败时保存可获得的模型
+原始响应、脱敏错误码并标记 `FAILED`。超过 AI deadline 再加一分钟的遗留
 `PENDING`（默认三分钟）会在下一次同目标请求中先标记 `FAILED` 再重试，未超时的重复请求返回 403。
 
 人岗匹配的简历快照只由上述五个 `resumes` JSONB 字段构造；岗位侧只查询
@@ -134,6 +137,7 @@ Kafka 只保留 crawler-service 到 occupation-service 的清洗数据输入：
 - 别名未命中：先对岗位名称做 Embedding 并保存前 5 个职业候选，成功后才分析 JD。
 - JD Analyzer 返回的每项技能写入 `job_analysis_results`，初始审核状态为 `PENDING`。
 - 两个自动步骤都成功后，任务 `task_status` 才为 `SUCCESS`；人工审核状态仍为 `PENDING`。
+- JD Analyzer 成功或失败都会把可获得的模型原始响应写入 `job_analysis_tasks.source_llm_response`。
 - 任一 AI 步骤失败：`jobs` 保持存在，任务标记 `FAILED`；职业 Embedding 失败时不会继续调用 JD Analyzer。
 
 `trace_id` 从 crawler 清洗记录贯穿审核快照、`jobs`、分析任务及

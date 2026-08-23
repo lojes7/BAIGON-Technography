@@ -17,10 +17,10 @@ AI 服务已接入以下内部模型适配器，供后续 gRPC Handler 调用：
 
 | RPC | 请求 | 返回 | 说明 |
 | --- | --- | --- | --- |
-| `AnalyzeJobDescription` | 仅 `jd` | `skills` 对象列表 | 使用星火完整抽取技能，并返回强类型对象 |
-| `AnalyzeResume` | 仅 OCR `content` | `resume_json` | 返回符合 `format.json` 且经过原文来源校验的 JSON |
-| `AnalyzeUserSkills` | `resume_content`、审计字段 | `skills`、`model` | 提取有简历原文证据的用户技能 |
-| `AnalyzeJobMatch` | `resume`、`job`、审计字段 | 分数、摘要、建议、`model` | 只使用五组结构化简历字段与 `jobs` 表公开字段完成人岗匹配 |
+| `AnalyzeJobDescription` | 仅 `jd` | `skills`、内部审查字段 | 使用星火完整抽取技能，并返回强类型对象 |
+| `AnalyzeResume` | 仅 OCR `content` | `resume_json`、内部审查字段 | 返回符合 `format.json` 且经过原文来源校验的 JSON |
+| `AnalyzeUserSkills` | `resume_content`、审计字段 | `skills`、`model`、内部审查字段 | 提取有简历原文证据的用户技能 |
+| `AnalyzeJobMatch` | `resume`、`job`、审计字段 | 分数、摘要、建议、`model`、内部审查字段 | 只使用五组结构化简历字段与 `jobs` 表公开字段完成人岗匹配 |
 | `EmbedText` | `text`、可选 `dimensions` | 单条 `embedding` | 为一段非空文本生成 Qwen 向量 |
 | `BatchEmbedText` | `texts`、可选 `dimensions` / `chunk_size` | `embeddings` | 批量生成向量，返回顺序严格对应输入顺序 |
 
@@ -30,6 +30,10 @@ AI 服务已接入以下内部模型适配器，供后续 gRPC Handler 调用：
 - `AnalyzeUserSkills`、`AnalyzeJobMatch` 和两个嵌入请求均可携带
   `trace_id / user_id / user_name / user_ip / request_method / request_url`，
   供调用链审计使用。这些字段不会进入模型提示词。
+- 四个对话模型 RPC 的响应都包含内部字段 `source_llm_response / error_code`。前者保存未经业务
+  校验的供应商助手消息，后者为空表示成功；模型已经返回内容但未通过契约校验时返回
+  `LLM_RESPONSE_INVALID`。调用方必须据此把已预先创建的分析任务标记为 `SUCCESS` 或 `FAILED`，
+  且不得把原始响应暴露到公开 API。
 
 `AnalyzeJobDescription` 与嵌入接口相互独立，请求严格只包含 `jd`。服务把 JD
 直接作为星火调用的 user prompt，并使用固定 Function Calling Schema 约束模型输出。
@@ -129,7 +133,8 @@ Pydantic 严格结构校验，再对每个非空名称、描述和日期执行�
 
 `score` 必须是 `0` 至 `100` 的整数；摘要和每项建议均不能为空，技能建议按技能名去重，
 行动建议在自身列表内去重。完全匹配时两个建议数组可以为空。日志只记录结构化简历条目数、建议数量、模型名和
-`trace_id`，不记录简历字段、岗位正文、模型原始响应或具体建议。
+`trace_id`，不记录简历字段、岗位正文、模型原始响应或具体建议。模型原始响应只写入调用方的
+内部分析任务表。
 
 ## 实体链接流程
 
@@ -140,7 +145,8 @@ Pydantic 严格结构校验，再对每个非空名称、描述和日期执行�
 | `INVALID_ARGUMENT` | 文本为空、结构化简历或岗位无可分析信息、字段结构或长度非法、批量过大、维度或分批大小非法 |
 | `FAILED_PRECONDITION` | 未配置对应接口需要的模型密钥 |
 | `UNAVAILABLE` | 用户技能分析或人岗匹配的模型供应商暂时不可用 |
-| `INTERNAL` | 模型输出不符合契约、证据无法回溯，或向量数量/维度异常 |
+| 响应 `error_code=LLM_RESPONSE_INVALID` | 对话模型已返回内容，但输出不符合契约或证据无法回溯 |
+| `INTERNAL` | 未预期的服务异常，或向量数量/维度异常 |
 
 ## 调用方约束
 

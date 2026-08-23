@@ -13,7 +13,7 @@ import jakarta.persistence.Table;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
-/** 记录简历技能分析或人岗匹配的一次完整任务生命周期。 */
+/** 记录简历抽取、简历技能分析或人岗匹配的一次完整任务生命周期。 */
 @Entity
 @Table(name = "user_analysis_tasks")
 public class UserAnalysisTask extends BaseEntity {
@@ -51,6 +51,8 @@ public class UserAnalysisTask extends BaseEntity {
     private JsonNode actionSuggestions = JsonNodeFactory.instance.arrayNode();
     @Column(name = "error_msg", columnDefinition = "text")
     private String errorMsg;
+    @Column(name = "source_llm_response", columnDefinition = "text")
+    private String sourceLlmResponse;
 
     public Long getTraceId() { return traceId; }
     public void setTraceId(Long traceId) { this.traceId = traceId; }
@@ -76,4 +78,8 @@ public class UserAnalysisTask extends BaseEntity {
     public void setActionSuggestions(JsonNode actionSuggestions) { this.actionSuggestions = actionSuggestions; }
     public String getErrorMsg() { return errorMsg; }
     public void setErrorMsg(String errorMsg) { this.errorMsg = errorMsg; }
+    public String getSourceLlmResponse() { return sourceLlmResponse; }
+    public void setSourceLlmResponse(String sourceLlmResponse) {
+        this.sourceLlmResponse = sourceLlmResponse;
+    }
 }

@@ -5,6 +5,9 @@ FROM maven:3.9-eclipse-temurin-21 AS builder
 WORKDIR /app
 COPY occupation/pom.xml pom.xml
 COPY docker/maven/settings.xml /app/maven-settings.xml
+
+RUN mvn dependency:go-offline -B
+
 COPY occupation/src/ ./src/
 
 COPY proto/data_source/ ./proto/data_source/
@@ -13,8 +16,7 @@ COPY proto/user/ ./proto/user/
 COPY proto/crawler/ ./proto/crawler/
 COPY proto/ai/ ./proto/ai/
 
-RUN mvn package \
-    -DskipTests -Dproto.root=proto -B -ntp
+RUN mvn package -DskipTests -Dproto.root=proto -B -ntp
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app

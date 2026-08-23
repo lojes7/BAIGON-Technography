@@ -4,8 +4,10 @@ import unittest
 
 import grpc
 
+from src.llm.exceptions import ModelResponseError
 from src.pb import ai_pb2
 from src.server.grpc_server import AIServicer
+from src.service.analysis_result import LLMAnalysisResult
 from src.service.job_analysis import JobAnalysisResult
 
 
@@ -25,22 +27,30 @@ class FakeContext:
 class FakeAIModelService:
     def analyze_job_description(self, jd):
         self.jd = jd
-        return JobAnalysisResult.model_validate(
-            {
-                "skills": [
-                    {
-                        "name": "JavaScript Web 开发",
-                        "proficiency": "EXPERT",
-                        "evidence": "能够使用 JavaScript 构建多个 Web 应用。",
-                    },
-                    {
-                        "name": "微软 Word 文档处理",
-                        "proficiency": "FAMILIAR",
-                        "evidence": "能够使用 MS Word 编写项目文档。",
-                    }
-                ],
-            }
+        return LLMAnalysisResult(
+            JobAnalysisResult.model_validate(
+                {
+                    "skills": [
+                        {
+                            "name": "JavaScript Web 开发",
+                            "proficiency": "EXPERT",
+                            "evidence": "能够使用 JavaScript 构建多个 Web 应用。",
+                        },
+                        {
+                            "name": "微软 Word 文档处理",
+                            "proficiency": "FAMILIAR",
+                            "evidence": "能够使用 MS Word 编写项目文档。",
+                        },
+                    ],
+                }
+            ),
+            "raw-job-analysis",
         )
+
+
+class InvalidResponseAIModelService:
+    def analyze_job_description(self, jd):
+        raise ModelResponseError("响应不合法", "raw-invalid-job-analysis")
 
 
 class GrpcJobAnalysisTest(unittest.TestCase):
@@ -63,7 +73,10 @@ class GrpcJobAnalysisTest(unittest.TestCase):
             for field in ai_pb2.AnalyzeJobDescriptionResponse.DESCRIPTOR.fields
         ]
 
-        self.assertEqual(field_names, ["skills"])
+        self.assertEqual(
+            field_names,
+            ["skills", "source_llm_response", "error_code"],
+        )
 
     def test_analyze_job_description_returns_validated_skill_objects(self):
         response = self.servicer.AnalyzeJobDescription(
@@ -75,7 +88,19 @@ class GrpcJobAnalysisTest(unittest.TestCase):
         self.assertEqual(response.skills[0].name, "JavaScript Web 开发")
         self.assertEqual(response.skills[0].proficiency, "EXPERT")
         self.assertEqual(response.skills[1].name, "微软 Word 文档处理")
+        self.assertEqual(response.source_llm_response, "raw-job-analysis")
+        self.assertEqual(response.error_code, "")
         self.assertEqual(self.service.jd, "JD 原文")
+
+    def test_invalid_model_response_is_returned_for_task_audit(self):
+        response = AIServicer(InvalidResponseAIModelService()).AnalyzeJobDescription(
+            ai_pb2.AnalyzeJobDescriptionRequest(jd="JD 原文"),
+            self.context,
+        )
+
+        self.assertEqual(response.skills, [])
+        self.assertEqual(response.source_llm_response, "raw-invalid-job-analysis")
+        self.assertEqual(response.error_code, "LLM_RESPONSE_INVALID")
 
     def test_analyze_job_description_rejects_empty_jd(self):
         with self.assertRaises(AbortError) as raised:

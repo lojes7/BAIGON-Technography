@@ -5,7 +5,9 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from src.config import model_config
+from src.llm.exceptions import ModelResponseError
 from src.llm.spark_model import SparkModel
+from src.service.analysis_result import LLMAnalysisResult
 from src.service.resume_analysis.grounding import text_is_grounded
 from src.service.resume_analysis.models import MAX_RESUME_CONTENT_LENGTH
 
@@ -96,7 +98,7 @@ class UserSkillAnalysisResult(BaseModel):
 def analyze_user_skills(
     chat_model: SparkModel,
     resume_content: str,
-) -> UserSkillAnalysisResult:
+) -> LLMAnalysisResult[UserSkillAnalysisResult]:
     """调用星火提取技能，并确定性校验证据能够回溯到简历原文。"""
     normalized_content = resume_content.strip()
     if not normalized_content:
@@ -106,7 +108,7 @@ def analyze_user_skills(
             f"resume_content 长度不能超过 {MAX_RESUME_CONTENT_LENGTH} 个字符"
         )
 
-    arguments = chat_model.question(
+    response = chat_model.question(
         USER_SKILL_ANALYSIS_SYSTEM_PROMPT,
         normalized_content,
         temperature=0.1,
@@ -115,8 +117,13 @@ def analyze_user_skills(
         timeout_seconds=model_config.provider_long_timeout_seconds,
     )
     # 供应商结果先经过严格结构校验，再逐项执行确定性的原文来源校验。
-    result = UserSkillAnalysisResult.model_validate_json(arguments)
-    for skill in result.skills:
-        if not text_is_grounded(skill.evidence, normalized_content):
-            raise ValueError(f"技能 {skill.name} 的 evidence 无法在简历原文中定位")
-    return result
+    try:
+        result = UserSkillAnalysisResult.model_validate_json(response.output)
+        for skill in result.skills:
+            if not text_is_grounded(skill.evidence, normalized_content):
+                raise ValueError(f"技能 {skill.name} 的 evidence 无法在简历原文中定位")
+    except ValueError as exception:
+        raise ModelResponseError(
+            "用户技能分析响应校验失败", response.source_llm_response
+        ) from exception
+    return LLMAnalysisResult(result, response.source_llm_response)

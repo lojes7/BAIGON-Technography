@@ -9,6 +9,7 @@ import com.baigon.occupation.entity.jobanalysis.JobAnalysisCandidate;
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisResult;
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisTask;
 import com.baigon.occupation.grpc.client.ai.AIGrpcClient;
+import com.baigon.occupation.grpc.client.ai.AIAnalysisException;
 import com.baigon.occupation.repository.job.JobRepository;
 import com.baigon.occupation.repository.jobanalysis.JobAnalysisCandidateRepository;
 import com.baigon.occupation.repository.jobanalysis.JobAnalysisResultRepository;
@@ -120,7 +121,8 @@ public class JobAnalysisService {
             logService.info(audit, "job analysis success: task_id=" + taskId);
         } catch (Exception exception) {
             String message = safeMessage(exception);
-            taskRepository.markJdAnalysisFailed(taskId, message);
+            taskRepository.markJdAnalysisFailed(
+                    taskId, message, sourceLlmResponse(exception));
             logService.error(audit, message, "job description analysis failed: task_id=" + taskId);
         }
     }
@@ -146,10 +148,18 @@ public class JobAnalysisService {
                 .orElseThrow(() -> new IllegalStateException("job not found"));
         AIGrpcClient.JobDescriptionAnalysisCall call =
                 aiGrpcClient.startJobDescriptionAnalysis(job.getJobDescription());
-        List<AIGrpcClient.AnalyzedSkillResult> skills = call.await();
-        completeJobDescription(task.getId(), task.getJobId(), skills);
+        AIGrpcClient.JobDescriptionAnalysisResult result = call.await();
+        try {
+            completeJobDescription(
+                    task.getId(), task.getJobId(), result.skills(), result.sourceLlmResponse());
+        } catch (RuntimeException exception) {
+            throw new AIAnalysisException(
+                    "persist job description analysis failed",
+                    result.sourceLlmResponse(),
+                    exception);
+        }
         logService.info(audit, "job description analysis success: task_id=" + task.getId()
-                + ", skills=" + skills.size());
+                + ", skills=" + result.skills().size());
     }
 
     /** 候选列表与职业分析成功状态在同一个短事务中提交。 */
@@ -183,7 +193,8 @@ public class JobAnalysisService {
     /** AI 技能结果与总任务成功状态原子提交；空技能列表同样是合法成功结果。 */
     private void completeJobDescription(Long taskId,
                                         Long jobId,
-                                        List<AIGrpcClient.AnalyzedSkillResult> skills) {
+                                        List<AIGrpcClient.AnalyzedSkillResult> skills,
+                                        String sourceLlmResponse) {
         transactions.executeWithoutResult(ignored -> {
             resultRepository.deleteByTaskId(taskId);
             OffsetDateTime now = OffsetDateTime.now();
@@ -202,7 +213,7 @@ public class JobAnalysisService {
                 result.setUpdatedAt(now);
                 resultRepository.save(result);
             }
-            if (taskRepository.markJdAnalysisSucceeded(taskId) != 1) {
+            if (taskRepository.markJdAnalysisSucceeded(taskId, sourceLlmResponse) != 1) {
                 throw new IllegalStateException("occupation analysis is not complete");
             }
         });
@@ -245,5 +256,11 @@ public class JobAnalysisService {
         String message = exception.getMessage();
         if (message == null || message.isBlank()) message = exception.getClass().getSimpleName();
         return message.length() <= 2000 ? message : message.substring(0, 2000);
+    }
+
+    private String sourceLlmResponse(Exception exception) {
+        return exception instanceof AIAnalysisException analysisException
+                ? analysisException.getSourceLlmResponse()
+                : null;
     }
 }

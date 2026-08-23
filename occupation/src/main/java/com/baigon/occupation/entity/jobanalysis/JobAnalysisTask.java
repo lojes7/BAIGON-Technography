@@ -48,6 +48,8 @@ public class JobAnalysisTask extends BaseEntity {
     private Integer attempts = 0;
     @Column(name = "error_msg")
     private String errorMsg;
+    @Column(name = "source_llm_response", columnDefinition = "text")
+    private String sourceLlmResponse;
     @Column(name = "reviewed_at")
     private OffsetDateTime reviewedAt;
     @Column(name = "reviewed_by")
@@ -77,6 +79,10 @@ public class JobAnalysisTask extends BaseEntity {
     public void setAttempts(Integer attempts) { this.attempts = attempts; }
     public String getErrorMsg() { return errorMsg; }
     public void setErrorMsg(String errorMsg) { this.errorMsg = errorMsg; }
+    public String getSourceLlmResponse() { return sourceLlmResponse; }
+    public void setSourceLlmResponse(String sourceLlmResponse) {
+        this.sourceLlmResponse = sourceLlmResponse;
+    }
     public OffsetDateTime getReviewedAt() { return reviewedAt; }
     public void setReviewedAt(OffsetDateTime reviewedAt) { this.reviewedAt = reviewedAt; }
     public Long getReviewedBy() { return reviewedBy; }

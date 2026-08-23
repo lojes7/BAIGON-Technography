@@ -4,7 +4,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from src.llm.exceptions import ModelResponseError
 from src.llm.spark_model import SparkModel
+from src.service.analysis_result import LLMAnalysisResult
 
 MAX_JD_LENGTH = 50_000
 
@@ -87,7 +89,9 @@ class JobAnalysisResult(BaseModel):
         return self
 
 
-def analyze_job_description(chat_model: SparkModel, jd: str) -> JobAnalysisResult:
+def analyze_job_description(
+    chat_model: SparkModel, jd: str
+) -> LLMAnalysisResult[JobAnalysisResult]:
     """把 JD 作为唯一用户消息发送给星火，并严格校验函数参数。"""
     normalized_jd = jd.strip()
     if not normalized_jd:
@@ -95,12 +99,18 @@ def analyze_job_description(chat_model: SparkModel, jd: str) -> JobAnalysisResul
     if len(normalized_jd) > MAX_JD_LENGTH:
         raise ValueError(f"jd 长度不能超过 {MAX_JD_LENGTH} 个字符")
 
-    arguments = chat_model.question(
+    response = chat_model.question(
         JOB_ANALYSIS_SYSTEM_PROMPT,
         normalized_jd,
         temperature=0.1,
         max_tokens=4096,
         response_function=JOB_ANALYSIS_RESPONSE_FUNCTION,
     )
-    # 供应商输出不可信：只有通过 Pydantic 契约后才能返回给调用方。
-    return JobAnalysisResult.model_validate_json(arguments)
+    # 供应商输出不可信：失败时仍保留原始响应供任务审查。
+    try:
+        result = JobAnalysisResult.model_validate_json(response.output)
+    except ValueError as exception:
+        raise ModelResponseError(
+            "JD 分析响应校验失败", response.source_llm_response
+        ) from exception
+    return LLMAnalysisResult(result, response.source_llm_response)

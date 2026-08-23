@@ -114,10 +114,10 @@ CREATE TABLE "grades" (
     "semester" semester
 );
 
--- 用户简历技能分析、技能时间线与人岗匹配任务。
+-- 用户简历抽取、简历技能分析、技能时间线与人岗匹配任务。
 -- 本节依赖上方的 users/resumes，以及先于本文件加载的 jobs。
 
-CREATE TYPE "user_analysis_type" AS ENUM ('RESUME_SKILL_ANALYSIS', 'JOB_MATCH');
+CREATE TYPE "user_analysis_type" AS ENUM ('RESUME_EXTRACTION', 'RESUME_SKILL_ANALYSIS', 'JOB_MATCH');
 CREATE TYPE "proficiency" AS ENUM ('EXPERT', 'ADVANCED', 'FAMILIAR', 'BASIC');
 
 CREATE TABLE "user_analysis_tasks" (
@@ -128,7 +128,7 @@ CREATE TABLE "user_analysis_tasks" (
     "trace_id" bigint NOT NULL,
     "user_id" bigint NOT NULL REFERENCES "users" ("id"),
     "resume_id" bigint NOT NULL REFERENCES "resumes" ("id"),
-    -- 简历技能分析不指定岗位；人岗匹配只依赖 jobs 表中的正式岗位信息。
+    -- 简历抽取与技能分析不指定岗位；人岗匹配只依赖 jobs 表中的正式岗位信息。
     "job_id" bigint REFERENCES "jobs" ("id"),
     "task_type" user_analysis_type NOT NULL,
     "task_status" task_status NOT NULL DEFAULT 'PENDING',
@@ -138,8 +138,9 @@ CREATE TABLE "user_analysis_tasks" (
     "skills_to_learn" jsonb NOT NULL DEFAULT '[]'::jsonb,
     "action_suggestions" jsonb NOT NULL DEFAULT '[]'::jsonb,
     "error_msg" text,
+    "source_llm_response" text,
     CONSTRAINT "ck_user_analysis_tasks_target" CHECK (
-        ("task_type" = 'RESUME_SKILL_ANALYSIS' AND "job_id" IS NULL)
+        ("task_type" IN ('RESUME_EXTRACTION', 'RESUME_SKILL_ANALYSIS') AND "job_id" IS NULL)
         OR ("task_type" = 'JOB_MATCH' AND "job_id" IS NOT NULL)
     ),
     CONSTRAINT "ck_user_analysis_tasks_match_score" CHECK (
@@ -175,6 +176,11 @@ CREATE UNIQUE INDEX "idx_user_analysis_tasks_resume_pending"
     WHERE "deleted_at" IS NULL
       AND "task_status" = 'PENDING'
       AND "task_type" = 'RESUME_SKILL_ANALYSIS';
+CREATE UNIQUE INDEX "idx_user_analysis_tasks_resume_extraction_pending"
+    ON "user_analysis_tasks" ("user_id", "resume_id")
+    WHERE "deleted_at" IS NULL
+      AND "task_status" = 'PENDING'
+      AND "task_type" = 'RESUME_EXTRACTION';
 CREATE UNIQUE INDEX "idx_user_analysis_tasks_job_pending"
     ON "user_analysis_tasks" ("user_id", "resume_id", "job_id")
     WHERE "deleted_at" IS NULL

@@ -17,6 +17,7 @@ CREATE TABLE "job_analysis_tasks" (
     "selected_occupation_id" bigint REFERENCES "occupations" ("id"),
     "attempts" integer NOT NULL DEFAULT 0,
     "error_msg" text,
+    "source_llm_response" text,
     "reviewed_at" timestamp with time zone,
     "reviewed_by" bigint
 );

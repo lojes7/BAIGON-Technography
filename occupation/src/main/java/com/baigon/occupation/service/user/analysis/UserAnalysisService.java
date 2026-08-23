@@ -10,6 +10,7 @@ import com.baigon.occupation.entity.user.analysis.UserAnalysisType;
 import com.baigon.occupation.entity.user.analysis.UserGraph;
 import com.baigon.occupation.entity.user.analysis.UserSkillProficiency;
 import com.baigon.occupation.error.ApiException;
+import com.baigon.occupation.grpc.client.ai.AIAnalysisException;
 import com.baigon.occupation.grpc.client.ai.AIGrpcClient;
 import com.baigon.occupation.repository.job.JobRepository;
 import com.baigon.occupation.repository.user.analysis.UserAnalysisTaskRepository;
@@ -91,22 +92,30 @@ public class UserAnalysisService {
         AIGrpcClient.UserSkillAnalysisResult result;
         List<ValidatedSkill> skills;
         String modelName;
+        String sourceLlmResponse = null;
         try {
             result = aiGrpcClient.analyzeUserSkills(prepared.resumeContent(), audit);
+            sourceLlmResponse = result.sourceLlmResponse();
             skills = validateSkills(result, prepared.resumeContent());
             modelName = requiredText(
                     result.modelName(), MAX_MODEL_NAME_LENGTH, "model name");
         } catch (RuntimeException exception) {
-            markFailed(prepared.taskId(), exception, audit, "user resume skill analysis failed");
+            markFailed(
+                    prepared.taskId(), exception,
+                    sourceLlmResponse(exception, sourceLlmResponse),
+                    audit, "user resume skill analysis failed");
             throw aiFailure(exception);
         }
         try {
-            SkillAnalysisData saved = completeSkills(prepared, modelName, skills);
+            SkillAnalysisData saved = completeSkills(
+                    prepared, modelName, skills, sourceLlmResponse);
             logService.info(audit, "user resume skill analysis success: resume_id="
                     + prepared.resumeId() + ", skills=" + skills.size());
             return saved;
         } catch (RuntimeException exception) {
-            markFailed(prepared.taskId(), exception, audit, "persist user skill analysis failed");
+            markFailed(
+                    prepared.taskId(), exception, sourceLlmResponse,
+                    audit, "persist user skill analysis failed");
             throw internalFailure(exception);
         }
     }
@@ -132,23 +141,31 @@ public class UserAnalysisService {
         AIGrpcClient.JobMatchAnalysisResult result;
         ValidatedMatch match;
         String modelName;
+        String sourceLlmResponse = null;
         try {
             result = aiGrpcClient.analyzeJobMatch(
                     prepared.resumeInput(), prepared.jobInput(), audit);
+            sourceLlmResponse = result.sourceLlmResponse();
             match = validateMatch(result);
             modelName = requiredText(
                     result.modelName(), MAX_MODEL_NAME_LENGTH, "model name");
         } catch (RuntimeException exception) {
-            markFailed(prepared.taskId(), exception, audit, "user job match analysis failed");
+            markFailed(
+                    prepared.taskId(), exception,
+                    sourceLlmResponse(exception, sourceLlmResponse),
+                    audit, "user job match analysis failed");
             throw aiFailure(exception);
         }
         try {
-            JobMatchData saved = completeMatch(prepared, modelName, match);
+            JobMatchData saved = completeMatch(
+                    prepared, modelName, match, sourceLlmResponse);
             logService.info(audit, "user job match success: resume_id=" + prepared.resumeId()
                     + ", job_id=" + jobId + ", score=" + match.score());
             return saved;
         } catch (RuntimeException exception) {
-            markFailed(prepared.taskId(), exception, audit, "persist user job match failed");
+            markFailed(
+                    prepared.taskId(), exception, sourceLlmResponse,
+                    audit, "persist user job match failed");
             throw internalFailure(exception);
         }
     }
@@ -267,7 +284,8 @@ public class UserAnalysisService {
     private SkillAnalysisData completeSkills(
             PreparedAnalysis prepared,
             String modelName,
-            List<ValidatedSkill> skills) {
+            List<ValidatedSkill> skills,
+            String sourceLlmResponse) {
         SkillAnalysisData result = transactions.execute(ignored -> {
             UserAnalysisTask task = pendingTask(prepared.taskId());
             OffsetDateTime now = OffsetDateTime.now();
@@ -292,6 +310,7 @@ public class UserAnalysisService {
             }
             task.setTaskStatus(TaskStatus.SUCCESS);
             task.setModelName(modelName);
+            task.setSourceLlmResponse(sourceLlmResponse);
             task.setUpdatedAt(now);
             taskRepository.saveAndFlush(task);
             return new SkillAnalysisData(
@@ -306,7 +325,8 @@ public class UserAnalysisService {
     private JobMatchData completeMatch(
             PreparedAnalysis prepared,
             String modelName,
-            ValidatedMatch match) {
+            ValidatedMatch match,
+            String sourceLlmResponse) {
         JobMatchData result = transactions.execute(ignored -> {
             UserAnalysisTask task = pendingTask(prepared.taskId());
             OffsetDateTime now = OffsetDateTime.now();
@@ -314,6 +334,7 @@ public class UserAnalysisService {
             JsonNode actionsJson = objectMapper.valueToTree(match.actionSuggestions());
             task.setTaskStatus(TaskStatus.SUCCESS);
             task.setModelName(modelName);
+            task.setSourceLlmResponse(sourceLlmResponse);
             task.setMatchScore(match.score());
             task.setMatchSummary(match.summary());
             task.setSkillsToLearn(learningJson);
@@ -339,7 +360,12 @@ public class UserAnalysisService {
         return task;
     }
 
-    private void markFailed(long taskId, RuntimeException exception, AuditContext audit, String detail) {
+    private void markFailed(
+            long taskId,
+            RuntimeException exception,
+            String sourceLlmResponse,
+            AuditContext audit,
+            String detail) {
         String safeError = safeError(exception);
         try {
             transactions.executeWithoutResult(ignored -> taskRepository
@@ -348,6 +374,7 @@ public class UserAnalysisService {
                     .ifPresent(task -> {
                         task.setTaskStatus(TaskStatus.FAILED);
                         task.setErrorMsg(safeError);
+                        task.setSourceLlmResponse(sourceLlmResponse);
                         task.setUpdatedAt(OffsetDateTime.now());
                         taskRepository.saveAndFlush(task);
                     }));
@@ -357,6 +384,12 @@ public class UserAnalysisService {
                     detail + ": persist failed, task_id=" + taskId);
         }
         logService.error(audit, safeError, detail + ": task_id=" + taskId);
+    }
+
+    private String sourceLlmResponse(RuntimeException exception, String fallback) {
+        return exception instanceof AIAnalysisException analysisException
+                ? analysisException.getSourceLlmResponse()
+                : fallback;
     }
 
     private ApiException aiFailure(RuntimeException exception) {

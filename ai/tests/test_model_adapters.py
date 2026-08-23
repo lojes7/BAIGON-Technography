@@ -80,7 +80,8 @@ class ModelAdapterTest(unittest.TestCase):
 
         answer = model.question("系统提示", "用户问题", enable_web_search=True)
 
-        self.assertEqual(answer, "模型回答")
+        self.assertEqual(answer.output, "模型回答")
+        self.assertIn('"content":"模型回答"', answer.source_llm_response)
         self.assertEqual(completions.request["model"], model_config.spark_model)
         self.assertEqual(completions.request["messages"][0]["role"], "system")
         self.assertEqual(completions.request["tools"][0]["type"], "web_search")
@@ -113,7 +114,11 @@ class ModelAdapterTest(unittest.TestCase):
             response_function=response_function,
         )
 
-        self.assertEqual(arguments, '{"education":"Master","skills":[]}')
+        self.assertEqual(arguments.output, '{"education":"Master","skills":[]}')
+        self.assertIn(
+            '\"arguments\":\"{\\\"education\\\":\\\"Master\\\",\\\"skills\\\":[]}\"',
+            arguments.source_llm_response,
+        )
         self.assertEqual(completions.request["messages"][1]["content"], "JD 原文")
         self.assertEqual(completions.request["tools"][0]["function"], response_function)
         self.assertEqual(

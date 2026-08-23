@@ -7,6 +7,7 @@ import com.baigon.occupation.entity.TaskStatus;
 import com.baigon.occupation.entity.job.Job;
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisResult;
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisTask;
+import com.baigon.occupation.grpc.client.ai.AIAnalysisException;
 import com.baigon.occupation.grpc.client.ai.AIGrpcClient;
 import com.baigon.occupation.repository.job.JobRepository;
 import com.baigon.occupation.repository.jobanalysis.JobAnalysisCandidateRepository;
@@ -83,9 +84,11 @@ class JobAnalysisServiceTest {
                 .thenReturn(1);
         when(jobRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(job));
         when(aiGrpcClient.startJobDescriptionAnalysis(job.getJobDescription())).thenReturn(jdCall);
-        when(jdCall.await()).thenReturn(List.of(new AIGrpcClient.AnalyzedSkillResult(
-                "Java", "ADVANCED", "熟练使用 Java")));
-        when(taskRepository.markJdAnalysisSucceeded(20L)).thenReturn(1);
+        when(jdCall.await()).thenReturn(new AIGrpcClient.JobDescriptionAnalysisResult(
+                List.of(new AIGrpcClient.AnalyzedSkillResult(
+                        "Java", "ADVANCED", "熟练使用 Java")),
+                "raw-jd-response"));
+        when(taskRepository.markJdAnalysisSucceeded(20L, "raw-jd-response")).thenReturn(1);
 
         service.analyze(20L, audit());
 
@@ -94,7 +97,7 @@ class JobAnalysisServiceTest {
         order.verify(taskRepository).markOccupationAnalysisSucceeded(
                 20L, "[0.1,0.2]", "qwen-embedding");
         order.verify(aiGrpcClient).startJobDescriptionAnalysis("负责开发，熟练使用 Java");
-        order.verify(taskRepository).markJdAnalysisSucceeded(20L);
+        order.verify(taskRepository).markJdAnalysisSucceeded(20L, "raw-jd-response");
         verify(candidateRepository).save(any());
         ArgumentCaptor<JobAnalysisResult> resultCaptor =
                 ArgumentCaptor.forClass(JobAnalysisResult.class);
@@ -114,8 +117,10 @@ class JobAnalysisServiceTest {
         when(taskRepository.markAnalysisStarted(20L)).thenReturn(1);
         when(jobRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(job));
         when(aiGrpcClient.startJobDescriptionAnalysis(job.getJobDescription())).thenReturn(jdCall);
-        when(jdCall.await()).thenReturn(List.of());
-        when(taskRepository.markJdAnalysisSucceeded(20L)).thenReturn(1);
+        when(jdCall.await()).thenReturn(new AIGrpcClient.JobDescriptionAnalysisResult(
+                List.of(), "raw-empty-jd-response"));
+        when(taskRepository.markJdAnalysisSucceeded(20L, "raw-empty-jd-response"))
+                .thenReturn(1);
 
         service.analyze(20L, audit());
 
@@ -123,7 +128,7 @@ class JobAnalysisServiceTest {
         verify(aiGrpcClient).startJobDescriptionAnalysis("负责开发，熟练使用 Java");
         verify(resultRepository).deleteByTaskId(20L);
         verify(resultRepository, never()).save(any());
-        verify(taskRepository).markJdAnalysisSucceeded(20L);
+        verify(taskRepository).markJdAnalysisSucceeded(20L, "raw-empty-jd-response");
     }
 
     @Test
@@ -147,11 +152,13 @@ class JobAnalysisServiceTest {
         when(taskRepository.markAnalysisStarted(20L)).thenReturn(1);
         when(jobRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(job()));
         when(aiGrpcClient.startJobDescriptionAnalysis(anyString()))
-                .thenThrow(new IllegalStateException("jd unavailable"));
+                .thenThrow(new AIAnalysisException(
+                        "jd response invalid", "raw-invalid-jd-response"));
 
         service.analyze(20L, audit());
 
-        verify(taskRepository).markJdAnalysisFailed(20L, "jd unavailable");
+        verify(taskRepository).markJdAnalysisFailed(
+                20L, "jd response invalid", "raw-invalid-jd-response");
     }
 
     private JobAnalysisTask task(TaskStatus occupationStatus) {

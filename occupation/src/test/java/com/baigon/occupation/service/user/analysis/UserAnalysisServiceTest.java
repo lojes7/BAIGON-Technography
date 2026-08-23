@@ -85,7 +85,7 @@ class UserAnalysisServiceTest {
                                 "Java", "ADVANCED", "项目使用 Java 开发"),
                         new AIGrpcClient.AnalyzedSkillResult(
                                 "PostgreSQL", "FAMILIAR", "熟悉 PostgreSQL 数据库")),
-                        "spark-x"));
+                        "spark-x", "raw-user-skills"));
 
         UserAnalysisService.SkillAnalysisData result =
                 service.analyzeMyResumeSkills(7L, audit());
@@ -95,6 +95,7 @@ class UserAnalysisServiceTest {
         assertEquals("ADVANCED", result.skills().get(0).proficiency());
         assertEquals(TaskStatus.SUCCESS, task.get().getTaskStatus());
         assertEquals("spark-x", task.get().getModelName());
+        assertEquals("raw-user-skills", task.get().getSourceLlmResponse());
         verify(jobRepository, never()).findByIdAndDeletedAtIsNull(any());
 
         @SuppressWarnings("unchecked")
@@ -118,7 +119,7 @@ class UserAnalysisServiceTest {
                         List.of(new AIGrpcClient.SkillLearningSuggestionResult(
                                 "Kubernetes", "岗位要求容器编排", "完成部署练习")),
                         List.of("制作一个可演示项目"),
-                        "spark-x"));
+                        "spark-x", "raw-job-match"));
 
         UserAnalysisService.JobMatchData result =
                 service.matchMyResumeToJob(7L, 201L, audit());
@@ -128,6 +129,7 @@ class UserAnalysisServiceTest {
         assertEquals(TaskStatus.SUCCESS, task.get().getTaskStatus());
         assertEquals(82, task.get().getMatchScore());
         assertEquals(1, task.get().getSkillsToLearn().size());
+        assertEquals("raw-job-match", task.get().getSourceLlmResponse());
         verify(graphRepository, never()).saveAllAndFlush(any());
 
         ArgumentCaptor<AIGrpcClient.ResumeMatchInput> resumeInput =
@@ -255,13 +257,15 @@ class UserAnalysisServiceTest {
         when(resumeRepository.findFirstByUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(7L))
                 .thenReturn(Optional.of(resume));
         when(aiGrpcClient.analyzeUserSkills(resume.getContent(), audit())).thenReturn(
-                new AIGrpcClient.UserSkillAnalysisResult(List.of(), "spark-x"));
+                new AIGrpcClient.UserSkillAnalysisResult(
+                        List.of(), "spark-x", "raw-empty-skills"));
 
         UserAnalysisService.SkillAnalysisData result =
                 service.analyzeMyResumeSkills(7L, audit());
 
         assertEquals(0, result.skills().size());
         assertEquals(TaskStatus.SUCCESS, task.get().getTaskStatus());
+        assertEquals("raw-empty-skills", task.get().getSourceLlmResponse());
         verify(graphRepository, never()).saveAllAndFlush(any());
     }
 
@@ -273,7 +277,8 @@ class UserAnalysisServiceTest {
         when(aiGrpcClient.analyzeUserSkills(resume.getContent(), audit())).thenReturn(
                 new AIGrpcClient.UserSkillAnalysisResult(List.of(
                         new AIGrpcClient.AnalyzedSkillResult(
-                                "AWS", "FAMILIAR", "使用AWS构建服务")), "spark-x"));
+                                "AWS", "FAMILIAR", "使用AWS构建服务")),
+                        "spark-x", "raw-unicode-skills"));
 
         UserAnalysisService.SkillAnalysisData result =
                 service.analyzeMyResumeSkills(7L, audit());
@@ -313,7 +318,8 @@ class UserAnalysisServiceTest {
                         eq(UserAnalysisType.RESUME_SKILL_ANALYSIS), eq(TaskStatus.PENDING)))
                 .thenReturn(Optional.of(stale));
         when(aiGrpcClient.analyzeUserSkills(resume.getContent(), audit())).thenReturn(
-                new AIGrpcClient.UserSkillAnalysisResult(List.of(), "spark-x"));
+                new AIGrpcClient.UserSkillAnalysisResult(
+                        List.of(), "spark-x", "raw-recovered-skills"));
 
         UserAnalysisService.SkillAnalysisData result =
                 service.analyzeMyResumeSkills(7L, audit());
@@ -330,7 +336,8 @@ class UserAnalysisServiceTest {
         when(resumeRepository.findFirstByUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(7L))
                 .thenReturn(Optional.of(resume));
         when(aiGrpcClient.analyzeUserSkills(resume.getContent(), audit())).thenReturn(
-                new AIGrpcClient.UserSkillAnalysisResult(List.of(), "spark-x"));
+                new AIGrpcClient.UserSkillAnalysisResult(
+                        List.of(), "spark-x", "raw-persistence-failure"));
         when(taskRepository.saveAndFlush(any(UserAnalysisTask.class))).thenAnswer(invocation -> {
             UserAnalysisTask saved = invocation.getArgument(0);
             task.set(saved);
@@ -347,6 +354,7 @@ class UserAnalysisServiceTest {
 
         assertEquals(ApiException.ErrorCode.INTERNAL_ERROR, exception.getErrorCode());
         assertEquals(TaskStatus.FAILED, task.get().getTaskStatus());
+        assertEquals("raw-persistence-failure", task.get().getSourceLlmResponse());
     }
 
     @Test
@@ -358,13 +366,15 @@ class UserAnalysisServiceTest {
                 .thenReturn(Optional.of(job(201L)));
         when(aiGrpcClient.analyzeJobMatch(any(), any(), eq(audit())))
                 .thenReturn(new AIGrpcClient.JobMatchAnalysisResult(
-                        101, "非法分数", List.of(), List.of(), "spark-x"));
+                        101, "非法分数", List.of(), List.of(),
+                        "spark-x", "raw-invalid-match"));
 
         ApiException exception = assertThrows(ApiException.class,
                 () -> service.matchMyResumeToJob(7L, 201L, audit()));
 
         assertEquals(ApiException.ErrorCode.SERVICE_UNAVAILABLE, exception.getErrorCode());
         assertEquals(TaskStatus.FAILED, task.get().getTaskStatus());
+        assertEquals("raw-invalid-match", task.get().getSourceLlmResponse());
     }
 
     @Test

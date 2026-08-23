@@ -6,9 +6,10 @@ import unittest
 import grpc
 from openai import OpenAIError
 
-from src.llm.exceptions import ModelConfigurationError
+from src.llm.exceptions import ModelConfigurationError, ModelResponseError
 from src.pb import ai_pb2
 from src.server.grpc_server import AIServicer
+from src.service.analysis_result import LLMAnalysisResult
 from src.service.job_match import JobMatchResult
 from src.service.resume_analysis import MAX_RESUME_CONTENT_LENGTH
 from src.service.user_skill_analysis import UserSkillAnalysisResult
@@ -45,34 +46,40 @@ class FakeAIModelService:
 
     def analyze_user_skills(self, resume_content):
         self.user_skill_content = resume_content
-        return UserSkillAnalysisResult.model_validate(
-            {
-                "skills": [
-                    {
-                        "name": "Java",
-                        "proficiency": "ADVANCED",
-                        "evidence": "熟练使用 Java",
-                    }
-                ]
-            }
+        return LLMAnalysisResult(
+            UserSkillAnalysisResult.model_validate(
+                {
+                    "skills": [
+                        {
+                            "name": "Java",
+                            "proficiency": "ADVANCED",
+                            "evidence": "熟练使用 Java",
+                        }
+                    ]
+                }
+            ),
+            "raw-user-skill-analysis",
         )
 
     def analyze_job_match(self, resume, job):
         self.match_resume = resume
         self.match_job = job
-        return JobMatchResult.model_validate(
-            {
-                "score": 76,
-                "summary": "主要能力匹配，仍需补充容器编排经验。",
-                "skills_to_learn": [
-                    {
-                        "skill_name": "Kubernetes",
-                        "reason": "岗位要求容器编排经验。",
-                        "suggestion": "完成一个 Kubernetes 部署项目。",
-                    }
-                ],
-                "action_suggestions": ["在简历中补充可核验的部署成果。"],
-            }
+        return LLMAnalysisResult(
+            JobMatchResult.model_validate(
+                {
+                    "score": 76,
+                    "summary": "主要能力匹配，仍需补充容器编排经验。",
+                    "skills_to_learn": [
+                        {
+                            "skill_name": "Kubernetes",
+                            "reason": "岗位要求容器编排经验。",
+                            "suggestion": "完成一个 Kubernetes 部署项目。",
+                        }
+                    ],
+                    "action_suggestions": ["在简历中补充可核验的部署成果。"],
+                }
+            ),
+            "raw-job-match-analysis",
         )
 
 
@@ -173,7 +180,10 @@ class GrpcUserAnalysisTest(unittest.TestCase):
                 "request_url",
             ],
         )
-        self.assertEqual(response_fields, ["skills", "model"])
+        self.assertEqual(
+            response_fields,
+            ["skills", "model", "source_llm_response", "error_code"],
+        )
 
     def test_analyze_user_skills_returns_validated_skills_and_model(self):
         response = self.servicer.AnalyzeUserSkills(
@@ -192,6 +202,8 @@ class GrpcUserAnalysisTest(unittest.TestCase):
         self.assertEqual(response.skills[0].name, "Java")
         self.assertEqual(response.skills[0].proficiency, "ADVANCED")
         self.assertEqual(response.model, "spark-test")
+        self.assertEqual(response.source_llm_response, "raw-user-skill-analysis")
+        self.assertEqual(response.error_code, "")
         self.assertEqual(self.model_service.user_skill_content, "熟练使用 Java")
         self.assertEqual(
             self.log_service.entries,
@@ -279,6 +291,8 @@ class GrpcUserAnalysisTest(unittest.TestCase):
                 "skills_to_learn",
                 "action_suggestions",
                 "model",
+                "source_llm_response",
+                "error_code",
             ],
         )
 
@@ -315,6 +329,8 @@ class GrpcUserAnalysisTest(unittest.TestCase):
             ["在简历中补充可核验的部署成果。"],
         )
         self.assertEqual(response.model, "spark-test")
+        self.assertEqual(response.source_llm_response, "raw-job-match-analysis")
+        self.assertEqual(response.error_code, "")
         self.assertEqual(
             self.model_service.match_resume.professional_skills[0].skill_name,
             "Java",
@@ -427,6 +443,45 @@ class GrpcUserAnalysisTest(unittest.TestCase):
             [entry[1]["error_msg"] for entry in log_service.entries],
             ["INTERNAL", "INTERNAL"],
         )
+
+    def test_invalid_model_responses_return_raw_content_for_task_audit(self):
+        """模型已返回但契约校验失败时，不丢失可供任务表审查的原文。"""
+        for operation in ("skills", "match"):
+            with self.subTest(operation=operation):
+                log_service = FakeLogService()
+                servicer = AIServicer(
+                    RaisingAIModelService(
+                        ModelResponseError("响应不合法", f"raw-invalid-{operation}")
+                    ),
+                    log_service,
+                )
+                if operation == "skills":
+                    response = servicer.AnalyzeUserSkills(
+                        ai_pb2.AnalyzeUserSkillsRequest(
+                            resume_content="熟练使用 Java",
+                            trace_id="invalid-skills",
+                        ),
+                        self.context,
+                    )
+                else:
+                    response = servicer.AnalyzeJobMatch(
+                        ai_pb2.AnalyzeJobMatchRequest(
+                            resume=resume_message(),
+                            job=job_message(),
+                            trace_id="invalid-match",
+                        ),
+                        self.context,
+                    )
+
+                self.assertEqual(
+                    response.source_llm_response,
+                    f"raw-invalid-{operation}",
+                )
+                self.assertEqual(response.error_code, "LLM_RESPONSE_INVALID")
+                self.assertEqual(
+                    log_service.entries[0][1]["error_msg"],
+                    "LLM_RESPONSE_INVALID",
+                )
 
     def test_model_configuration_error_maps_both_rpcs_to_failed_precondition(self):
         """技能分析和人岗匹配必须使用相同的模型配置错误语义。"""

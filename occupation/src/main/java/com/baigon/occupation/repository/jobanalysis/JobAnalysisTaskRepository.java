@@ -63,13 +63,15 @@ public interface JobAnalysisTaskRepository extends JpaRepository<JobAnalysisTask
             UPDATE job_analysis_tasks
             SET jd_analysis_status = CAST('SUCCESS' AS task_status),
                 task_status = CAST('SUCCESS' AS task_status),
+                source_llm_response = :sourceLlmResponse,
                 error_msg = NULL,
                 updated_at = now()
             WHERE id = :id
               AND deleted_at IS NULL
               AND occupation_analysis_status = CAST('SUCCESS' AS task_status)
             """, nativeQuery = true)
-    int markJdAnalysisSucceeded(@Param("id") Long id);
+    int markJdAnalysisSucceeded(@Param("id") Long id,
+                                @Param("sourceLlmResponse") String sourceLlmResponse);
 
     @Transactional
     @Modifying(clearAutomatically = true, flushAutomatically = true)
@@ -90,10 +92,13 @@ public interface JobAnalysisTaskRepository extends JpaRepository<JobAnalysisTask
             SET jd_analysis_status = CAST('FAILED' AS task_status),
                 task_status = CAST('FAILED' AS task_status),
                 error_msg = :error,
+                source_llm_response = :sourceLlmResponse,
                 updated_at = now()
             WHERE id = :id AND deleted_at IS NULL
             """, nativeQuery = true)
-    int markJdAnalysisFailed(@Param("id") Long id, @Param("error") String error);
+    int markJdAnalysisFailed(@Param("id") Long id,
+                             @Param("error") String error,
+                             @Param("sourceLlmResponse") String sourceLlmResponse);
 
     @Transactional
     @Modifying(clearAutomatically = true, flushAutomatically = true)

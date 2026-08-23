@@ -2,8 +2,12 @@
 package com.baigon.occupation.grpc.client.ai;
 
 import com.baigon.ai.AIServiceGrpc;
+import com.baigon.ai.AnalyzeJobDescriptionRequest;
+import com.baigon.ai.AnalyzeJobDescriptionResponse;
 import com.baigon.ai.AnalyzeJobMatchRequest;
 import com.baigon.ai.AnalyzeJobMatchResponse;
+import com.baigon.ai.AnalyzeResumeRequest;
+import com.baigon.ai.AnalyzeResumeResponse;
 import com.baigon.ai.AnalyzeUserSkillsRequest;
 import com.baigon.ai.AnalyzeUserSkillsResponse;
 import com.baigon.ai.AnalyzedSkill;
@@ -21,6 +25,7 @@ import org.springframework.cloud.client.discovery.DiscoveryClient;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -58,11 +63,31 @@ class AIGrpcClientTest {
         assertEquals("spark-test", result.modelName());
         assertEquals("Java", result.skills().get(0).name());
         assertEquals("ADVANCED", result.skills().get(0).proficiency());
+        assertEquals("raw-user-skills", result.sourceLlmResponse());
         AnalyzeUserSkillsRequest request = backend.skillRequest;
         assertEquals("熟练使用 Java", request.getResumeContent());
         assertAudit(request.getTraceId(), request.getUserId(), request.getUserName(),
                 request.getUserIp(), request.getRequestMethod(), request.getRequestUrl(),
                 "/api/auth/resumes/analyze-skills");
+    }
+
+    @Test
+    void analyzeResumeShouldReturnBusinessJsonAndRawResponse() {
+        AIGrpcClient.ResumeAnalysisResult result = client.analyzeResume("OCR 简历正文");
+
+        assertEquals("{\"education_experience\":[]}", result.resumeJson());
+        assertEquals("raw-resume", result.sourceLlmResponse());
+        assertEquals("OCR 简历正文", backend.resumeRequest.getContent());
+    }
+
+    @Test
+    void analyzeJobDescriptionShouldReturnSkillsAndRawResponse() throws Exception {
+        AIGrpcClient.JobDescriptionAnalysisResult result =
+                client.startJobDescriptionAnalysis("熟练使用 Java").await();
+
+        assertEquals("Java", result.skills().get(0).name());
+        assertEquals("raw-job-description", result.sourceLlmResponse());
+        assertEquals("熟练使用 Java", backend.jobDescriptionRequest.getJd());
     }
 
     @Test
@@ -97,6 +122,7 @@ class AIGrpcClientTest {
         assertEquals(82, result.score());
         assertEquals("Kubernetes", result.skillsToLearn().get(0).skillName());
         assertEquals("补充量化项目成果", result.actionSuggestions().get(0));
+        assertEquals("raw-job-match", result.sourceLlmResponse());
         AnalyzeJobMatchRequest request = backend.matchRequest;
         assertEquals(resume.educationExperiences(),
                 request.getResume().getEducationExperiences());
@@ -127,6 +153,44 @@ class AIGrpcClientTest {
                 "/api/jobs/201/match");
     }
 
+    @Test
+    void invalidChatResponsesShouldPreserveRawContentInDomainException() {
+        backend.invalidResponses = true;
+
+        AIAnalysisException resume = assertThrows(
+                AIAnalysisException.class,
+                () -> client.analyzeResume("OCR 简历正文"));
+        AIAnalysisException skills = assertThrows(
+                AIAnalysisException.class,
+                () -> client.analyzeUserSkills(
+                        "熟练使用 Java", audit("/api/auth/resumes/analyze-skills")));
+        AIAnalysisException match = assertThrows(
+                AIAnalysisException.class,
+                () -> client.analyzeJobMatch(
+                        minimalResumeInput(), minimalJobInput(), audit("/api/jobs/201/match")));
+        AIAnalysisException jobDescription = assertThrows(
+                AIAnalysisException.class,
+                () -> client.startJobDescriptionAnalysis("熟练使用 Java").await());
+
+        assertEquals("raw-invalid-resume", resume.getSourceLlmResponse());
+        assertEquals("raw-invalid-user-skills", skills.getSourceLlmResponse());
+        assertEquals("raw-invalid-job-match", match.getSourceLlmResponse());
+        assertEquals("raw-invalid-job-description", jobDescription.getSourceLlmResponse());
+    }
+
+    private AIGrpcClient.ResumeMatchInput minimalResumeInput() {
+        return new AIGrpcClient.ResumeMatchInput(
+                "[]", "[]", "[]",
+                "[{\"skill_name\":\"Java\",\"proficiency\":\"Advanced\"}]",
+                "[]");
+    }
+
+    private AIGrpcClient.JobMatchInput minimalJobInput() {
+        return new AIGrpcClient.JobMatchInput(
+                "Java 后端工程师", "", "", "", "", "", "", "", "", "",
+                "", "", "", "", "熟练使用 Java", null);
+    }
+
     private AuditContext audit(String requestUrl) {
         return new AuditContext(1001L, 7L, "student01", "127.0.0.1", "POST", requestUrl);
     }
@@ -148,22 +212,69 @@ class AIGrpcClientTest {
     }
 
     private static class CapturingAIService extends AIServiceGrpc.AIServiceImplBase {
+        private AnalyzeJobDescriptionRequest jobDescriptionRequest;
+        private AnalyzeResumeRequest resumeRequest;
         private AnalyzeUserSkillsRequest skillRequest;
         private AnalyzeJobMatchRequest matchRequest;
+        private boolean invalidResponses;
+
+        @Override
+        public void analyzeJobDescription(
+                AnalyzeJobDescriptionRequest request,
+                StreamObserver<AnalyzeJobDescriptionResponse> observer) {
+            jobDescriptionRequest = request;
+            AnalyzeJobDescriptionResponse.Builder response =
+                    AnalyzeJobDescriptionResponse.newBuilder();
+            if (invalidResponses) {
+                response.setSourceLlmResponse("raw-invalid-job-description")
+                        .setErrorCode("LLM_RESPONSE_INVALID");
+            } else {
+                response.addSkills(AnalyzedSkill.newBuilder()
+                                .setName("Java")
+                                .setProficiency("ADVANCED")
+                                .setEvidence("熟练使用 Java"))
+                        .setSourceLlmResponse("raw-job-description");
+            }
+            observer.onNext(response.build());
+            observer.onCompleted();
+        }
+
+        @Override
+        public void analyzeResume(
+                AnalyzeResumeRequest request,
+                StreamObserver<AnalyzeResumeResponse> observer) {
+            resumeRequest = request;
+            AnalyzeResumeResponse.Builder response = AnalyzeResumeResponse.newBuilder();
+            if (invalidResponses) {
+                response.setSourceLlmResponse("raw-invalid-resume")
+                        .setErrorCode("LLM_RESPONSE_INVALID");
+            } else {
+                response.setResumeJson("{\"education_experience\":[]}")
+                        .setSourceLlmResponse("raw-resume");
+            }
+            observer.onNext(response.build());
+            observer.onCompleted();
+        }
 
         @Override
         public void analyzeUserSkills(
                 AnalyzeUserSkillsRequest request,
                 StreamObserver<AnalyzeUserSkillsResponse> observer) {
             skillRequest = request;
-            observer.onNext(AnalyzeUserSkillsResponse.newBuilder()
-                    .addSkills(AnalyzedSkill.newBuilder()
-                            .setName("Java")
-                            .setProficiency("ADVANCED")
-                            .setEvidence("熟练使用 Java")
-                            .build())
-                    .setModel("spark-test")
-                    .build());
+            AnalyzeUserSkillsResponse.Builder response =
+                    AnalyzeUserSkillsResponse.newBuilder();
+            if (invalidResponses) {
+                response.setSourceLlmResponse("raw-invalid-user-skills")
+                        .setErrorCode("LLM_RESPONSE_INVALID");
+            } else {
+                response.addSkills(AnalyzedSkill.newBuilder()
+                                .setName("Java")
+                                .setProficiency("ADVANCED")
+                                .setEvidence("熟练使用 Java"))
+                        .setModel("spark-test")
+                        .setSourceLlmResponse("raw-user-skills");
+            }
+            observer.onNext(response.build());
             observer.onCompleted();
         }
 
@@ -172,17 +283,22 @@ class AIGrpcClientTest {
                 AnalyzeJobMatchRequest request,
                 StreamObserver<AnalyzeJobMatchResponse> observer) {
             matchRequest = request;
-            observer.onNext(AnalyzeJobMatchResponse.newBuilder()
-                    .setScore(82)
-                    .setSummary("核心能力匹配")
-                    .addSkillsToLearn(SkillLearningSuggestion.newBuilder()
-                            .setSkillName("Kubernetes")
-                            .setReason("岗位要求容器编排")
-                            .setSuggestion("完成部署实践")
-                            .build())
-                    .addActionSuggestions("补充量化项目成果")
-                    .setModel("spark-test")
-                    .build());
+            AnalyzeJobMatchResponse.Builder response = AnalyzeJobMatchResponse.newBuilder();
+            if (invalidResponses) {
+                response.setSourceLlmResponse("raw-invalid-job-match")
+                        .setErrorCode("LLM_RESPONSE_INVALID");
+            } else {
+                response.setScore(82)
+                        .setSummary("核心能力匹配")
+                        .addSkillsToLearn(SkillLearningSuggestion.newBuilder()
+                                .setSkillName("Kubernetes")
+                                .setReason("岗位要求容器编排")
+                                .setSuggestion("完成部署实践"))
+                        .addActionSuggestions("补充量化项目成果")
+                        .setModel("spark-test")
+                        .setSourceLlmResponse("raw-job-match");
+            }
+            observer.onNext(response.build());
             observer.onCompleted();
         }
     }

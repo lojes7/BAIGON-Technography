@@ -2,12 +2,18 @@
 package com.baigon.occupation.service.user.resume;
 
 import cn.hutool.core.lang.Snowflake;
+import com.baigon.occupation.entity.TaskStatus;
 import com.baigon.occupation.entity.user.Resume;
+import com.baigon.occupation.entity.user.analysis.UserAnalysisTask;
+import com.baigon.occupation.entity.user.analysis.UserAnalysisType;
 import com.baigon.occupation.entity.user.resume.ResumeSource;
 import com.baigon.occupation.error.ApiException;
+import com.baigon.occupation.grpc.client.ai.AIAnalysisException;
 import com.baigon.occupation.grpc.client.ai.AIGrpcClient;
 import com.baigon.occupation.repository.user.UserRepository;
+import com.baigon.occupation.repository.user.analysis.UserAnalysisTaskRepository;
 import com.baigon.occupation.repository.user.resume.ResumeRepository;
+import com.baigon.occupation.service.AuditContext;
 import com.baigon.occupation.service.user.resume.analysis.ResumeAnalysisValidator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,8 +21,10 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.transaction.support.TransactionOperations;
 
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -34,6 +42,7 @@ import static org.mockito.Mockito.when;
 class ResumeServiceTest {
 
     private ResumeRepository resumeRepository;
+    private UserAnalysisTaskRepository taskRepository;
     private UserRepository userRepository;
     private ResumeObjectStorage objectStorage;
     private ResumeDocumentTextExtractor textExtractor;
@@ -42,10 +51,13 @@ class ResumeServiceTest {
     private ObjectMapper objectMapper;
     private Snowflake snowflake;
     private ResumeService service;
+    private AtomicReference<Resume> savedResume;
+    private AtomicReference<UserAnalysisTask> savedTask;
 
     @BeforeEach
     void setUp() {
         resumeRepository = mock(ResumeRepository.class);
+        taskRepository = mock(UserAnalysisTaskRepository.class);
         userRepository = mock(UserRepository.class);
         objectStorage = mock(ResumeObjectStorage.class);
         textExtractor = mock(ResumeDocumentTextExtractor.class);
@@ -53,20 +65,36 @@ class ResumeServiceTest {
         objectMapper = new ObjectMapper();
         analysisValidator = new ResumeAnalysisValidator(objectMapper);
         snowflake = mock(Snowflake.class);
+        savedResume = new AtomicReference<>();
+        savedTask = new AtomicReference<>();
         service = new ResumeService(
-                resumeRepository, userRepository, objectStorage, textExtractor,
+                resumeRepository, taskRepository, userRepository, objectStorage, textExtractor,
                 aiGrpcClient, analysisValidator,
-                snowflake, 1024, 600);
+                snowflake, TransactionOperations.withoutTransaction(), 1024, 600);
 
         when(userRepository.existsByIdAndDeletedAtIsNull(7L)).thenReturn(true);
         when(snowflake.nextId()).thenReturn(101L);
         when(objectStorage.bucketName()).thenReturn("resumes");
         when(resumeRepository.findByIdAndUserIdAndDeletedAtIsNull(101L, 7L))
                 .thenReturn(Optional.empty());
-        when(resumeRepository.saveAndFlush(any(Resume.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(resumeRepository.saveAndFlush(any(Resume.class))).thenAnswer(invocation -> {
+            Resume resume = invocation.getArgument(0);
+            savedResume.set(resume);
+            return resume;
+        });
+        when(resumeRepository.findById(anyLong())).thenAnswer(
+                ignored -> Optional.ofNullable(savedResume.get()));
+        when(taskRepository.saveAndFlush(any(UserAnalysisTask.class))).thenAnswer(invocation -> {
+            UserAnalysisTask task = invocation.getArgument(0);
+            savedTask.set(task);
+            return task;
+        });
+        when(taskRepository.findByIdAndDeletedAtIsNull(anyLong())).thenAnswer(
+                ignored -> Optional.ofNullable(savedTask.get()));
         when(textExtractor.extract(anyString(), any())).thenReturn("OCR 简历正文");
-        when(aiGrpcClient.analyzeResume(anyString())).thenReturn(emptyAnalysisJson());
+        when(aiGrpcClient.analyzeResume(anyString())).thenReturn(
+                new AIGrpcClient.ResumeAnalysisResult(
+                        emptyAnalysisJson(), "raw-resume-analysis"));
     }
 
     @Test
@@ -92,18 +120,22 @@ class ResumeServiceTest {
         when(objectStorage.read("users/7/resumes/101.pdf", 1024))
                 .thenReturn(new ResumeObjectStorage.StoredObject(file, file.length));
 
-        ResumeService.ResumeData result = service.completeUpload(7L, 101L, "张三.pdf");
+        ResumeService.ResumeData result = service.completeUpload(
+                7L, 101L, "张三.pdf", audit());
 
         assertEquals(101L, result.id());
         assertEquals("张三.pdf", result.fileName());
         assertEquals("OCR 简历正文", result.content());
         assertEquals(ResumeSource.SYSTEM, result.source());
-        InOrder order = inOrder(objectStorage, resumeRepository, textExtractor, aiGrpcClient);
+        InOrder order = inOrder(
+                objectStorage, resumeRepository, taskRepository, textExtractor, aiGrpcClient);
         order.verify(objectStorage).read("users/7/resumes/101.pdf", 1024);
-        order.verify(resumeRepository).saveAndFlush(any(Resume.class));
         order.verify(textExtractor).extract("张三.pdf", file);
+        order.verify(resumeRepository).saveAndFlush(any(Resume.class));
+        order.verify(taskRepository).saveAndFlush(any(UserAnalysisTask.class));
         order.verify(aiGrpcClient).analyzeResume("OCR 简历正文");
         order.verify(resumeRepository).saveAndFlush(any(Resume.class));
+        order.verify(taskRepository).saveAndFlush(any(UserAnalysisTask.class));
 
         ArgumentCaptor<Resume> resume = ArgumentCaptor.forClass(Resume.class);
         verify(resumeRepository, org.mockito.Mockito.times(2)).saveAndFlush(resume.capture());
@@ -112,6 +144,10 @@ class ResumeServiceTest {
         assertEquals("416305e2e33997e1bd839d615a710e37", resume.getValue().getMd5());
         assertEquals(ResumeSource.SYSTEM, resume.getValue().getSource());
         assertEquals(0, resume.getValue().getProfessionalSkills().size());
+        assertEquals(UserAnalysisType.RESUME_EXTRACTION, savedTask.get().getTaskType());
+        assertEquals(TaskStatus.SUCCESS, savedTask.get().getTaskStatus());
+        assertEquals("raw-resume-analysis", savedTask.get().getSourceLlmResponse());
+        assertEquals(1001L, savedTask.get().getTraceId());
     }
 
     @Test
@@ -131,7 +167,8 @@ class ResumeServiceTest {
         when(resumeRepository.findByIdAndUserIdAndDeletedAtIsNull(101L, 7L))
                 .thenReturn(Optional.of(existing));
 
-        ResumeService.ResumeData result = service.completeUpload(7L, 101L, "张三.pdf");
+        ResumeService.ResumeData result = service.completeUpload(
+                7L, 101L, "张三.pdf", audit());
 
         assertEquals("已有正文", result.content());
         verify(objectStorage, never()).read(anyString(), anyLong());
@@ -150,12 +187,16 @@ class ResumeServiceTest {
         existing.setSource(ResumeSource.SYSTEM);
         when(resumeRepository.findByIdAndUserIdAndDeletedAtIsNull(101L, 7L))
                 .thenReturn(Optional.of(existing));
+        when(resumeRepository.findById(101L)).thenReturn(Optional.of(existing));
 
-        ResumeService.ResumeData result = service.completeUpload(7L, 101L, "张三.pdf");
+        ResumeService.ResumeData result = service.completeUpload(
+                7L, 101L, "张三.pdf", audit());
 
         assertEquals("已有正文", result.content());
         verify(aiGrpcClient).analyzeResume("已有正文");
         verify(resumeRepository).saveAndFlush(existing);
+        assertEquals(TaskStatus.SUCCESS, savedTask.get().getTaskStatus());
+        assertEquals("raw-resume-analysis", savedTask.get().getSourceLlmResponse());
         verify(objectStorage, never()).read(anyString(), anyLong());
     }
 
@@ -168,7 +209,7 @@ class ResumeServiceTest {
                 .thenThrow(new IllegalArgumentException("invalid PDF file"));
 
         assertThrows(IllegalArgumentException.class,
-                () -> service.completeUpload(7L, 101L, "resume.pdf"));
+                () -> service.completeUpload(7L, 101L, "resume.pdf", audit()));
 
         verify(objectStorage).delete("users/7/resumes/101.pdf");
     }
@@ -179,15 +220,16 @@ class ResumeServiceTest {
         when(objectStorage.read("users/7/resumes/101.pdf", 1024))
                 .thenReturn(new ResumeObjectStorage.StoredObject(file, file.length));
         when(aiGrpcClient.analyzeResume("OCR 简历正文"))
-                .thenThrow(new ApiException(
-                        ApiException.ErrorCode.SERVICE_UNAVAILABLE,
-                        "resume analysis unavailable"));
+                .thenThrow(new AIAnalysisException(
+                        "resume response invalid", "raw-invalid-resume"));
 
         assertThrows(ApiException.class,
-                () -> service.completeUpload(7L, 101L, "resume.pdf"));
+                () -> service.completeUpload(7L, 101L, "resume.pdf", audit()));
 
         verify(objectStorage).delete("users/7/resumes/101.pdf");
-        verify(resumeRepository, org.mockito.Mockito.times(1)).saveAndFlush(any(Resume.class));
+        verify(resumeRepository, org.mockito.Mockito.times(2)).saveAndFlush(any(Resume.class));
+        assertEquals(TaskStatus.FAILED, savedTask.get().getTaskStatus());
+        assertEquals("raw-invalid-resume", savedTask.get().getSourceLlmResponse());
     }
 
     @Test
@@ -198,7 +240,7 @@ class ResumeServiceTest {
                         "resume file exceeds size limit"));
 
         assertThrows(ApiException.class,
-                () -> service.completeUpload(7L, 101L, "resume.pdf"));
+                () -> service.completeUpload(7L, 101L, "resume.pdf", audit()));
 
         verify(objectStorage).delete("users/7/resumes/101.pdf");
     }
@@ -212,7 +254,7 @@ class ResumeServiceTest {
                 .thenThrow(new DataIntegrityViolationException("duplicate resume id"));
 
         assertThrows(DataIntegrityViolationException.class,
-                () -> service.completeUpload(7L, 101L, "resume.pdf"));
+                () -> service.completeUpload(7L, 101L, "resume.pdf", audit()));
 
         verify(objectStorage, never()).delete(anyString());
     }
@@ -282,5 +324,11 @@ class ResumeServiceTest {
                   "awards": []
                 }
                 """;
+    }
+
+    private AuditContext audit() {
+        return new AuditContext(
+                1001L, 7L, "student", "127.0.0.1",
+                "POST", "/api/auth/resumes/upload-complete");
     }
 }

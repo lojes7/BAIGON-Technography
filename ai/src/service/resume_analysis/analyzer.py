@@ -3,7 +3,9 @@
 import json
 
 from src.config import model_config
+from src.llm.exceptions import ModelResponseError
 from src.llm.spark_model import SparkModel
+from src.service.analysis_result import LLMAnalysisResult
 from src.service.resume_analysis.grounding import ground_resume_analysis
 from src.service.resume_analysis.models import (
     MAX_RESUME_CONTENT_LENGTH,
@@ -48,7 +50,9 @@ def strict_json_object(value: str) -> dict:
     return result
 
 
-def analyze_resume(chat_model: SparkModel, content: str) -> ResumeAnalysisResult:
+def analyze_resume(
+    chat_model: SparkModel, content: str
+) -> LLMAnalysisResult[ResumeAnalysisResult]:
     """调用模型后执行结构校验和原文来源校验。"""
     normalized_content = content.strip()
     if not normalized_content:
@@ -58,7 +62,7 @@ def analyze_resume(chat_model: SparkModel, content: str) -> ResumeAnalysisResult
             f"content 长度不能超过 {MAX_RESUME_CONTENT_LENGTH} 个字符"
         )
 
-    arguments = chat_model.question(
+    response = chat_model.question(
         RESUME_ANALYSIS_SYSTEM_PROMPT,
         normalized_content,
         temperature=0.1,
@@ -67,5 +71,13 @@ def analyze_resume(chat_model: SparkModel, content: str) -> ResumeAnalysisResult
         timeout_seconds=model_config.provider_long_timeout_seconds,
     )
     # 模型参数先做严格结构校验，再清空没有原文依据的字段。
-    untrusted_result = ResumeAnalysisResult.model_validate(strict_json_object(arguments))
-    return ground_resume_analysis(untrusted_result, normalized_content)
+    try:
+        untrusted_result = ResumeAnalysisResult.model_validate(
+            strict_json_object(response.output)
+        )
+        result = ground_resume_analysis(untrusted_result, normalized_content)
+    except ValueError as exception:
+        raise ModelResponseError(
+            "简历结构化响应校验失败", response.source_llm_response
+        ) from exception
+    return LLMAnalysisResult(result, response.source_llm_response)

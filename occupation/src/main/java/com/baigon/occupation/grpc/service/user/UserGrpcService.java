@@ -279,7 +279,7 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
                 request.getRequestMethod(), request.getRequestUrl());
         try {
             ResumeService.ResumeData resume = resumeService.completeUpload(
-                    request.getUserId(), request.getUploadId(), request.getFileName());
+                    request.getUserId(), request.getUploadId(), request.getFileName(), audit);
             respond(observer, CompleteResumeUploadResponse.newBuilder()
                     .setResume(resumeData(resume))
                     .build());

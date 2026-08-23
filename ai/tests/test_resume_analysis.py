@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 import unittest
 
-from pydantic import ValidationError
-
+from src.llm.exceptions import ModelResponseError
+from src.llm.spark_model import LLMResponse
 from src.service.resume_analysis import ResumeAnalysisResult, analyze_resume
 from src.service.resume_analysis.analyzer import RESUME_ANALYSIS_SYSTEM_PROMPT
 from src.service.resume_analysis.schema import RESUME_ANALYSIS_RESPONSE_FUNCTION
@@ -30,7 +30,7 @@ class FakeSparkModel:
 
     def question(self, system_prompt, user_prompt, **options):
         self.call = (system_prompt, user_prompt, options)
-        return self.arguments
+        return LLMResponse(self.arguments, self.arguments)
 
 
 class ResumeAnalysisTest(unittest.TestCase):
@@ -71,7 +71,8 @@ class ResumeAnalysisTest(unittest.TestCase):
             "专业技能：精通 Java。"
         )
 
-        result = analyze_resume(model, content)
+        analyzed = analyze_resume(model, content)
+        result = analyzed.value
 
         self.assertEqual(result.education_experience[0].major, "软件工程")
         self.assertEqual(result.education_experience[0].university_name, "")
@@ -83,6 +84,7 @@ class ResumeAnalysisTest(unittest.TestCase):
             model.call[2]["response_function"]["name"],
             "submit_resume_analysis",
         )
+        self.assertEqual(analyzed.source_llm_response, model.arguments)
 
     def test_hallucinated_record_is_removed(self):
         model_result = empty_result()
@@ -96,7 +98,9 @@ class ResumeAnalysisTest(unittest.TestCase):
             }
         ]
 
-        result = analyze_resume(FakeSparkModel(model_result), "本人没有工作经历。")
+        result = analyze_resume(
+            FakeSparkModel(model_result), "本人没有工作经历。"
+        ).value
 
         self.assertEqual(result.work_experience, [])
 
@@ -113,7 +117,7 @@ class ResumeAnalysisTest(unittest.TestCase):
         result = analyze_resume(
             FakeSparkModel(model_result),
             "2022年12月获得优秀员工奖。",
-        )
+        ).value
 
         self.assertEqual(result.awards[0].date, "")
 
@@ -123,7 +127,7 @@ class ResumeAnalysisTest(unittest.TestCase):
             {"skill_name": "Python", "proficiency": "Advanced"}
         ]
 
-        result = analyze_resume(FakeSparkModel(model_result), "技能：Python。")
+        result = analyze_resume(FakeSparkModel(model_result), "技能：Python。").value
 
         self.assertEqual(result.professional_skills[0].proficiency, "")
 
@@ -133,18 +137,18 @@ class ResumeAnalysisTest(unittest.TestCase):
             {"skill_name": "Java", "proficiency": "Skilled"}
         ]
 
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(ModelResponseError):
             analyze_resume(FakeSparkModel(model_result), "熟练使用 Java。")
 
     def test_missing_or_extra_root_field_is_rejected(self):
         missing = empty_result()
         missing.pop("awards")
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(ModelResponseError):
             analyze_resume(FakeSparkModel(missing), "简历原文")
 
         extra = empty_result()
         extra["summary"] = "擅自生成的摘要"
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(ModelResponseError):
             analyze_resume(FakeSparkModel(extra), "简历原文")
 
     def test_wrong_scalar_type_and_duplicate_keys_are_rejected(self):
@@ -152,7 +156,7 @@ class ResumeAnalysisTest(unittest.TestCase):
         wrong_type["professional_skills"] = [
             {"skill_name": 123, "proficiency": ""}
         ]
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(ModelResponseError):
             analyze_resume(FakeSparkModel(wrong_type), "技能 123")
 
         model = FakeSparkModel(empty_result())
@@ -166,8 +170,9 @@ class ResumeAnalysisTest(unittest.TestCase):
               "awards": []
             }
         """
-        with self.assertRaisesRegex(ValueError, "重复字段"):
+        with self.assertRaises(ModelResponseError) as raised:
             analyze_resume(model, "简历原文")
+        self.assertEqual(raised.exception.source_llm_response, model.arguments)
 
     def test_schema_and_prompt_forbid_generated_text(self):
         parameters = RESUME_ANALYSIS_RESPONSE_FUNCTION["parameters"]
