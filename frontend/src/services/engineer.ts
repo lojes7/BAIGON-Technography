@@ -8,8 +8,9 @@ import type {
   ApiResponse, PaginatedData,
   CrawlerResult, CrawlerStatus,
   DataSourceItem, DataSourceDetail, SourceJobDetail,
-  DataSourceListParams,
+  DataSourceListParams, IngestJob, IngestResult,
 } from "../types/api";
+import { parseJson } from "./lossless";
 
 const BASE = "/api/auth";
 const hdrs = () => ({
@@ -19,13 +20,21 @@ const hdrs = () => ({
 
 async function request<T>(url: string, init?: RequestInit): Promise<ApiResponse<T>> {
   const res = await fetch(url, init);
+  // 与 request.ts 拦截器行为一致：401 时清除会话并跳转登录页
+  if (res.status === 401) {
+    localStorage.removeItem("baigon_token");
+    localStorage.removeItem("baigon_user");
+    window.location.href = "/login";
+    throw new Error("登录已过期，请重新登录");
+  }
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
     // 新版错误响应仅含 { code: <httpStatus> }，不携带消息
     const msg = `请求失败 (${res.status})`;
     throw new Error(msg);
   }
-  return res.json();
+  // 用 lossless 解析，避免雪花 ID（int64）被 JSON.parse 丢精度
+  const text = await res.text();
+  return parseJson(text) as ApiResponse<T>;
 }
 
 // ═══════════════════ 爬虫操作 ═══════════════════
@@ -49,6 +58,34 @@ export async function stopCrawler() {
   return request<{ status: string }>(`${BASE}/crawl`, {
     method: "DELETE",
     headers: hdrs(),
+  });
+}
+
+// 模拟采集：注入配置好的岗位数据（走完整落库/清洗/Kafka 流程，不真爬）
+export async function ingestData(jobs: IngestJob[]) {
+  // 网关 ingestedJob 结构体用 camelCase json tag（见 gateway/internal/handler/crawler.go），
+  // 而 IngestJob 类型为 snake_case，提交前做一次字段名转换，否则多词字段（如 job_name）会丢失。
+  const payload = jobs.map((j) => ({
+    publishDate: j.publish_date,
+    sourcePlatform: j.source_platform,
+    sourceUrl: j.source_url,
+    city: j.city,
+    tags: j.tags,
+    major: j.major,
+    nature: j.nature,
+    salary: j.salary,
+    jobName: j.job_name,
+    companyName: j.company_name,
+    companySize: j.company_size,
+    province: j.province,
+    education: j.education,
+    experience: j.experience,
+    jobDescription: j.job_description,
+  }));
+  return request<IngestResult>(`${BASE}/crawl/ingest`, {
+    method: "POST",
+    headers: hdrs(),
+    body: JSON.stringify({ jobs: payload }),
   });
 }
 

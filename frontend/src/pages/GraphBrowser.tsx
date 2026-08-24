@@ -8,7 +8,7 @@ import { useAuth } from "../auth/AuthContext";
 import { getAbilityGraph, getGraphNodeDetail } from "../services/analytics";
 import type { AbilityGraphData, GraphNodeDetail } from "../types/api";
 import type { GraphNode as GraphNodeType } from "../types";
-import { PageHeader, Btn, Card, Divider, StatusBadge, ConfidenceBadge } from "../components/ui";
+import { PageHeader, Btn, Card, Divider, StatusBadge } from "../components/ui";
 import EvidenceDrawer from "../components/overlay/EvidenceDrawer";
 import GraphNode from "../components/overlay/GraphNode";
 
@@ -73,9 +73,9 @@ function GraphBrowserPage() {
   const [evidenceOpen, setEvidenceOpen] = useState(false);
 
   // 图谱筛选参数
-  const [cityId, setCityId] = useState("");
-  const [majorId, setMajorId] = useState("");
-  const [period, setPeriod] = useState(DEFAULT_PERIOD);
+  const [cityId] = useState("");
+  const [majorId] = useState("");
+  const [period] = useState(DEFAULT_PERIOD);
 
   useEffect(() => {
     let cancelled = false;

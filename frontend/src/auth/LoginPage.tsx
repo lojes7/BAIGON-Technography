@@ -2,8 +2,10 @@ import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
+import { register } from "../services/auth";
 import T from "../constants/tokens";
-import { Eye, EyeOff, User, Lock, LogIn, ArrowRight, Network, TrendingUp, Target, Briefcase, Layers, GitBranch } from "lucide-react";
+import { Eye, EyeOff, User, Lock, LogIn, ArrowRight, Network, TrendingUp, Target } from "lucide-react";
+import logo from "../assets/vector_color.svg";
 
 type Mode = "login" | "register";
 
@@ -68,45 +70,11 @@ export default function LoginPage() {
           <div style={{ position: "absolute", top: 40, right: 40, width: 120, height: 120, borderRadius: "50%", background: "rgba(49,93,109,0.2)" }} />
           <div style={{ position: "absolute", bottom: 60, left: 30, width: 80, height: 80, borderRadius: "50%", background: "rgba(49,93,109,0.15)" }} />
           
-          {/* 百工谱相关的知识图谱/数据可视化图标 */}
+          {/* 百工谱 logo */}
           <div style={{ marginBottom: 24, position: "relative", zIndex: 1 }}>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
-              {/* 中心节点 - 岗位 */}
-              <div style={{ width: 56, height: 56, borderRadius: "50%", background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)" }}>
-                <Briefcase size={28} color="white" />
-              </div>
-              
-              {/* 连接线 */}
-              <div style={{ width: 2, height: 24, background: "rgba(255,255,255,0.3)" }} />
-              
-              {/* 第二层 - 技能和能力 */}
-              <div style={{ display: "flex", gap: 12 }}>
-                <div style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Target size={20} color="white" />
-                </div>
-                <div style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Layers size={20} color="white" />
-                </div>
-                <div style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <GitBranch size={20} color="white" />
-                </div>
-              </div>
-              
-              {/* 连接线 */}
-              <div style={{ width: 2, height: 20, background: "rgba(255,255,255,0.3)" }} />
-              
-              {/* 第三层 - 趋势分析 */}
-              <div style={{ display: "flex", gap: 8 }}>
-                <div style={{ width: 32, height: 32, borderRadius: "50%", background: "rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <TrendingUp size={16} color="white" />
-                </div>
-                <div style={{ width: 32, height: 32, borderRadius: "50%", background: "rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Network size={16} color="white" />
-                </div>
-              </div>
-            </div>
+            <img src={logo} alt="百工谱" style={{ width: 68, height: 68, display: "block" }} />
           </div>
-          
+
           <h3 style={{ fontSize: 24, fontWeight: 700, color: "white", marginBottom: 12, textAlign: "center", zIndex: 1 }}>
             百工谱
           </h3>
@@ -116,15 +84,15 @@ export default function LoginPage() {
           
           {/* 平台特色描述 */}
           <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", zIndex: 1 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", background: "rgba(255,255,255,0.1)", borderRadius: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, padding: "10px 16px", background: "rgba(255,255,255,0.1)", borderRadius: 8 }}>
               <Network size={18} color="rgba(255,255,255,0.9)" />
               <span style={{ fontSize: 13, color: "rgba(255,255,255,0.9)" }}>岗位能力知识图谱</span>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", background: "rgba(255,255,255,0.1)", borderRadius: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, padding: "10px 16px", background: "rgba(255,255,255,0.1)", borderRadius: 8 }}>
               <TrendingUp size={18} color="rgba(255,255,255,0.9)" />
               <span style={{ fontSize: 13, color: "rgba(255,255,255,0.9)" }}>技能演化趋势分析</span>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", background: "rgba(255,255,255,0.1)", borderRadius: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, padding: "10px 16px", background: "rgba(255,255,255,0.1)", borderRadius: 8 }}>
               <Target size={18} color="rgba(255,255,255,0.9)" />
               <span style={{ fontSize: 13, color: "rgba(255,255,255,0.9)" }}>人岗匹配智能诊断</span>
             </div>
@@ -145,9 +113,7 @@ export default function LoginPage() {
             </div>
             {/* 移动端 Logo */}
             <div className="md:hidden flex items-center gap-3 mb-6">
-              <div style={{ width: 40, height: 40, borderRadius: 10, background: T.teal, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <span style={{ color: T.white, fontSize: 18, fontWeight: 700 }}>百</span>
-              </div>
+              <img src={logo} alt="百工谱" style={{ width: 36, height: 36 }} />
               <span className="text-[18px] font-semibold" style={{ color: T.ink }}>百工谱</span>
             </div>
 

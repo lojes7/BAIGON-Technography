@@ -2,11 +2,11 @@ import T from "../../constants/tokens";
 
 function Btn({
   children, variant = "primary", onClick, size = "md",
-  icon: Icon, disabled = false,
+  icon: Icon, disabled = false, title,
 }: {
   children?: React.ReactNode; variant?: "primary" | "secondary" | "ghost" | "danger";
   onClick?: () => void; size?: "sm" | "md";
-  icon?: React.ComponentType<{ size?: number }>; disabled?: boolean;
+  icon?: React.ComponentType<{ size?: number }>; disabled?: boolean; title?: string;
 }) {
   const sz = size === "sm" ? "text-[12px] px-2.5 py-1.5 gap-1" : "text-[13px] px-3 py-[7px] gap-1.5";
   const iconSz = size === "sm" ? 12 : 14;
@@ -22,6 +22,7 @@ function Btn({
       style={{ ...styles[variant], opacity: disabled ? 0.45 : 1 }}
       onClick={onClick}
       disabled={disabled}
+      title={title}
     >
       {Icon && <Icon size={iconSz} />}
       {children}

@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { Plus, Download, CheckCircle, AlertTriangle } from "lucide-react";
+import { Plus, CheckCircle, AlertTriangle } from "lucide-react";
 import T from "../constants/tokens";
 const exportBatches = [
   { id: "EXP-20260701", range: "2025H2—2026H1", tables: 9, records: "12,486", status: "succeeded", date: "2026-07-01" },

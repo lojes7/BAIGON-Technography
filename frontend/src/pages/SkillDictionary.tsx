@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { Upload, Plus, Search, ChevronDown, ChevronLeft, Pencil, AlertTriangle, Tag, Trash2, CheckCircle } from "lucide-react";
+import { Upload, Plus, Search, ChevronDown, ChevronLeft, Pencil, AlertTriangle, Trash2, CheckCircle } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import T from "../constants/tokens";
 import { useAuth } from "../auth/AuthContext";
@@ -21,7 +21,7 @@ function SkillDictionaryPage() {
   const [activeTab, setActiveTab] = useState("基本信息");
   const [skillModal, setSkillModal] = useState<null | "create" | "edit">(null);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const fetchSkills = () => {

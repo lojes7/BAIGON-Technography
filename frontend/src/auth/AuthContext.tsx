@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
 import { type RoleKey } from "./roles";
 import { login as apiLogin, type LoginResult } from "../services/auth";
+import { isTokenExpired } from "./token";
 
 // 新版角色映射（不再有 DATA_ENGINEER）
 const ROLE_MAP: Record<string, RoleKey> = {
@@ -30,10 +31,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // 从 localStorage 恢复用户会话（新版无 GET /api/auth/me）
     try {
       const stored = localStorage.getItem("baigon_user");
-      return stored ? JSON.parse(stored) : null;
+      if (!stored) return null;
+      // token 已过期或缺失时同步清理会话，避免带过期 token 进入受保护页面
+      if (isTokenExpired(localStorage.getItem("baigon_token"))) {
+        localStorage.removeItem("baigon_token");
+        localStorage.removeItem("baigon_user");
+        return null;
+      }
+      return JSON.parse(stored);
     } catch { return null; }
   });
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem("baigon_token"));
+  const [token, setToken] = useState<string | null>(() => {
+    const stored = localStorage.getItem("baigon_token");
+    return isTokenExpired(stored) ? null : stored;
+  });
 
   const login = useCallback(async (uid: string, password: string) => {
     const data: LoginResult = await apiLogin(uid, password);

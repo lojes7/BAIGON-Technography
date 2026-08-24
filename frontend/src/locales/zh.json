@@ -30,7 +30,20 @@
     "name": "名称",
     "count": "数量",
     "unitItem": "项",
-    "unitRecord": "条"
+    "unitRecord": "条",
+    "copy": "复制"
+  },
+  "diff": {
+    "original": "原始数据",
+    "cleaned": "清洗后数据"
+  },
+  "embedding": {
+    "majorName": "专业名称",
+    "occupationName": "职业名称",
+    "start": "向量化",
+    "started": "向量化任务已启动",
+    "embedding": "正在向量化…",
+    "progress": "{{label}}向量化进度"
   },
   "nav": {
     "brand": "百工谱",
@@ -38,18 +51,21 @@
     "dashboard": "工作台",
     "dataCenter": "数据中心",
     "dataSources": "数据源",
-    "importBatches": "导入批次",
+    "importBatches": "数据导入",
     "autoImport": "自动导入",
-    "rawRecords": "原始记录",
+    "rawRecords": "数据复核",
     "aiProcessing": "AI处理",
     "extractionTasks": "抽取任务",
     "reviewQueue": "复核队列",
     "aiAnalyses": "AI分析记录",
+    "jobAnalysis": "岗位分析审核",
     "processingErrors": "处理异常",
     "dictionaries": "标准词典",
-    "jobDict": "岗位词典",
+    "jobDict": "职业大典",
+    "jobs": "岗位查询",
     "skillDict": "能力词典",
     "taxonomy": "分类体系",
+    "discipline": "学科门类",
     "graph": "能力图谱",
     "graphBrowser": "图谱浏览",
     "graphSnapshots": "图谱快照",
@@ -73,6 +89,7 @@
     "auditLog": "审计日志",
     "personalCenter": "个人中心",
     "myResume": "我的简历",
+    "mySkills": "我的能力",
     "myStudents": "我的学生",
     "accountSettings": "账号设置",
     "jobExplore": "岗位探索",
@@ -315,8 +332,8 @@
       "noLogs": "暂无日志"
     },
     "rawRecords": {
-      "title": "原始记录",
-      "desc": "导入系统的原始岗位和培养数据，经脱敏处理",
+      "title": "数据复核",
+      "desc": "对清洗后的岗位数据进行人工复核，并追溯原始记录",
       "colId": "记录编号",
       "colSource": "数据来源",
       "colPlatform": "来源平台",
@@ -338,6 +355,9 @@
       "reviewDate": "审核时间",
       "createDate": "创建时间",
       "viewOriginal": "查看原始链接",
+      "viewOriginalRecord": "查看原始记录",
+      "diffTitle": "原始数据对比",
+      "back": "返回",
       "rawData": "原始数据",
       "jobName": "岗位名称",
       "companyName": "公司名称",
@@ -349,18 +369,27 @@
       "jobMajor": "专业要求",
       "jobNature": "企业性质",
       "jobTags": "技能标签",
+      "jobCompanySize": "公司规模",
+      "jobSourceUrl": "来源链接",
       "jobConfidence": "置信度",
       "jobInfo": "职位信息",
       "jobDesc": "职位描述",
       "recruitmentPosition": "招聘岗位",
       "reviewActions": "审核操作",
-      "approve": "审核通过",
+      "approve": "通过",
       "modifyConfirm": "修改并确认通过",
       "reject": "驳回",
       "crawlerRunning": "数据爬虫正在运行，列表每 5 秒自动刷新...",
       "reviewApproved": "审核已通过",
       "reviewRejected": "已驳回",
-      "reviewUpdated": "已更新"
+      "reviewUpdated": "已更新",
+      "noDiffData": "暂无原始/清洗后对比数据",
+      "editFields": "修改岗位信息",
+      "editHint": "保存后将以修改后的内容通过复核，并写入岗位库",
+      "edit": "编辑",
+      "cancelEdit": "取消编辑",
+      "saveEdit": "保存",
+      "saving": "保存中…"
     },
     "dataExport": {
       "title": "数据导出",
@@ -392,8 +421,8 @@
       "colActions": "操作"
     },
     "jobDict": {
-      "title": "岗位词典",
-      "desc": "标准化岗位名称及其分类体系",
+      "title": "职业大典",
+      "desc": "职业大类 → 中类 → 小类 → 职业的标准化职业目录，支持名称向量化",
       "create": "新建标准岗位",
       "colName": "标准岗位名称",
       "colEN": "英文名称",
@@ -505,6 +534,12 @@
       "industryScope": "产业范围",
       "sourceDesc": "来源说明"
     },
+    "dataImport": {
+      "desc": "手动填写或上传 Excel 注入岗位数据，走完整落库与清洗流程",
+      "ingestTitle": "模拟采集（注入数据）",
+      "ingestDesc": "提交配置好的岗位数据，走与爬虫相同的落库、清洗、Kafka 流程（不真爬）",
+      "ingestBtn": "模拟采集（注入数据）"
+    },
     "taxonomy": {
       "title": "分类体系",
       "desc": "产业 → 岗位族 → 岗位 → 能力类型的层级分类结构",
@@ -523,6 +558,10 @@
       "nodeNameZh": "节点名称（中文）",
       "nodeNameEn": "英文名称",
       "willCreate": "将新建节点："
+    },
+    "discipline": {
+      "title": "学科门类",
+      "desc": "学科门类 → 专业类 → 专业的学科目录，支持专业名称向量化"
     },
     "aiExtraction": {
       "title": "AI抽取任务",
@@ -853,7 +892,10 @@
       "extractedSkills": "提取技能",
       "projectExp": "项目经历",
       "confirmUpdate": "确认并更新我的技能画像",
-      "reparse": "重新解析"
+      "reparse": "重新解析",
+      "editTitle": "编辑简历字段",
+      "sourceSystem": "系统解析",
+      "sourceEdited": "手动编辑"
     },
     "accountSettings": {
       "title": "账号设置",

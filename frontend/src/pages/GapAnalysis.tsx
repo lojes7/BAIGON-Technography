@@ -8,7 +8,6 @@ import GapDetailDrawer from "../components/overlay/GapDetailDrawer";
 
 function GapAnalysisPage() {
   const { t } = useTranslation();
-  const [hovered, setHovered] = useState<string | null>(null);
   const [drawerSkill, setDrawerSkill] = useState<typeof gapData[0] | null>(null);
 
   const quadrantColors = (x: number, y: number) => {
@@ -52,7 +51,7 @@ function GapAnalysisPage() {
                 <Tooltip
                   cursor={{ strokeDasharray: "3 3" }}
                   contentStyle={{ fontSize: 12, border: `1px solid ${T.border}`, borderRadius: 6 }}
-                  formatter={(value: number, name: string) => [value, name === "demand" ? "需求分" : name === "supply" ? "供给分" : "样本量"]}
+                  formatter={(value: unknown, name: unknown) => [String(value ?? ""), name === "demand" ? "需求分" : name === "supply" ? "供给分" : "样本量"]}
                   labelFormatter={() => ""}
                   content={({ payload }) => {
                     if (!payload?.length) return null;

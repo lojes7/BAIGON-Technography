@@ -1,10 +1,10 @@
 const T = {
-  ink: "#122E8A",
-  teal: "#122E8A",
+  ink: "#19324D",
+  teal: "#315D6D",
   bg: "#F5EFEA",
   cloud: "#EDE6E0",
   white: "#FFFFFF",
-  border: "rgba(18,46,138,0.1)",
+  border: "rgba(25,50,77,0.1)",
   emerging: "#16856B",
   stable: "#3E6FA3",
   declining: "#B26A3C",

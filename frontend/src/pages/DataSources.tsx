@@ -1,11 +1,11 @@
 import { useTranslation } from "react-i18next";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ExternalLink, Eye } from "lucide-react";
+import { Eye } from "lucide-react";
 import T from "../constants/tokens";
 import { getDataSourceList, approveReview, rejectReview } from "../services/engineer";
 import type { DataSourceItem } from "../types/api";
-import { PageHeader, Card, MetricCard, StatusBadge } from "../components/ui";
+import { PageHeader, Card, MetricCard } from "../components/ui";
 import { toast } from "sonner";
 
 function DataSourcesPage() {
@@ -24,7 +24,7 @@ function DataSourcesPage() {
       pageSize: 20,
       reviewStatus: filterStatus || undefined,
     })
-      .then((res) => { setSources(res.data.items); setTotal(res.data.total); })
+      .then((res) => { setSources(res.data.items ?? []); setTotal(res.data.total ?? 0); })
       .catch(() => {})
       .finally(() => setLoading(false));
   };
@@ -65,8 +65,8 @@ function DataSourcesPage() {
 
       <div className="grid grid-cols-3 gap-4">
         <MetricCard title="岗位总数" value={loading ? "—" : String(total)} />
-        <MetricCard title="来源平台数" value={loading ? "—" : String(new Set(sources.map(s => s.sourcePlatform)).size)} />
-        <MetricCard title="待审核" value={loading ? "—" : String(sources.filter(s => s.reviewStatus === "PENDING").length)} />
+        <MetricCard title="来源平台数" value={loading ? "—" : String(new Set(sources.map(s => s.source_platform)).size)} />
+        <MetricCard title="待审核" value={loading ? "—" : String(sources.filter(s => s.review_status === "PENDING").length)} />
       </div>
 
       {/* 筛选栏 */}
@@ -102,20 +102,20 @@ function DataSourcesPage() {
               {sources.map((s) => (
                 <tr key={s.id} className="hover:bg-gray-50 transition-colors" style={{ borderTop: `1px solid ${T.cloud}` }}>
                   <td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{s.id}</td>
-                  <td className="px-4 py-3 font-medium" style={{ color: T.ink }}>{s.jobName || "—"}</td>
-                  <td className="px-4 py-3" style={{ color: T.ink }}>{s.companyName || "—"}</td>
+                  <td className="px-4 py-3 font-medium" style={{ color: T.ink }}>{s.job_name || "—"}</td>
+                  <td className="px-4 py-3" style={{ color: T.ink }}>{s.company_name || "—"}</td>
                   <td className="px-4 py-3">
-                    <span className="px-2 py-0.5 rounded" style={{ background: T.cloud, color: T.info }}>{s.sourcePlatform}</span>
+                    <span className="px-2 py-0.5 rounded" style={{ background: T.cloud, color: T.info }}>{s.source_platform}</span>
                   </td>
-                  <td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{s.publishDate?.slice(0, 10) || "—"}</td>
-                  <td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{s.createdAt?.slice(0, 10) || "—"}</td>
+                  <td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{s.publish_date?.slice(0, 10) || "—"}</td>
+                  <td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{s.created_at?.slice(0, 10) || "—"}</td>
                   <td className="px-4 py-3">
                     <span className="px-2 py-0.5 rounded text-[12px]"
                       style={{
-                        background: s.reviewStatus === "PASSED" ? "#dcfce7" : s.reviewStatus === "REJECTED" ? "#fee2e2" : "#fef9c3",
-                        color: s.reviewStatus === "PASSED" ? "#166534" : s.reviewStatus === "REJECTED" ? "#991b1b" : "#854d0e",
+                        background: s.review_status === "PASSED" ? "#dcfce7" : s.review_status === "REJECTED" ? "#fee2e2" : "#fef9c3",
+                        color: s.review_status === "PASSED" ? "#166534" : s.review_status === "REJECTED" ? "#991b1b" : "#854d0e",
                       }}>
-                      {reviewStatusLabel(s.reviewStatus)}
+                      {reviewStatusLabel(s.review_status)}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -124,7 +124,7 @@ function DataSourcesPage() {
                         onClick={() => nav(`/data-sources?detail=${s.id}`)}>
                         <Eye size={12} />详情
                       </button>
-                      {s.reviewStatus === "PENDING" && (
+                      {s.review_status === "PENDING" && (
                         <>
                           <button className="text-[12px] font-medium" style={{ color: "#166534" }}
                             onClick={() => handleApprove(s.id)}>通过</button>

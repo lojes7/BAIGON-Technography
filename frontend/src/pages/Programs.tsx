@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import { Upload, Pencil, AlertCircle, AlertTriangle, Info } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend } from "recharts";
 import T from "../constants/tokens";
 import { useAuth } from "../auth/AuthContext";
 import { PageHeader, Btn, Card, MetricCard, StatusBadge } from "../components/ui";

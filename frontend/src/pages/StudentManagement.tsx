@@ -1,10 +1,10 @@
 import { useTranslation } from "react-i18next";
 import { useState, useRef } from "react";
 import { toast } from "sonner";
-import { Upload, Search, ChevronDown, X, FileText } from "lucide-react";
+import { Upload, Search, ChevronDown, X } from "lucide-react";
 import T from "../constants/tokens";
 import { importUsers } from "../services/student-affair";
-import { PageHeader, Btn, Card, StatusBadge } from "../components/ui";
+import { PageHeader, Btn, Card } from "../components/ui";
 
 const students = [
   { id: "S1001", name: "张三", major: "计算机科学", grade: "2023", class: "计科1", advisor: "李老师", matchScore: "72%", lastDiagnosis: "2026-07-12", hasResume: true },

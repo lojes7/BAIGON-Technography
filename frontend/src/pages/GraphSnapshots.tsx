@@ -12,8 +12,8 @@ const DEFAULT_COMPARE_PERIOD = "2026H1";
 
 function GraphSnapshotsPage() {
   const { t } = useTranslation();
-  const [base, setBase] = useState(DEFAULT_BASE_PERIOD);
-  const [compare, setCompare] = useState(DEFAULT_COMPARE_PERIOD);
+  const [base] = useState(DEFAULT_BASE_PERIOD);
+  const [compare] = useState(DEFAULT_COMPARE_PERIOD);
   const [data, setData] = useState<GraphComparisonData | null>(null);
   const [loading, setLoading] = useState(true);
 

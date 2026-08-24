@@ -174,22 +174,6 @@ export interface StudentAffairItem {
   created_at: string;
 }
 
-export interface ResumeItem {
-  resume_id: string;
-  file_name: string;
-  file_size: number;
-  file_path: string;
-  uploaded_at: string;
-}
-
-export interface ResumeUploadResult {
-  resume_id: string;
-  file_name: string;
-  file_size: number;
-  file_path: string;
-  uploaded_at: string;
-}
-
 export interface ImportError {
   row: number;
   uid: string;
@@ -543,7 +527,7 @@ export interface ComboChange {
 export interface ComboEvidenceJob {
   job_id: string;
   job_name: string;
-  skill_ids: number[];
+  skill_ids: string[];
   cooccurrence_count: number;
   sample_count: number;
 }
@@ -572,61 +556,61 @@ export interface CrawlerStatus {
   message: string;
 }
 
-// 清洗后岗位列表摘要（新版字段为 camelCase）
+// 清洗后岗位列表摘要（后端返回 snake_case）
 export interface DataSourceItem {
   id: string;
-  jobName: string;
-  companyName: string;
-  sourcePlatform: string;
-  publishDate: string;
-  createdAt: string;
-  reviewStatus: string;
+  job_name: string;
+  company_name: string;
+  source_platform: string;
+  publish_date: string;
+  created_at: string;
+  review_status: string;
 }
 
-// 清洗后岗位详情（全字段）
+// 清洗后岗位详情（全字段，后端 snake_case）
 export interface DataSourceDetail {
   id: string;
-  traceId: string;
-  publishDate: string;
-  sourcePlatform: string;
-  sourceUrl: string;
+  trace_id: string;
+  publish_date: string;
+  source_platform: string;
+  source_url: string;
   city: string;
   tags: string;
   major: string;
   nature: string;
   salary: string;
-  jobName: string;
-  companyName: string;
-  companySize: string;
+  job_name: string;
+  company_name: string;
+  company_size: string;
   province: string;
   education: string;
   experience: string;
-  jobDescription: string;
-  reviewStatus: string;
-  reviewedAt: string | null;
-  reviewedBy: string | null;
+  job_description: string;
+  review_status: string;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
 }
 
-// 原始记录（追溯用）
+// 原始记录（追溯用，后端 snake_case）
 export interface SourceJobDetail {
   id: string;
-  traceId: string;
-  publishDate: string;
-  sourcePlatform: string;
-  sourceUrl: string;
+  trace_id: string;
+  publish_date: string;
+  source_platform: string;
+  source_url: string;
   city: string;
   tags: string;
   major: string;
   nature: string;
   salary: string;
-  jobName: string;
-  companyName: string;
-  companySize: string;
+  job_name: string;
+  company_name: string;
+  company_size: string;
   province: string;
   education: string;
   experience: string;
-  jobDescription: string;
-  cleanStatus: string;
+  job_description: string;
+  clean_status: string;
 }
 
 // 复核响应
@@ -643,25 +627,82 @@ export interface DataSourceListParams {
   publishDateTo?: string;
 }
 
-// ── 学生简历模块 ──
+// ── 模拟采集（ingest）模块 ──
 
-export interface ResumeDetail {
-  resume_id: string;
-  file_name: string;
-  file_size: number;
-  file_path: string;
-  text: string;
-  uploaded_at: string;
-  review_status: string;
-  reviewed_at: string | null;
-  education_experiences: { school_name: string; degree: string; major: string }[];
-  work_experiences: { company_name: string; position: string; project_experience: { project_name: string; position: string; project_description: string }[] }[];
-  project_experiences: { project_name: string; position: string; project_description: string }[];
-  professional_skills: { skill_name: string; skill_description: string }[];
-  awards: { award_name: string; award_description: string }[];
+// 单条注入岗位数据（字段与爬虫产出 JobRecord 一致，snake_case）
+export interface IngestJob {
+  publish_date?: string;
+  source_platform?: string;
+  source_url?: string;
+  city?: string;
+  tags?: string;
+  major?: string;
+  nature?: string;
+  salary?: string;
+  job_name: string;
+  company_name?: string;
+  company_size?: string;
+  province?: string;
+  education?: string;
+  experience?: string;
+  job_description?: string;
 }
 
-export type UpdateResumeBody = Pick<ResumeDetail, 'education_experiences' | 'work_experiences' | 'project_experiences' | 'professional_skills' | 'awards'>;
+// 模拟采集响应
+export interface IngestResult {
+  count: string;
+  trace_id: string;
+  status: string;
+}
+
+// ── 专业职业管理（occupation）模块 ──
+
+// 目录项（学科门类 / 专业类 / 职业大类 / 职业中类 / 职业小类）
+export interface CatalogItem {
+  id: string; // 雪花 ID int64，lossless 解析为字符串避免精度丢失
+  code: string;
+  name: string;
+}
+
+// 可向量化目录项（专业 / 职业），is_embed 表示名称是否已完成向量化
+export interface EmbeddableCatalogItem extends CatalogItem {
+  is_embed: boolean;
+}
+
+// 目录分页响应（gateway 返回 pageSize，字段为 camelCase）
+export interface CatalogPage<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+// 向量化进度（embedded / total）
+export interface EmbeddingProgress {
+  embedded: number;
+  total: number;
+}
+
+// 专业与职业向量化进度汇总
+export interface EmbeddingProgressResponse {
+  majors: EmbeddingProgress;
+  occupations: EmbeddingProgress;
+}
+
+// 向量化任务状态（gateway 返回 camelCase）
+export interface EmbeddingTaskStatus {
+  status: string;
+  traceId: string;
+  total: number;
+  processed: number;
+  succeeded: number;
+  failed: number;
+  message: string;
+  startedAt: string;
+  finishedAt: string;
+}
+
+// ── 学生能力分析模块 ──
 
 export interface AnalysisRequest {
   major_id: string;
@@ -731,4 +772,310 @@ export interface TeacherStudentItem {
   status: string;
   department_id: string;
   created_at: string;
+}
+
+// ── 8.1 当前用户资料（GET /api/auth/me）──
+// 扁平用户对象：基础字段为 camelCase，组织字段为 snake_case（后端 userData 混合返回）
+export interface CurrentUser {
+  id: string; // 雪花 ID int64，lossless 解析为字符串
+  uid: string;
+  name: string;
+  role: string;
+  status: string;
+  university_id: string | number; // 未归属为 0，否则雪花 ID
+  university_name: string;
+  school_id: string | number;
+  school_name: string;
+  department_id: string | number;
+  department_name: string;
+}
+
+// ── 8.2 用户管理（仅 ADMIN）──
+
+// 分页查询用户请求体（POST /api/auth/users）
+export interface ListUsersParams {
+  page?: number; // 从 0 开始
+  pageSize?: number;
+  name?: string; // 包含匹配
+  role?: string; // 精确匹配
+  universityId?: number;
+  schoolId?: number;
+  departmentId?: number;
+}
+
+// 组织目录项（高校 / 学院 / 系部，统一返回 id + name）
+export interface OrganizationItem {
+  id: string;
+  name: string;
+}
+
+// ── 8.3 用户简历直传（已登录用户）──
+
+// 熟练度枚举（后端 ai-service 契约：空串或四档）
+export type ResumeProficiency = "" | "Basic" | "Familiar" | "Advanced" | "Expert";
+
+// 教育经历
+export interface EducationExperience {
+  major: string;
+  university_name: string;
+  start_date: string; // YYYY-MM-DD 或空串
+  end_date: string;
+  description: string;
+}
+
+// 工作经历
+export interface WorkExperience {
+  occupation_name: string;
+  company: string;
+  start_date: string;
+  end_date: string;
+  description: string;
+}
+
+// 项目经历
+export interface ProjectExperience {
+  project_name: string;
+  start_date: string;
+  end_date: string;
+  description: string;
+}
+
+// 专业技能
+export interface ProfessionalSkill {
+  skill_name: string;
+  proficiency: ResumeProficiency;
+}
+
+// 获奖
+export interface ResumeAward {
+  award_name: string;
+  date: string; // YYYY-MM-DD 或空串
+  description: string;
+}
+
+// 五类结构化字段（与 ai-service format.json 完全一致）
+export interface ResumeFields {
+  education_experience: EducationExperience[];
+  work_experience: WorkExperience[];
+  project_experience: ProjectExperience[];
+  professional_skills: ProfessionalSkill[];
+  awards: ResumeAward[];
+}
+
+// 简历对象（GET /api/auth/resumes / 完成上传 / 编辑后返回）
+// EDITED 记录不绑定文件，fileName/fileSize/content 允许为 null
+export interface ResumeData {
+  id: string;
+  fileName: string | null;
+  fileSize: number | null;
+  content: string | null; // OCR 提取文字
+  createdAt: string;
+  fields: ResumeFields; // 校验并规范化后的五类结构化字段
+  source: string; // SYSTEM / EDITED
+}
+
+// 创建直传地址请求体（POST /api/auth/resumes/upload-url）
+export interface CreateResumeUploadParams {
+  fileName: string; // PDF / DOCX
+  fileSize: number; // 最大 10 MiB
+}
+
+// 直传地址响应
+export interface ResumeUploadUrlResult {
+  uploadId: string | number; // 自增主键，number（不超 2^53，安全）
+  uploadUrl: string;
+  method: string;
+  contentType: string;
+  expiresAt: string;
+}
+
+// 完成上传请求体（POST /api/auth/resumes/upload-complete）
+export interface CompleteResumeUploadParams {
+  uploadId: string | number;
+  fileName: string;
+}
+
+// 编辑简历请求体（PUT /api/auth/resumes）
+export interface EditMyResumeParams {
+  content?: string; // 可选正文
+  fields: ResumeFields; // 完整五类字段
+}
+
+// ── 8.4 岗位分析审核（ADMIN / DATA_REVIEWER）──
+
+// 岗位分析任务摘要（分页列表项）
+export interface JobAnalysisTaskSummary {
+  id: string;
+  jobId: string;
+  traceId: string;
+  jobName: string;
+  taskStatus: string;
+  reviewStatus: string;
+  selectedOccupationId: string | number;
+  modelName: string;
+  errorMsg: string;
+  attempts: number;
+  createdAt: string;
+  reviewedAt: string | null;
+  reviewedBy: string | number;
+  occupationAnalysisStatus: string;
+  jdAnalysisStatus: string;
+}
+
+// 职业候选
+export interface JobAnalysisCandidate {
+  occupationId: string | number;
+  occupationName: string;
+  rank: number;
+  similarity: number;
+}
+
+// 岗位技能分析结果
+export interface JobAnalysisResult {
+  id: string;
+  jobId: string;
+  skillName: string;
+  skillProficiency: string;
+  evidence: string;
+  rank: number;
+  reviewStatus: string;
+  reviewAction: string;
+  reviewedSkillName: string;
+  reviewedSkillProficiency: string;
+  reviewedEvidence: string;
+  reviewedAt: string | null;
+  reviewedBy: string | number;
+}
+
+// 岗位分析任务详情
+export interface JobAnalysisTaskDetail {
+  task: JobAnalysisTaskSummary;
+  candidates: JobAnalysisCandidate[];
+  results: JobAnalysisResult[];
+}
+
+// 逐条技能审核项（PUT /job-analysis/{id}/review）
+export interface JobAnalysisSkillReviewInput {
+  resultId: string | number;
+  action: "APPROVE" | "APPROVE_WITH_EDIT" | "REJECT";
+  skillName?: string; // 仅 APPROVE_WITH_EDIT
+  skillProficiency?: string; // 仅 APPROVE_WITH_EDIT
+  evidence?: string; // 仅 APPROVE_WITH_EDIT
+}
+
+// 审核请求体
+export interface ReviewJobAnalysisParams {
+  occupationId: string | number;
+  skillReviews: JobAnalysisSkillReviewInput[];
+}
+
+// ── 8.5 岗位查询（所有已登录角色）──
+
+// 已审核岗位数据（POST /api/jobs 列表项 / 详情 job）
+export interface JobData {
+  id: string;
+  name: string;
+  occupationId: string | number | null;
+  publishDate: string;
+  sourcePlatform: string;
+  sourceUrl: string;
+  city: string;
+  tags: string;
+  major: string;
+  nature: string;
+  salary: string;
+  companyName: string;
+  companySize: string;
+  province: string;
+  education: string;
+  experience: string;
+  jobDescription: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// 岗位关联职业
+export interface JobOccupationData {
+  id: string;
+  code: string;
+  name: string;
+  occupationCategoryId: string | number;
+  description: string;
+}
+
+// 正式岗位技能
+export interface JobSkillData {
+  id: string;
+  skillName: string;
+  skillProficiency: string;
+  evidence: string;
+}
+
+// 岗位列表查询请求体
+export interface ListJobsParams {
+  page?: number; // 从 0 开始
+  pageSize?: number;
+  name?: string;
+  occupationId?: number; // 精确匹配
+  major?: string;
+  city?: string;
+  province?: string;
+  salary?: string;
+  company?: string;
+  education?: string;
+  nature?: string;
+  companySize?: string;
+}
+
+// 岗位详情聚合
+export interface JobDetail {
+  job: JobData;
+  occupation: JobOccupationData | null;
+  jobSkills: JobSkillData[];
+}
+
+// ── 8.6 用户技能分析与能力时间线（已登录用户）──
+
+// 技能熟练度（ai-service AnalyzedSkill 契约，全大写四档）
+export type SkillProficiency = "EXPERT" | "ADVANCED" | "FAMILIAR" | "BASIC";
+
+// 对外技能记录（AnalyzeMyResumeSkills / ListMySkills 返回，不含内部任务/模型/trace）
+export interface UserSkillData {
+  id: string; // 雪花 ID，lossless 解析为字符串
+  resumeId: string;
+  skillName: string;
+  proficiency: string; // EXPERT / ADVANCED / FAMILIAR / BASIC
+  evidence: string; // 简历原文证据
+  createdAt: string;
+}
+
+// 分析我的简历技能响应（POST /api/auth/resumes/analyze-skills）
+export interface AnalyzeResumeSkillsResult {
+  resumeId: string;
+  skills: UserSkillData[];
+}
+
+// 能力时间线响应（GET /api/auth/me/skills，无记录时 items 为空数组）
+export interface MySkillsResult {
+  items: UserSkillData[];
+}
+
+// ── 8.7 人岗匹配（POST /api/jobs/{id}/match）──
+
+// 待学习技能建议
+export interface SkillLearningSuggestion {
+  skillName: string;
+  reason: string; // 岗位要求与简历差距的原因
+  suggestion: string; // 学习建议
+}
+
+// 人岗匹配结果
+export interface JobMatchResult {
+  resumeId: string;
+  jobId: string;
+  score: number; // 0~100 整数
+  summary: string; // 匹配度摘要
+  skillsToLearn: SkillLearningSuggestion[];
+  actionSuggestions: string[]; // 行动建议
+  createdAt: string;
 }

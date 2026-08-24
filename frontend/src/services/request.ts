@@ -1,11 +1,19 @@
 import axios, { type AxiosError } from "axios";
 import { toast } from "sonner";
+import { parseJson } from "./lossless";
 
 // ── 创建 axios 实例 ──
 const request = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? "/api",
   timeout: 15000,
   headers: { "Content-Type": "application/json" },
+  // 用 lossless 解析响应，避免雪花 ID（int64）被 JSON.parse 丢精度
+  transformResponse: [(data: unknown) => {
+    if (typeof data === "string" && data.length > 0) {
+      try { return parseJson(data); } catch { return data; }
+    }
+    return data;
+  }],
 });
 
 // ── 请求拦截器：自动注入 Token ──

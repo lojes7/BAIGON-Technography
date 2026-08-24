@@ -69,7 +69,6 @@ export default function AutoImportPage() {
     return start ? Math.floor((Date.now() - Number(start)) / 1000) : 0;
   });
 
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollingRef = useRef(false);
 
@@ -94,17 +93,13 @@ export default function AutoImportPage() {
     }).catch(() => {});
   }, []);
 
-  // 计时器 — 基于存储的开始时间计算
+  // 计时器 — 每秒 +1（函数式更新 + 局部变量，避免 ref 共享与 localStorage 依赖）
   useEffect(() => {
-    if (taskStatus === "running") {
-      timerRef.current = setInterval(() => {
-        const start = localStorage.getItem("crawl_start_time");
-        if (start) setElapsedSeconds(Math.floor((Date.now() - Number(start)) / 1000));
-      }, 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-    }
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+    if (taskStatus !== "running") return;
+    const id = setInterval(() => {
+      setElapsedSeconds((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(id);
   }, [taskStatus]);
 
   // 轮询爬虫状态
@@ -146,7 +141,9 @@ export default function AutoImportPage() {
       addLog("正在爬取数据...", "info");
       toast.success(tt("crawlStart"), { description: `已采集 ${res.data.count} 条数据` });
     } catch (err) {
-      toast.error((err as Error).message);
+      const msg = (err as Error)?.message || "未知错误";
+      toast.error(msg);
+      addLog(`启动失败：${msg}`, "error");
     }
   };
 
@@ -159,7 +156,9 @@ export default function AutoImportPage() {
       addLog("爬虫已手动停止", "warn");
       toast(tt("crawlStop"));
     } catch (err) {
-      toast.error((err as Error).message);
+      const msg = (err as Error)?.message || "未知错误";
+      toast.error(msg);
+      addLog(`停止失败：${msg}`, "error");
     } finally {
       setStopping(false);
     }
@@ -346,7 +345,7 @@ export default function AutoImportPage() {
         <MetricCard
           title={tt("taskStatus")}
           value={statusInfo[taskStatus].label}
-          sub={taskStatus === "running" ? tt("elapsedTime").replace("{{time}}", formatTime(elapsedSeconds)) : undefined}
+          sub={taskStatus === "running" ? t("page.autoImport.elapsedTime", { time: formatTime(elapsedSeconds) }) : undefined}
         />
         <MetricCard
           title={tt("crawledCount")}
@@ -429,6 +428,7 @@ export default function AutoImportPage() {
           )}
         </div>
       </Card>
+
     </div>
   );
 }

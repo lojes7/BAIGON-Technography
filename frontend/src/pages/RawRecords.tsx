@@ -1,46 +1,36 @@
 import { useTranslation } from "react-i18next";
-import { useState, useEffect, useRef, useCallback } from "react";
-import { X, ExternalLink, Pencil, ShieldCheck, CheckCircle, XCircle, Minus, Loader2, Sparkles } from "lucide-react";
+import { useState, useEffect } from "react";
+import { X, ShieldCheck, CheckCircle, XCircle, Loader2, ArrowLeft, FileText, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import T from "../constants/tokens";
 import { useAuth } from "../auth/AuthContext";
-import { getDataSourceList, reviewDataSource, getCrawlerStatus, cleanDataSources } from "../services/engineer";
-import type { DataSourceItem } from "../types/api";
+import { getDataSourceList, reviewDataSource, getCrawlerStatus, getSourceRecord, getDataSourceDetail, editAndApproveReview } from "../services/engineer";
+import type { DataSourceItem, DataSourceDetail, SourceJobDetail } from "../types/api";
 import { PageHeader, Btn, Card, StatusBadge } from "../components/ui";
+import DiffViewer, { type DiffRow } from "../components/diff/DiffViewer";
 
-type CleanPhase = "idle" | "confirm" | "progress" | "result";
 type ReviewPhase = "idle" | "confirm" | "progress" | "result";
-
-interface CleanLog {
-  id: string;
-  name: string;
-  status: "pending" | "success" | "fail";
-  error?: string;
-}
 
 export default function RawRecordsPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const isEngineer = user?.role === "admin"; // 新版中 admin 承接原 engineer 的数据治理职责
+  // 复核权限：ADMIN 与 DATA_REVIEWER（前端归一为 reviewer）均可处理清洗后岗位
+  const isReviewer = user?.role === "admin" || user?.role === "reviewer";
 
   const [records, setRecords] = useState<DataSourceItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<DataSourceItem | null>(null);
+  // 双栏 diff 需要：原始记录 + 清洗后详情
+  const [sourceDetail, setSourceDetail] = useState<SourceJobDetail | null>(null);
+  const [cleanedDetail, setCleanedDetail] = useState<DataSourceDetail | null>(null);
+  const [diffLoading, setDiffLoading] = useState(false);
+  const [viewDiff, setViewDiff] = useState(false);
   const [crawlerRunning, setCrawlerRunning] = useState(false);
 
-  // 清洗选中
+  // 勾选
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [cleaning, setCleaning] = useState(false);
-
-  // 清洗弹窗
-  const [cleanPhase, setCleanPhase] = useState<CleanPhase>("idle");
-  const [cleanProgress, setCleanProgress] = useState({ done: 0, total: 0, success: 0, fail: 0 });
-  const [cleanLogs, setCleanLogs] = useState<CleanLog[]>([]);
-  const [cleanMinimized, setCleanMinimized] = useState(false);
-  const [autoRefresh, setAutoRefresh] = useState(true);
-  const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // 批量审核状态
   const [reviewPhase, setReviewPhase] = useState<ReviewPhase>("idle");
@@ -51,8 +41,8 @@ export default function RawRecordsPage() {
 
   const fetchRecords = (silent = false) => {
     if (!silent) setLoading(true);
-    getDataSourceList({ page, page_size: 20 })
-      .then((res) => { setRecords(res.data.items); setTotal(res.data.total); })
+    getDataSourceList({ page: page - 1, pageSize: 20 }) // 后端 page 从 0 开始
+      .then((res) => { setRecords(res.data.items ?? []); setTotal(res.data.total ?? 0); })
       .catch(() => {})
       .finally(() => { if (!silent) setLoading(false); });
   };
@@ -66,8 +56,9 @@ export default function RawRecordsPage() {
     const check = () => {
       getCrawlerStatus()
         .then((res) => {
-          setCrawlerRunning(res.data.running);
-          if (res.data.running) {
+          const running = res.data.status === "running";
+          setCrawlerRunning(running);
+          if (running) {
             fetchRecords(true);
           } else if (pollRef) {
             clearInterval(pollRef);
@@ -83,21 +74,92 @@ export default function RawRecordsPage() {
     return () => { if (pollRef) clearInterval(pollRef); };
   }, [page]);
 
+  // 打开详情：并行拉取原始记录 + 清洗后详情，用于双栏 diff
+  const openDetail = (r: DataSourceItem) => {
+    setDetail(r);
+    setSourceDetail(null);
+    setCleanedDetail(null);
+    setDiffLoading(true);
+    setViewDiff(false);
+    setEditing(false);
+    setEditForm(emptyEditForm());
+    Promise.allSettled([getSourceRecord(r.id), getDataSourceDetail(r.id)]).then(([src, cleaned]) => {
+      if (src.status === "fulfilled") setSourceDetail(src.value.data.source);
+      if (cleaned.status === "fulfilled") setCleanedDetail(cleaned.value.data.job);
+    }).finally(() => setDiffLoading(false));
+  };
+
   const handleReview = async (dsId: string, status: string) => {
     try {
       const res = await reviewDataSource(dsId, status);
-      toast.success("审核完成", { description: res.data.source_platform });
+      toast.success("审核完成", { description: res.data.job?.source_platform ?? "" });
       setDetail(null);
+      setSourceDetail(null);
+      setCleanedDetail(null);
       fetchRecords();
     } catch (err) { toast.error((err as Error).message); }
   };
 
-  // ==================== 勾选逻辑 ====================
+  // ==================== 修改后通过 ====================
 
-  const passedRecords = records.filter(r => r.review_status === "REVIEW_PASSED");
-  const pendingRecords = records.filter(r => r.review_status !== "REVIEW_PASSED");
-  const passedCount = passedRecords.length;
-  const pendingCount = pendingRecords.length;
+  // 编辑表单字段（camelCase，与后端 editReviewRequest 完全一致）
+  interface EditForm {
+    jobName: string;
+    companyName: string;
+    salary: string;
+    city: string;
+    education: string;
+    experience: string;
+    jobDescription: string;
+  }
+
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState<EditForm>(emptyEditForm());
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  function emptyEditForm(): EditForm {
+    return { jobName: "", companyName: "", salary: "", city: "", education: "", experience: "", jobDescription: "" };
+  }
+
+  // 打开编辑：初始值优先取清洗后详情，为空回退列表摘要字段
+  const openEdit = () => {
+    if (!detail) return;
+    setEditForm({
+      jobName: cleanedDetail?.job_name ?? detail.job_name ?? "",
+      companyName: cleanedDetail?.company_name ?? detail.company_name ?? "",
+      salary: cleanedDetail?.salary ?? "",
+      city: cleanedDetail?.city ?? "",
+      education: cleanedDetail?.education ?? "",
+      experience: cleanedDetail?.experience ?? "",
+      jobDescription: cleanedDetail?.job_description ?? "",
+    });
+    setEditing(true);
+  };
+
+  const cancelEdit = () => { setEditing(false); setEditForm(emptyEditForm()); };
+
+  const submitEdit = async () => {
+    if (!detail) return;
+    setSavingEdit(true);
+    try {
+      await editAndApproveReview(detail.id, editForm);
+      toast.success(t("page.rawRecords.reviewUpdated"));
+      setDetail(null);
+      setSourceDetail(null);
+      setCleanedDetail(null);
+      setEditing(false);
+      setEditForm(emptyEditForm());
+      fetchRecords();
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const setEditField = (k: keyof EditForm, v: string) => setEditForm(p => ({ ...p, [k]: v }));
+
+  // ==================== 勾选逻辑 ====================
 
   // 当前选中中的分类统计
   const selectedPassed = records.filter(r => selectedIds.has(r.id) && r.review_status === "REVIEW_PASSED");
@@ -190,113 +252,6 @@ export default function RawRecordsPage() {
     setRejectReason("");
   };
 
-  // ==================== 清洗流程 ====================
-
-  const startCleanFlow = () => {
-    if (selectedIds.size === 0) return;
-    // 过滤：仅已确认可清洗
-    if (selectedPassed.length === 0) {
-      toast.error("仅已确认记录支持清洗，请重新勾选");
-      return;
-    }
-    // 混合勾选 → 提示过滤
-    if (selectedPending.length > 0) {
-      setCleanPhase("confirm");
-    } else {
-      setCleanPhase("confirm");
-    }
-  };
-
-  const executeClean = async () => {
-    // 仅使用已确认的记录
-    const ids = selectedPassed.map(r => r.id);
-    const totalCount = ids.length;
-
-    const logs: CleanLog[] = ids.map(id => {
-      const r = records.find(rc => rc.id === id);
-      return { id, name: r ? `${r.source_platform} #${r.id}` : `ID:${id}`, status: "pending" };
-    });
-
-    setCleanPhase("progress");
-    setCleanProgress({ done: 0, total: totalCount, success: 0, fail: 0 });
-    setCleanLogs(logs);
-    setCleanMinimized(false);
-    setCleaning(true);
-
-    // 模拟进度推进（后端异步，前端给用户感知）
-    progressTimer.current = setInterval(() => {
-      setCleanProgress(prev => {
-        const inc = Math.min(prev.total - prev.done, Math.max(1, Math.floor(prev.total / 10)));
-        return { ...prev, done: prev.done + inc };
-      });
-    }, 600);
-
-    try {
-      await cleanDataSources(ids);
-      // 成功
-      if (progressTimer.current) clearInterval(progressTimer.current);
-      setCleanProgress(prev => ({ ...prev, done: prev.total, success: prev.total }));
-      setCleanLogs(prev => prev.map(l => ({ ...l, status: "success" as const })));
-      setCleanPhase("result");
-      if (autoRefresh) { fetchRecords(); clearSelection(); }
-    } catch (err) {
-      // 失败
-      if (progressTimer.current) clearInterval(progressTimer.current);
-      const msg = (err as Error).message || "未知错误";
-      setCleanLogs(prev => prev.map(l => ({ ...l, status: "fail" as const, error: msg })));
-      setCleanProgress(prev => ({ ...prev, done: prev.total, fail: prev.total }));
-      setCleanPhase("result");
-    } finally {
-      setCleaning(false);
-    }
-  };
-
-  const handleRetryFailed = async () => {
-    const failedIds = cleanLogs.filter(l => l.status === "fail").map(l => l.id);
-    if (failedIds.length === 0) return;
-    setSelectedIds(new Set(failedIds));
-    // 重新走确认流程
-    setCleanPhase("confirm");
-  };
-
-  const closeCleanModal = () => {
-    if (progressTimer.current) clearInterval(progressTimer.current);
-    setCleanPhase("idle");
-    setCleanMinimized(false);
-  };
-
-  // 单条清洗
-  const handleSingleClean = async (dsId: string) => {
-    setCleaning(true);
-    try {
-      await cleanDataSources([dsId]);
-      toast.success("单条清洗任务已提交，后台异步执行中");
-      fetchRecords();
-    } catch (err) {
-      toast.error((err as Error).message || "清洗失败，请检查后端服务状态");
-    } finally {
-      setCleaning(false);
-    }
-  };
-
-  // 清理定时器
-  useEffect(() => {
-    return () => { if (progressTimer.current) clearInterval(progressTimer.current); };
-  }, []);
-
-  // 解析 text_info
-  const getTI = (r: DataSourceItem): Record<string, unknown> | null => {
-    if (!r.text_info) return null;
-    if (typeof r.text_info === "string") {
-      try { return JSON.parse(r.text_info) as Record<string, unknown>; } catch { return null; }
-    }
-    return r.text_info as Record<string, unknown>;
-  };
-  const info = (r: DataSourceItem, key: string) => {
-    const ti = getTI(r);
-    return ti?.[key] ? String(ti[key]) : "—";
-  };
-
   const hasSelection = selectedIds.size > 0;
 
   return (
@@ -316,22 +271,18 @@ export default function RawRecordsPage() {
       )}
 
       {/* 顶部批量工具栏 */}
-      {isEngineer && (
+      {isReviewer && (
         <div className="flex items-center gap-3 px-4 py-2.5 rounded-lg" style={{ background: T.bg, border: `1px solid ${T.border}` }}>
           <span className="text-[13px] font-medium" style={{ color: T.ink }}>
             已选 {selectedIds.size} 条
           </span>
           <div className="flex items-center gap-2">
-            <Btn size="sm" onClick={startCleanFlow} disabled={selectedPassed.length === 0 || cleaning}
-              title={selectedPassed.length === 0 ? "勾选数据中无已确认记录，无法清洗" : "对已确认记录执行 AI 数据清洗"}>
-              {cleaning ? "清洗中..." : "清洗选中"}
-            </Btn>
-            <Btn size="sm" variant="secondary" disabled={selectedPending.length === 0 || reviewing || cleaning}
+            <Btn size="sm" variant="secondary" disabled={selectedPending.length === 0 || reviewing}
               onClick={() => startBatchReview("approve")}
               title={selectedPending.length === 0 ? "勾选数据中无待复核记录" : "批量通过待复核记录"}>
               批量通过
             </Btn>
-            <Btn size="sm" variant="secondary" disabled={!hasSelection || reviewing || cleaning}
+            <Btn size="sm" variant="secondary" disabled={!hasSelection || reviewing}
               onClick={() => startBatchReview("reject")}
               title={!hasSelection ? "请勾选至少 1 条记录" : "批量驳回选中记录"}>
               批量驳回
@@ -343,7 +294,7 @@ export default function RawRecordsPage() {
             )}
           </div>
           {!hasSelection && (
-            <span className="text-[12px]" style={{ color: T.info }}>勾选记录后可批量清洗、审核通过或驳回</span>
+            <span className="text-[12px]" style={{ color: T.info }}>勾选记录后可批量通过或驳回</span>
           )}
         </div>
       )}
@@ -357,9 +308,9 @@ export default function RawRecordsPage() {
           <table className="w-full table-fixed text-[13px]">
             <thead>
               <tr style={{ background: T.cloud }}>
-                {isEngineer && (
+                {isReviewer && (
                   <th className="w-10 px-2 py-2.5">
-                    <input type="checkbox" className="accent-[#122E8A] cursor-pointer"
+                    <input type="checkbox" className="accent-[#315D6D] cursor-pointer"
                       checked={records.length > 0 && records.every(r => selectedIds.has(r.id))}
                       onChange={toggleAll}
                       title="全选 / 取消全选" />
@@ -382,24 +333,23 @@ export default function RawRecordsPage() {
             </thead>
             <tbody>
               {records.map((r) => {
-                const passed = r.review_status === "REVIEW_PASSED";
                 return (
                   <tr key={r.id} className="hover:bg-gray-50 transition-colors" style={{ borderTop: `1px solid ${T.cloud}` }}>
-                    {isEngineer && (
+                    {isReviewer && (
                       <td className="px-2 py-2.5">
-                        <input type="checkbox" className="accent-[#122E8A] cursor-pointer"
+                        <input type="checkbox" className="accent-[#315D6D] cursor-pointer"
                           checked={selectedIds.has(r.id)}
                           onChange={() => toggleSelect(r.id)} />
                       </td>
                     )}
                     <td className="px-2 py-2.5 text-[12px] truncate" style={{ color: T.info }} title={r.source_platform}>{r.source_platform}</td>
-                    <td className="px-2 py-2.5 font-medium truncate" style={{ color: T.ink }} title={info(r, "job_name") !== "—" ? info(r, "job_name") : undefined}>{info(r, "job_name")}</td>
-                    <td className="px-2 py-2.5 truncate" style={{ color: T.ink }} title={info(r, "company_name") !== "—" ? info(r, "company_name") : undefined}>{info(r, "company_name")}</td>
-                    <td className="px-2 py-2.5 font-mono text-[12px]" style={{ color: T.info }}>{r.publish_date?.slice(0, 10) || "—"}</td>
-                    <td className="px-2 py-2.5 font-mono text-[12px]" style={{ color: T.info }}>{r.created_at?.slice(0, 10) || "—"}</td>
+                    <td className="px-2 py-2.5 font-medium truncate" style={{ color: T.ink }} title={r.job_name || undefined}>{r.job_name || "-"}</td>
+                    <td className="px-2 py-2.5 truncate" style={{ color: T.ink }} title={r.company_name || undefined}>{r.company_name || "-"}</td>
+                    <td className="px-2 py-2.5 font-mono text-[12px]" style={{ color: T.info }}>{r.publish_date?.slice(0, 10) || "-"}</td>
+                    <td className="px-2 py-2.5 font-mono text-[12px]" style={{ color: T.info }}>{r.created_at?.slice(0, 10) || "-"}</td>
                     <td className="px-2 py-2.5"><StatusBadge status={r.review_status} /></td>
                     <td className="px-2 py-2.5">
-                      <button className="text-[12px] font-medium" style={{ color: T.teal }} onClick={() => setDetail(r)}>{t("common.view")}</button>
+                      <button className="text-[12px] font-medium" style={{ color: T.teal }} onClick={() => openDetail(r)}>{t("common.view")}</button>
                     </td>
                   </tr>
                 );
@@ -416,171 +366,6 @@ export default function RawRecordsPage() {
           <span style={{ color: T.info }}>{page} / {Math.ceil(total / 20)}</span>
           <button className="px-3 py-1.5 rounded-md disabled:opacity-30" style={{ border: `1px solid ${T.border}`, color: T.ink }}
             disabled={page >= Math.ceil(total / 20)} onClick={() => setPage(p => p + 1)}>{t("page.rawRecords.nextPage")}</button>
-        </div>
-      )}
-
-      {/* 底部悬浮栏 */}
-      {isEngineer && hasSelection && (
-        <div className="fixed bottom-0 left-0 right-0 z-30 flex justify-center pb-4" style={{ pointerEvents: "none" }}>
-          <div className="flex items-center gap-4 px-5 py-3 rounded-xl shadow-lg"
-            style={{ background: T.ink, pointerEvents: "auto", boxShadow: "0 -2px 20px rgba(25,50,77,0.15)" }}>
-            <div className="flex items-center gap-2">
-              <CheckCircle size={15} style={{ color: T.emerging }} />
-              <span className="text-[13px] font-medium" style={{ color: T.white }}>
-                {selectedPending.length > 0 && selectedPassed.length > 0
-                  ? `已选 ${selectedIds.size} 条 | ${selectedPending.length}待复核(可审核/驳回)、${selectedPassed.length}已确认(可清洗/驳回)`
-                  : selectedPending.length > 0
-                    ? `已选 ${selectedIds.size} 条待复核，可批量通过 / 批量驳回`
-                    : `已选 ${selectedIds.size} 条已确认，可清洗 / 批量驳回`
-                }
-              </span>
-            </div>
-            <Btn size="sm" onClick={startCleanFlow} disabled={selectedPassed.length === 0 || cleaning}>
-              {cleaning ? "清洗中..." : "清洗选中"}
-            </Btn>
-            <button className="text-[12px] ml-1" style={{ color: `${T.white}80` }} onClick={clearSelection}>
-              清空选择
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ==================== 清洗弹窗 ==================== */}
-      {cleanPhase !== "idle" && !cleanMinimized && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(25,50,77,0.3)" }}>
-          <div className="bg-white rounded-xl w-[480px] max-h-[85vh] flex flex-col shadow-2xl"
-            style={{ border: `1px solid ${T.border}` }}
-            onClick={e => e.stopPropagation()}>
-
-            {/* Phase 1: 确认弹窗 */}
-            {cleanPhase === "confirm" && (
-              <>
-                <div className="px-6 py-4" style={{ borderBottom: `1px solid ${T.cloud}` }}>
-                  <h3 className="text-[16px] font-medium" style={{ color: T.ink }}>批量数据清洗</h3>
-                </div>
-                <div className="px-6 py-5 space-y-4">
-                  <div className="p-4 rounded-lg" style={{ background: T.cloud }}>
-                    <div className="text-[14px] font-medium mb-1" style={{ color: T.ink }}>
-                      待清洗数据：{selectedPassed.length} 条（均为已确认岗位）
-                    </div>
-                    {selectedPending.length > 0 && (
-                      <div className="text-[12px] mb-1" style={{ color: T.pending }}>
-                        已自动过滤 {selectedPending.length} 条待复核数据，仅清洗已确认记录
-                      </div>
-                    )}
-                    <div className="text-[13px] leading-relaxed" style={{ color: T.info }}>
-                      AI 自动解析岗位信息，生成标准化职业、技能、行业词条入库
-                    </div>
-                  </div>
-                  <label className="flex items-center gap-2 cursor-pointer text-[13px]" style={{ color: T.info }}>
-                    <input type="checkbox" className="accent-[#122E8A]" checked={autoRefresh} onChange={e => setAutoRefresh(e.target.checked)} />
-                    清洗完成后自动刷新列表
-                  </label>
-                </div>
-                <div className="flex justify-end gap-2 px-6 py-4" style={{ borderTop: `1px solid ${T.cloud}` }}>
-                  <Btn variant="secondary" onClick={closeCleanModal}>取消</Btn>
-                  <Btn onClick={executeClean} disabled={cleaning}>确认开始清洗</Btn>
-                </div>
-              </>
-            )}
-
-            {/* Phase 2: 进度弹窗 */}
-            {cleanPhase === "progress" && (
-              <>
-                <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: `1px solid ${T.cloud}` }}>
-                  <h3 className="text-[16px] font-medium" style={{ color: T.ink }}>正在清洗...</h3>
-                  <button className="flex items-center gap-1 text-[12px]" style={{ color: T.info }}
-                    onClick={() => setCleanMinimized(true)}>
-                    <Minus size={14} />最小化
-                  </button>
-                </div>
-                <div className="px-6 py-5 space-y-4">
-                  {/* 进度条 */}
-                  <div>
-                    <div className="flex justify-between text-[13px] mb-2">
-                      <span style={{ color: T.info }}>已处理 {cleanProgress.done} / {cleanProgress.total} 条</span>
-                      <span style={{ color: T.teal }}>
-                        成功 {cleanProgress.success} / 失败 {cleanProgress.fail}
-                      </span>
-                    </div>
-                    <div className="h-2 rounded-full overflow-hidden" style={{ background: T.cloud }}>
-                      <div className="h-full rounded-full transition-all duration-500"
-                        style={{
-                          width: `${cleanProgress.total > 0 ? Math.round((cleanProgress.done / cleanProgress.total) * 100) : 0}%`,
-                          background: T.teal,
-                        }} />
-                    </div>
-                  </div>
-                  {/* 日志列表 */}
-                  <div className="max-h-[260px] overflow-y-auto space-y-1.5">
-                    {cleanLogs.map(l => (
-                      <div key={l.id} className="flex items-center gap-2 text-[13px] py-1">
-                        {l.status === "pending" && <Loader2 size={13} className="animate-spin" style={{ color: T.info }} />}
-                        {l.status === "success" && <CheckCircle size={13} style={{ color: T.emerging }} />}
-                        {l.status === "fail" && <XCircle size={13} style={{ color: T.risk }} />}
-                        <span className="flex-1 truncate" style={{ color: T.ink }}>{l.name}</span>
-                        {l.status === "fail" && l.error && (
-                          <span className="text-[11px] cursor-pointer" style={{ color: T.risk }}
-                            onClick={() => toast.error(l.error!, { duration: 8000 })}>
-                            查看详情
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* Phase 3: 结果弹窗 */}
-            {cleanPhase === "result" && (
-              <>
-                <div className="px-6 py-4" style={{ borderBottom: `1px solid ${T.cloud}` }}>
-                  <h3 className="text-[16px] font-medium" style={{ color: T.ink }}>清洗完成</h3>
-                </div>
-                <div className="px-6 py-5 space-y-4">
-                  {cleanProgress.fail === 0 ? (
-                    <div className="flex items-start gap-3 p-4 rounded-lg" style={{ background: `${T.emerging}10`, border: `1px solid ${T.emerging}30` }}>
-                      <CheckCircle size={18} style={{ color: T.emerging }} />
-                      <div>
-                        <div className="text-[14px] font-medium mb-1" style={{ color: T.emerging }}>
-                          {cleanProgress.total} 条数据清洗完成
-                        </div>
-                        <div className="text-[13px]" style={{ color: T.info }}>标准化词条已生成，可前往岗位词典查看</div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-start gap-3 p-4 rounded-lg" style={{ background: `${T.pending}10`, border: `1px solid ${T.pending}30` }}>
-                      <XCircle size={18} style={{ color: T.pending }} />
-                      <div className="flex-1">
-                        <div className="text-[14px] font-medium mb-1" style={{ color: T.pending }}>
-                          成功 {cleanProgress.success} 条，失败 {cleanProgress.fail} 条
-                        </div>
-                        <div className="space-y-1 max-h-[150px] overflow-y-auto">
-                          {cleanLogs.filter(l => l.status === "fail").map(l => (
-                            <div key={l.id} className="text-[12px]" style={{ color: T.risk }}>
-                              {l.name} — {l.error || "未知错误"}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <div className="flex justify-end gap-2 px-6 py-4" style={{ borderTop: `1px solid ${T.cloud}` }}>
-                  {cleanProgress.fail > 0 && (
-                    <Btn variant="secondary" onClick={handleRetryFailed} icon={Sparkles}>重试失败条目</Btn>
-                  )}
-                  <Btn variant="secondary" onClick={() => { fetchRecords(); closeCleanModal(); }}>
-                    关闭
-                  </Btn>
-                  {!autoRefresh && (
-                    <Btn onClick={() => { fetchRecords(); closeCleanModal(); }}>刷新列表</Btn>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
         </div>
       )}
 
@@ -725,88 +510,131 @@ export default function RawRecordsPage() {
         </div>
       )}
 
-      {/* 最小化悬浮小窗 */}
-      {cleanPhase === "progress" && cleanMinimized && (
-        <div className="fixed bottom-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg cursor-pointer"
-          style={{ background: T.ink }}
-          onClick={() => setCleanMinimized(false)}>
-          <div className="flex items-center gap-3">
-            <Loader2 size={15} className="animate-spin" style={{ color: T.white }} />
-            <span className="text-[13px] font-medium" style={{ color: T.white }}>
-              清洗中 {cleanProgress.done}/{cleanProgress.total}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* ==================== 详情抽屉 ==================== */}
+      {/* ==================== 详情抽屉（原始 vs 清洗后 双栏 diff） ==================== */}
       {detail && (
-        <div className="fixed inset-0 z-50 flex" style={{ background: "rgba(25,50,77,0.3)" }} onClick={() => setDetail(null)}>
-          <div className="ml-auto w-[520px] h-full bg-white shadow-xl flex flex-col overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-4 flex-shrink-0 sticky top-0 bg-white" style={{ borderBottom: `1px solid ${T.cloud}` }}>
-              <h3 className="text-[15px] font-medium" style={{ color: T.ink }}>{t("page.rawRecords.detailTitle")}</h3>
-              <button onClick={() => setDetail(null)} style={{ color: T.info }}><X size={18} /></button>
+        <div className="fixed inset-0 z-50 flex" style={{ background: "rgba(25,50,77,0.3)" }} onClick={() => { setDetail(null); setSourceDetail(null); setCleanedDetail(null); setEditing(false); }}>
+          <div className="ml-auto w-[900px] h-full bg-white shadow-xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 flex-shrink-0" style={{ borderBottom: `1px solid ${T.cloud}` }}>
+              <div className="flex items-center gap-3">
+                {viewDiff && (
+                  <button onClick={() => setViewDiff(false)} className="flex items-center gap-1 text-[13px]" style={{ color: T.teal }}>
+                    <ArrowLeft size={16} />{t("page.rawRecords.back")}
+                  </button>
+                )}
+                <h3 className="text-[15px] font-medium" style={{ color: T.ink }}>{viewDiff ? t("page.rawRecords.diffTitle") : t("page.rawRecords.detailTitle")}</h3>
+              </div>
+              <button onClick={() => { setDetail(null); setSourceDetail(null); setCleanedDetail(null); setViewDiff(false); setEditing(false); }} style={{ color: T.info }}><X size={18} /></button>
             </div>
 
-            <div className="px-5 py-4 space-y-4">
-              <DetailSection title={t("page.rawRecords.basicInfo")} items={[
-                [t("page.rawRecords.sourcePlatform"), <span>{detail.source_platform}{detail.source_url && <a href={detail.source_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 ml-2" style={{ color: T.teal, fontSize: 12 }}><ExternalLink size={12} /></a>}</span>],
-                [t("page.rawRecords.dataSourceType"), <span>{detail.data_source_type === "JOB" ? t("page.rawRecords.recruitmentPosition") : detail.data_source_type}</span>],
-                [t("page.rawRecords.reviewStatus"), <StatusBadge status={detail.review_status} />],
-                [t("page.rawRecords.publishDate"), detail.publish_date?.slice(0, 10) || "—"],
-                [t("page.rawRecords.reviewDate"), detail.reviewed_at?.slice(0, 10) || "—"],
-                [t("page.rawRecords.createDate"), detail.created_at?.slice(0, 10) || "—"],
-              ]} />
-
-              {/* 单条清洗 — 仅已确认状态 */}
-              {isEngineer && (
-                <div className="pt-1">
-                  <Btn size="sm" icon={Sparkles}
-                    onClick={() => handleSingleClean(detail.id)}
-                    disabled={detail.review_status !== "REVIEW_PASSED" || cleaning}
-                    title={detail.review_status !== "REVIEW_PASSED" ? "需审核通过后才可清洗本条数据" : "对该条记录执行 AI 数据清洗"}>
-                    {cleaning ? "清洗中..." : "单条清洗"}
-                  </Btn>
-                </div>
-              )}
-
-              {detail.data_source_type === "JOB" && getTI(detail) && (
-                <JobDetailSection textInfo={getTI(detail)!} />
-              )}
-
-              {detail.data_source_type !== "JOB" && getTI(detail) && (
-                <div>
-                  <div className="text-[12px] font-medium mb-2" style={{ color: T.ink }}>{t("page.rawRecords.rawData")}</div>
-                  <pre className="text-[12px] p-3 rounded-md overflow-x-auto leading-relaxed"
-                    style={{ background: "#1a1a2e", color: "#a8d8a8" }}>
-                    {JSON.stringify(getTI(detail), null, 2)}
-                  </pre>
-                </div>
-              )}
-
-              {user?.role === "engineer" && detail.review_status !== "REVIEW_PASSED" && (
-                <div className="flex flex-col gap-2 pt-4" style={{ borderTop: `1px solid ${T.cloud}` }}>
-                  <div className="text-[12px] font-medium" style={{ color: T.info }}>{t("page.rawRecords.reviewActions")}</div>
-                  <div className="flex gap-2">
-                    <button className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-[13px] font-medium transition-all hover:opacity-80"
-                      style={{ background: "#E6F5F1", color: "#1A6B4E", border: `1px solid #B8E0D2` }}
-                      onClick={() => handleReview(detail.id, "REVIEW_PASSED")}>
-                      <ShieldCheck size={15} />{t("page.rawRecords.approve")}
-                    </button>
-                    <button className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-[13px] font-medium transition-all hover:opacity-80"
-                      style={{ background: "#FDF6E3", color: "#8B6914", border: `1px solid #E8D5A0` }}
-                      onClick={() => handleReview(detail.id, "REVIEW_PASSED")}>
-                      <Pencil size={15} />{t("page.rawRecords.modifyConfirm")}
-                    </button>
-                    <button className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-[13px] font-medium transition-all hover:opacity-80"
-                      style={{ background: "#FAECEC", color: "#8B1A1A", border: `1px solid #E8C0C0` }}
-                      onClick={() => handleReview(detail.id, "REVIEW_REJECT")}>
-                      <X size={15} />{t("page.rawRecords.reject")}
-                    </button>
+            {viewDiff ? (
+              // 原始 vs 清洗后 diff 对比视图（充满抽屉内容区）
+              <div className="flex-1 flex flex-col px-5 py-4 min-h-0 overflow-hidden">
+                {diffLoading ? (
+                  <div className="py-8 text-center text-[13px]" style={{ color: T.info }}>{t("common.loading")}</div>
+                ) : sourceDetail && cleanedDetail ? (
+                  <DiffViewer rows={buildDiffRows(t, sourceDetail, cleanedDetail)} />
+                ) : (
+                  <div className="py-8 text-center text-[13px]" style={{ color: T.info }}>{t("page.rawRecords.noDiffData")}</div>
+                )}
+              </div>
+            ) : (
+              // 字段详情视图：展示清洗后数据各字段 + 查看原始记录/编辑 + 复核操作
+              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+                {editing ? (
+                  /* ── 编辑态：替换详情展示，保存后以修改后内容通过复核 ── */
+                  <div className="space-y-3">
+                    <div className="text-[12px] font-medium" style={{ color: T.info }}>{t("page.rawRecords.editFields")}</div>
+                    <div className="text-[11px]" style={{ color: T.info }}>{t("page.rawRecords.editHint")}</div>
+                    <div className="grid grid-cols-2 gap-3">
+                      {([
+                        ["jobName", t("page.rawRecords.jobName")],
+                        ["companyName", t("page.rawRecords.companyName")],
+                        ["salary", t("page.rawRecords.jobSalary")],
+                        ["city", t("page.rawRecords.jobCity")],
+                        ["education", t("page.rawRecords.jobEdu")],
+                        ["experience", t("page.rawRecords.jobExp")],
+                      ] as [keyof EditForm, string][]).map(([k, label]) => (
+                        <div key={k}>
+                          <label className="text-[11px] block mb-1" style={{ color: T.info }}>{label}</label>
+                          <input className="w-full px-2.5 py-1.5 rounded text-[13px] outline-none"
+                            style={{ background: "white", border: `1px solid ${T.border}`, color: T.ink }}
+                            value={editForm[k]} onChange={e => setEditField(k, e.target.value)} />
+                        </div>
+                      ))}
+                    </div>
+                    <div>
+                      <label className="text-[11px] block mb-1" style={{ color: T.info }}>{t("page.rawRecords.jobDesc")}</label>
+                      <textarea className="w-full px-2.5 py-1.5 rounded text-[13px] outline-none resize-none"
+                        rows={3} style={{ background: "white", border: `1px solid ${T.border}`, color: T.ink }}
+                        value={editForm.jobDescription} onChange={e => setEditField("jobDescription", e.target.value)} />
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Btn variant="secondary" size="sm" onClick={cancelEdit}>{t("page.rawRecords.cancelEdit")}</Btn>
+                      <Btn size="sm" onClick={submitEdit} disabled={savingEdit}>{savingEdit ? t("page.rawRecords.saving") : t("page.rawRecords.saveEdit")}</Btn>
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
+                ) : (
+                  <>
+                    <DetailSection title={t("page.rawRecords.basicInfo")} items={[
+                      [t("page.rawRecords.jobName"), cleanedDetail?.job_name ?? detail.job_name ?? "-"],
+                      [t("page.rawRecords.companyName"), cleanedDetail?.company_name ?? detail.company_name ?? "-"],
+                      [t("page.rawRecords.jobSalary"), cleanedDetail?.salary ?? "-"],
+                      [t("page.rawRecords.jobCity"), cleanedDetail?.city ?? "-"],
+                      [t("page.rawRecords.jobProvince"), cleanedDetail?.province ?? "-"],
+                      [t("page.rawRecords.jobExp"), cleanedDetail?.experience ?? "-"],
+                      [t("page.rawRecords.jobEdu"), cleanedDetail?.education ?? "-"],
+                      [t("page.rawRecords.jobMajor"), cleanedDetail?.major ?? "-"],
+                      [t("page.rawRecords.jobNature"), cleanedDetail?.nature ?? "-"],
+                      [t("page.rawRecords.jobTags"), cleanedDetail?.tags ?? "-"],
+                      [t("page.rawRecords.jobCompanySize"), cleanedDetail?.company_size ?? "-"],
+                      [t("page.rawRecords.sourcePlatform"), cleanedDetail?.source_platform ?? detail.source_platform ?? "-"],
+                      [t("page.rawRecords.jobSourceUrl"), cleanedDetail?.source_url ?? "-"],
+                      [t("page.rawRecords.publishDate"), (cleanedDetail?.publish_date ?? detail.publish_date)?.slice(0, 10) ?? "-"],
+                      [t("page.rawRecords.reviewStatus"), <StatusBadge status={detail.review_status} />],
+                      [t("page.rawRecords.reviewDate"), cleanedDetail?.reviewed_at?.slice(0, 10) ?? "-"],
+                      [t("page.rawRecords.createDate"), detail.created_at?.slice(0, 10) ?? "-"],
+                    ]} />
+
+                    {/* 职位描述 */}
+                    {cleanedDetail?.job_description && (
+                      <div>
+                        <div className="text-[12px] font-medium mb-2" style={{ color: T.ink }}>{t("page.rawRecords.jobDesc")}</div>
+                        <div className="rounded-md p-3 text-[13px] leading-relaxed whitespace-pre-wrap" style={{ background: T.cloud, color: T.ink }}>
+                          {cleanedDetail.job_description}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 查看原始记录 + 编辑 */}
+                    <div className="pt-1 flex items-center gap-2">
+                      <Btn size="sm" icon={FileText} onClick={() => setViewDiff(true)}>{t("page.rawRecords.viewOriginalRecord")}</Btn>
+                      {isReviewer && detail.review_status !== "REVIEW_PASSED" && (
+                        <Btn size="sm" variant="secondary" icon={Pencil} onClick={openEdit}>{t("page.rawRecords.edit")}</Btn>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {/* 审核操作：通过 / 驳回 */}
+                {!editing && isReviewer && detail.review_status !== "REVIEW_PASSED" && (
+                  <div className="flex flex-col gap-2 pt-4" style={{ borderTop: `1px solid ${T.cloud}` }}>
+                    <div className="text-[12px] font-medium" style={{ color: T.info }}>{t("page.rawRecords.reviewActions")}</div>
+                    <div className="flex gap-2">
+                      <button className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-[13px] font-medium transition-all hover:opacity-80"
+                        style={{ background: "#E6F5F1", color: "#1A6B4E", border: `1px solid #B8E0D2` }}
+                        onClick={() => handleReview(detail.id, "REVIEW_PASSED")}>
+                        <ShieldCheck size={15} />{t("page.rawRecords.approve")}
+                      </button>
+                      <button className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-[13px] font-medium transition-all hover:opacity-80"
+                        style={{ background: "#FAECEC", color: "#8B1A1A", border: `1px solid #E8C0C0` }}
+                        onClick={() => handleReview(detail.id, "REVIEW_REJECT")}>
+                        <X size={15} />{t("page.rawRecords.reject")}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -830,7 +658,8 @@ function DetailSection({ title, items }: { title: string; items: [string, React.
   );
 }
 
-const JOB_FIELD_KEYS: [string, string][] = [
+// 双栏 diff 对比的字段清单：[i18n key, snake_case 字段名]
+const DIFF_FIELDS: [string, string][] = [
   ["jobName", "job_name"],
   ["companyName", "company_name"],
   ["jobSalary", "salary"],
@@ -841,23 +670,35 @@ const JOB_FIELD_KEYS: [string, string][] = [
   ["jobMajor", "major"],
   ["jobNature", "nature"],
   ["jobTags", "tags"],
+  ["jobCompanySize", "company_size"],
+  ["sourcePlatform", "source_platform"],
+  ["jobSourceUrl", "source_url"],
+  ["publishDate", "publish_date"],
+  ["jobDesc", "job_description"],
 ];
 
-function JobDetailSection({ textInfo }: { textInfo: Record<string, unknown> }) {
-  const { t } = useTranslation();
-  const rt = (key: string) => t(`page.rawRecords.${key}`);
-  return (
-    <>
-      <DetailSection title={rt("jobInfo")} items={JOB_FIELD_KEYS.map(([k, key]) => [rt(k), String(textInfo[key] ?? "—")])} />
-      {textInfo.work_description && (
-        <div>
-          <div className="text-[12px] font-medium mb-2" style={{ color: T.ink }}>{rt("jobDesc")}</div>
-          <div className="text-[13px] p-3 rounded-md leading-relaxed"
-            style={{ background: T.cloud, color: T.ink, wordBreak: "break-word" }}>
-            {String(textInfo.work_description)}
-          </div>
-        </div>
-      )}
-    </>
-  );
+// 对比原始记录与清洗后详情，生成 diff 行（增/删/改/不变）
+function buildDiffRows(
+  t: (key: string) => string,
+  source: SourceJobDetail,
+  cleaned: DataSourceDetail,
+): DiffRow[] {
+  const get = (obj: Record<string, unknown>, key: string) => {
+    const v = obj[key];
+    if (v == null) return "";
+    const s = String(v).trim();
+    // 空值字面量（爬虫可能把空字段写成 "null"/"None"/"undefined"）统一归一化为空
+    const lower = s.toLowerCase();
+    if (s === "" || lower === "null" || lower === "none" || lower === "undefined") return "";
+    return s;
+  };
+  return DIFF_FIELDS.map(([labelKey, fieldKey]) => {
+    const left = get(source as unknown as Record<string, unknown>, fieldKey);
+    const right = get(cleaned as unknown as Record<string, unknown>, fieldKey);
+    let status: DiffRow["status"] = "unchanged";
+    if (left && !right) status = "deleted";
+    else if (!left && right) status = "added";
+    else if (left !== right) status = "modified";
+    return { label: t(`page.rawRecords.${labelKey}`), left, right, status };
+  });
 }

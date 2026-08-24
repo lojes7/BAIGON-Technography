@@ -16,16 +16,19 @@ export const ADMIN_NAV: NavSection[] = [
     mkChild("import-batches", "nav.importBatches"),
     mkChild("auto-import", "nav.autoImport"),
     mkChild("raw-records", "nav.rawRecords"),
+    mkChild("jobs", "nav.jobs"),
   ]),
   mk("ai-processing", "nav.aiProcessing", Sparkles, [
     mkChild("extraction-tasks", "nav.extractionTasks"),
     mkChild("review-queue", "nav.reviewQueue"),
     mkChild("processing-errors", "nav.processingErrors"),
+    mkChild("job-analysis", "nav.jobAnalysis"),
   ]),
   mk("dictionaries", "nav.dictionaries", BookOpen, [
     mkChild("job-dict", "nav.jobDict"),
     mkChild("skill-dict", "nav.skillDict"),
     mkChild("taxonomy", "nav.taxonomy"),
+    mkChild("discipline", "nav.discipline"),
   ]),
   mk("graph", "nav.graph", Network, [
     mkChild("graph-browser", "nav.graphBrowser"),
@@ -59,9 +62,11 @@ export const STUDENT_NAV: NavSection[] = [
   mk("dashboard", "nav.dashboard", Home, undefined),
   mk("profile", "nav.personalCenter", User, [
     mkChild("my-resume", "nav.myResume"),
+    mkChild("my-skills", "nav.mySkills"),
     mkChild("account-settings", "nav.accountSettings"),
   ]),
   mk("explore", "nav.jobExplore", Search, [
+    mkChild("jobs", "nav.jobs"),
     mkChild("graph-browser", "nav.jobGraphBrowser"),
     mkChild("evolution-trends", "nav.evolutionOverview"),
   ]),
@@ -76,6 +81,7 @@ export const STUDENT_NAV: NavSection[] = [
 export const TEACHER_NAV: NavSection[] = [
   mk("dashboard", "nav.dashboard", Home, undefined),
   mk("insight", "nav.jobInsight", Search, [
+    mkChild("jobs", "nav.jobs"),
     mkChild("graph-browser", "nav.jobGraphBrowser"),
     mkChild("evolution-trends", "nav.evolutionOverview"),
   ]),
@@ -114,12 +120,15 @@ export const REVIEWER_NAV: NavSection[] = [
   mk("ai-processing", "nav.aiProcessing", Sparkles, [
     mkChild("review-queue", "nav.reviewQueue"),
     mkChild("ai-analyses", "nav.aiAnalyses"),
+    mkChild("job-analysis", "nav.jobAnalysis"),
     mkChild("processing-errors", "nav.processingErrors"),
+    mkChild("jobs", "nav.jobs"),
   ]),
   mk("dictionaries", "nav.dictionaries", BookOpen, [
     mkChild("job-dict", "nav.jobDict"),
     mkChild("skill-dict", "nav.skillDict"),
     mkChild("taxonomy", "nav.taxonomy"),
+    mkChild("discipline", "nav.discipline"),
   ]),
   mk("profile", "nav.personalCenter", User, [
     mkChild("account-settings", "nav.accountSettings"),

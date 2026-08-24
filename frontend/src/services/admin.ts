@@ -3,6 +3,8 @@ import type {
   CreateStudentAffairBody, CreateStudentAffairResult, StudentAffairItem,
 } from "../types/api";
 
+import { parseJson } from "./lossless";
+
 const BASE = "/api/admin";
 const hdrs = () => ({
   "Content-Type": "application/json",
@@ -16,7 +18,8 @@ async function request<T>(url: string, init?: RequestInit): Promise<ApiResponse<
     const msg = body.detail?.[0]?.msg || `请求失败 (${res.status})`;
     throw new Error(msg);
   }
-  return res.json();
+  const text = await res.text();
+  return parseJson(text) as ApiResponse<T>;
 }
 
 export async function getStudentAffairList(page = 1, page_size = 20) {
@@ -55,7 +58,7 @@ export async function createDataStaff(body: CreateDataStaffBody) {
 }
 
 export async function toggleUserStatus(target_user_id: string, status: "NORMAL" | "LOCKED") {
-  return request<{ user_id: number; uid: string; name: string; status: string }>(`${BASE}/users/${target_user_id}/status`, { method: "PUT", headers: hdrs(), body: JSON.stringify({ status }) });
+  return request<{ user_id: string; uid: string; name: string; status: string }>(`${BASE}/users/${target_user_id}/status`, { method: "PUT", headers: hdrs(), body: JSON.stringify({ status }) });
 }
 import type { UserItem } from "../types/api";
 

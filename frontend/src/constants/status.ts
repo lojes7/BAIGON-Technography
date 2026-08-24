@@ -10,6 +10,7 @@ const STATUS: Record<string, { key: string; color: string; bg: string }> = {
   needs_review: { key: "status.needs_review", color: T.pending, bg: "#FDF6E3" },
   pending_review: { key: "status.needs_review", color: T.pending, bg: "#FDF6E3" },
   review_passed: { key: "status.confirmed", color: T.emerging, bg: "#E6F5F1" },
+  passed: { key: "status.confirmed", color: T.emerging, bg: "#E6F5F1" },
   confirmed: { key: "status.confirmed", color: T.emerging, bg: "#E6F5F1" },
   review_reject: { key: "status.rejected", color: T.risk, bg: "#FAECEC" },
   rejected: { key: "status.rejected", color: T.risk, bg: "#FAECEC" },

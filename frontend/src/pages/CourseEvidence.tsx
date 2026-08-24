@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, CheckCircle, AlertTriangle } from "lucide-react";
+import { CheckCircle, AlertTriangle } from "lucide-react";
 import T from "../constants/tokens";
 import { matrixData, courseNames } from "../data";
 import { PageHeader, Card } from "../components/ui";

@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Upload, Download, CheckCircle, AlertTriangle, Info } from "lucide-react";
+import { Upload, Download, Info } from "lucide-react";
 import T from "../constants/tokens";
 import { PageHeader, Btn, Card, StatusBadge } from "../components/ui";
 

@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { Users, Eye, ArrowRight } from "lucide-react";
+import { Users, ArrowRight } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import T from "../constants/tokens";
 import { useAuth } from "../auth/AuthContext";
@@ -97,7 +97,7 @@ export default function TeacherDashboard() {
             { text: "毕业生就业方向中后端开发占比最高，建议增加相关课程比重", type: "info" },
             { text: "学生张三匹配度提升至 72%，学习路径进展良好", type: "success" },
           ].map((item, i) => {
-            const colors = { critical: T.risk, warning: T.pending, info: T.info, success: T.emerging };
+            const colors: Record<string, string> = { critical: T.risk, warning: T.pending, info: T.info, success: T.emerging };
             return (
               <div key={i} className="flex items-center gap-3 px-4 py-3">
                 <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: colors[item.type] }} />

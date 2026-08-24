@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { ChevronLeft, Pencil, X } from "lucide-react";
@@ -6,7 +6,9 @@ import T from "../constants/tokens";
 import { useAuth } from "../auth/AuthContext";
 import { PAGE_PERMISSIONS, ROLES, type RoleKey } from "../auth/roles";
 import { auditEntries, actionTypeColors } from "../data";
-import { PageHeader, Btn, Card, StatusBadge } from "../components/ui";
+import { Btn, Card, StatusBadge } from "../components/ui";
+import { getMe } from "../services/user";
+import type { CurrentUser } from "../types/api";
 
 // ── 各角色的 Mock 详细资料 ──
 const PROFILE: Record<RoleKey, {
@@ -29,20 +31,6 @@ const PROFILE: Record<RoleKey, {
       { label: "创建标准词条", value: "17" },
       { label: "操作记录总数", value: "1,284" },
       { label: "本月活跃天数", value: "18" },
-    ],
-  },
-  engineer: {
-    email: "zhaoengineer@cjut.edu.cn",
-    institution: "常州工业职业技术学院",
-    department: "数据工程部",
-    accountType: "技术人员",
-    joinDate: "2024-10-15",
-    stats: [
-      { label: "导入数据批次", value: "156" },
-      { label: "成功导入条数", value: "4,520" },
-      { label: "导出任务完成", value: "43" },
-      { label: "数据源管理", value: "8" },
-      { label: "本月活跃天数", value: "22" },
     ],
   },
   reviewer: {
@@ -160,12 +148,22 @@ function UserProfilePage() {
   const { user, logout } = useAuth();
   const [editOpen, setEditOpen] = useState(false);
   const [bio, setBio] = useState("");
+  const [me, setMe] = useState<CurrentUser | null>(null);
+
+  // 接入 GET /api/auth/me，获取真实的校园归属（大学/学院/系部）
+  useEffect(() => {
+    getMe().then((res) => setMe(res.data)).catch(() => {});
+  }, []);
 
   const role = user?.role ?? "admin";
-  const name = user?.name ?? "未知用户";
+  const name = me?.name || user?.name || "未知用户";
   const roleLabel = ROLES.find(r => r.key === role)?.labelKey ?? "未知角色";
   const profile = PROFILE[role] ?? PROFILE.admin;
   const myEntries = auditEntries.filter(e => e.user === name);
+
+  // 组织归属：优先真实数据（me），缺省回退 mock
+  const institution = me?.university_name || profile.institution;
+  const department = [me?.school_name, me?.department_name].filter(Boolean).join(" · ") || profile.department;
 
   // 从权限表生成模块访问列表
   const moduleAccess = (PAGE_PERMISSIONS[role] ?? [])
@@ -196,7 +194,7 @@ function UserProfilePage() {
               <StatusBadge status="confirmed" />
             </div>
             <div className="text-[13px] mb-1" style={{ color: T.info }}>
-              {profile.email} · {profile.institution} · {profile.department}
+              {profile.email} · {institution} · {department}
             </div>
             <p className="text-[13px] leading-relaxed mt-1 text-[12px]" style={{ color: T.info }}>
               {bio || "这个人很懒，什么都没写。"}
