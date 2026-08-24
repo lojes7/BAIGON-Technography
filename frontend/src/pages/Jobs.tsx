@@ -7,6 +7,7 @@ import T from "../constants/tokens";
 import { listJobs, getJobDetail, matchMyResumeToJob } from "../services/jobs";
 import type { JobData, JobDetail, JobMatchResult } from "../types/api";
 import { PageHeader, Card, Btn } from "../components/ui";
+import AbilityRadialGraph from "../components/AbilityRadialGraph";
 
 interface FilterForm {
   name: string;
@@ -245,10 +246,32 @@ export default function JobsPage() {
                   )}
                 </section>
 
-                {/* 岗位技能 */}
+                {/* 岗位能力图谱 */}
                 <section>
-                  <div className="text-[12px] font-medium mb-2" style={{ color: T.info }}>岗位技能（{detail.jobSkills?.length ?? 0}）</div>
+                  <div className="text-[12px] font-medium mb-2" style={{ color: T.info }}>
+                    能力图谱（{detail.jobSkills?.length ?? 0}）
+                  </div>
                   {detail.jobSkills?.length ? (
+                    <div className="rounded-lg p-3" style={{ background: "white", border: `1px solid ${T.border}` }}>
+                      <AbilityRadialGraph
+                        centerLabel={detail.job?.name || "岗位"}
+                        abilities={detail.jobSkills.map(s => ({
+                          name: s.skillName,
+                          proficiency: s.skillProficiency,
+                          evidence: s.evidence,
+                        }))}
+                        emptyHint="暂无正式技能"
+                      />
+                    </div>
+                  ) : (
+                    <div className="text-[13px]" style={{ color: T.info }}>暂无正式技能</div>
+                  )}
+                </section>
+
+                {/* 岗位技能明细 */}
+                {detail.jobSkills?.length ? (
+                  <section>
+                    <div className="text-[12px] font-medium mb-2" style={{ color: T.info }}>技能明细</div>
                     <div className="space-y-2">
                       {detail.jobSkills.map(s => (
                         <div key={String(s.id)} className="rounded-lg p-3" style={{ background: T.cloud, border: `1px solid ${T.border}` }}>
@@ -260,10 +283,8 @@ export default function JobsPage() {
                         </div>
                       ))}
                     </div>
-                  ) : (
-                    <div className="text-[13px]" style={{ color: T.info }}>暂无正式技能</div>
-                  )}
-                </section>
+                  </section>
+                ) : null}
 
                 {/* 职位描述 */}
                 {detail.job?.jobDescription && (

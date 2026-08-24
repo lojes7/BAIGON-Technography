@@ -1,8 +1,9 @@
 import { useState, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Network, ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import T from "../../constants/tokens";
+import logo from "../../assets/vector_color.svg";
 import { ADMIN_NAV, STUDENT_NAV, TEACHER_NAV, STUDENT_AFFAIRS_NAV, ANALYST_NAV, REVIEWER_NAV } from "../../constants/nav";
 import { useAuth } from "../../auth/AuthContext";
 import type { NavSection } from "../../types";
@@ -60,10 +61,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
     >
       <div className="flex items-center gap-3 px-[18px] flex-shrink-0"
         style={{ height: 56, borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-        <div className="w-7 h-7 flex-shrink-0 rounded flex items-center justify-center"
-          style={{ background: T.teal }}>
-          <Network size={15} color="white" />
-        </div>
+        <img src={logo} alt="百工谱" className="w-7 h-7 flex-shrink-0" />
         {!collapsed && (
           <div className="overflow-hidden">
             <div className="text-[14px] font-semibold leading-tight" style={{ color: "#F5EFEA" }}>百工谱</div>

@@ -376,14 +376,20 @@
       "jobDesc": "职位描述",
       "recruitmentPosition": "招聘岗位",
       "reviewActions": "审核操作",
-      "approve": "审核通过",
+      "approve": "通过",
       "modifyConfirm": "修改并确认通过",
       "reject": "驳回",
       "crawlerRunning": "数据爬虫正在运行，列表每 5 秒自动刷新...",
       "reviewApproved": "审核已通过",
       "reviewRejected": "已驳回",
       "reviewUpdated": "已更新",
-      "noDiffData": "暂无原始/清洗后对比数据"
+      "noDiffData": "暂无原始/清洗后对比数据",
+      "editFields": "修改岗位信息",
+      "editHint": "保存后将以修改后的内容通过复核，并写入岗位库",
+      "edit": "编辑",
+      "cancelEdit": "取消编辑",
+      "saveEdit": "保存",
+      "saving": "保存中…"
     },
     "dataExport": {
       "title": "数据导出",

@@ -1,10 +1,10 @@
 import { useTranslation } from "react-i18next";
 import { useState, useEffect } from "react";
-import { X, ShieldCheck, CheckCircle, XCircle, Loader2, ArrowLeft, FileText } from "lucide-react";
+import { X, ShieldCheck, CheckCircle, XCircle, Loader2, ArrowLeft, FileText, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import T from "../constants/tokens";
 import { useAuth } from "../auth/AuthContext";
-import { getDataSourceList, reviewDataSource, getCrawlerStatus, getSourceRecord, getDataSourceDetail } from "../services/engineer";
+import { getDataSourceList, reviewDataSource, getCrawlerStatus, getSourceRecord, getDataSourceDetail, editAndApproveReview } from "../services/engineer";
 import type { DataSourceItem, DataSourceDetail, SourceJobDetail } from "../types/api";
 import { PageHeader, Btn, Card, StatusBadge } from "../components/ui";
 import DiffViewer, { type DiffRow } from "../components/diff/DiffViewer";
@@ -14,7 +14,8 @@ type ReviewPhase = "idle" | "confirm" | "progress" | "result";
 export default function RawRecordsPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const isEngineer = user?.role === "admin"; // 新版中 admin 承接原 engineer 的数据治理职责
+  // 复核权限：ADMIN 与 DATA_REVIEWER（前端归一为 reviewer）均可处理清洗后岗位
+  const isReviewer = user?.role === "admin" || user?.role === "reviewer";
 
   const [records, setRecords] = useState<DataSourceItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -80,6 +81,8 @@ export default function RawRecordsPage() {
     setCleanedDetail(null);
     setDiffLoading(true);
     setViewDiff(false);
+    setEditing(false);
+    setEditForm(emptyEditForm());
     Promise.allSettled([getSourceRecord(r.id), getDataSourceDetail(r.id)]).then(([src, cleaned]) => {
       if (src.status === "fulfilled") setSourceDetail(src.value.data.source);
       if (cleaned.status === "fulfilled") setCleanedDetail(cleaned.value.data.job);
@@ -96,6 +99,65 @@ export default function RawRecordsPage() {
       fetchRecords();
     } catch (err) { toast.error((err as Error).message); }
   };
+
+  // ==================== 修改后通过 ====================
+
+  // 编辑表单字段（camelCase，与后端 editReviewRequest 完全一致）
+  interface EditForm {
+    jobName: string;
+    companyName: string;
+    salary: string;
+    city: string;
+    education: string;
+    experience: string;
+    jobDescription: string;
+  }
+
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState<EditForm>(emptyEditForm());
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  function emptyEditForm(): EditForm {
+    return { jobName: "", companyName: "", salary: "", city: "", education: "", experience: "", jobDescription: "" };
+  }
+
+  // 打开编辑：初始值优先取清洗后详情，为空回退列表摘要字段
+  const openEdit = () => {
+    if (!detail) return;
+    setEditForm({
+      jobName: cleanedDetail?.job_name ?? detail.job_name ?? "",
+      companyName: cleanedDetail?.company_name ?? detail.company_name ?? "",
+      salary: cleanedDetail?.salary ?? "",
+      city: cleanedDetail?.city ?? "",
+      education: cleanedDetail?.education ?? "",
+      experience: cleanedDetail?.experience ?? "",
+      jobDescription: cleanedDetail?.job_description ?? "",
+    });
+    setEditing(true);
+  };
+
+  const cancelEdit = () => { setEditing(false); setEditForm(emptyEditForm()); };
+
+  const submitEdit = async () => {
+    if (!detail) return;
+    setSavingEdit(true);
+    try {
+      await editAndApproveReview(detail.id, editForm);
+      toast.success(t("page.rawRecords.reviewUpdated"));
+      setDetail(null);
+      setSourceDetail(null);
+      setCleanedDetail(null);
+      setEditing(false);
+      setEditForm(emptyEditForm());
+      fetchRecords();
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const setEditField = (k: keyof EditForm, v: string) => setEditForm(p => ({ ...p, [k]: v }));
 
   // ==================== 勾选逻辑 ====================
 
@@ -209,7 +271,7 @@ export default function RawRecordsPage() {
       )}
 
       {/* 顶部批量工具栏 */}
-      {isEngineer && (
+      {isReviewer && (
         <div className="flex items-center gap-3 px-4 py-2.5 rounded-lg" style={{ background: T.bg, border: `1px solid ${T.border}` }}>
           <span className="text-[13px] font-medium" style={{ color: T.ink }}>
             已选 {selectedIds.size} 条
@@ -246,7 +308,7 @@ export default function RawRecordsPage() {
           <table className="w-full table-fixed text-[13px]">
             <thead>
               <tr style={{ background: T.cloud }}>
-                {isEngineer && (
+                {isReviewer && (
                   <th className="w-10 px-2 py-2.5">
                     <input type="checkbox" className="accent-[#315D6D] cursor-pointer"
                       checked={records.length > 0 && records.every(r => selectedIds.has(r.id))}
@@ -273,7 +335,7 @@ export default function RawRecordsPage() {
               {records.map((r) => {
                 return (
                   <tr key={r.id} className="hover:bg-gray-50 transition-colors" style={{ borderTop: `1px solid ${T.cloud}` }}>
-                    {isEngineer && (
+                    {isReviewer && (
                       <td className="px-2 py-2.5">
                         <input type="checkbox" className="accent-[#315D6D] cursor-pointer"
                           checked={selectedIds.has(r.id)}
@@ -450,7 +512,7 @@ export default function RawRecordsPage() {
 
       {/* ==================== 详情抽屉（原始 vs 清洗后 双栏 diff） ==================== */}
       {detail && (
-        <div className="fixed inset-0 z-50 flex" style={{ background: "rgba(25,50,77,0.3)" }} onClick={() => { setDetail(null); setSourceDetail(null); setCleanedDetail(null); }}>
+        <div className="fixed inset-0 z-50 flex" style={{ background: "rgba(25,50,77,0.3)" }} onClick={() => { setDetail(null); setSourceDetail(null); setCleanedDetail(null); setEditing(false); }}>
           <div className="ml-auto w-[900px] h-full bg-white shadow-xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 flex-shrink-0" style={{ borderBottom: `1px solid ${T.cloud}` }}>
               <div className="flex items-center gap-3">
@@ -461,7 +523,7 @@ export default function RawRecordsPage() {
                 )}
                 <h3 className="text-[15px] font-medium" style={{ color: T.ink }}>{viewDiff ? t("page.rawRecords.diffTitle") : t("page.rawRecords.detailTitle")}</h3>
               </div>
-              <button onClick={() => { setDetail(null); setSourceDetail(null); setCleanedDetail(null); setViewDiff(false); }} style={{ color: T.info }}><X size={18} /></button>
+              <button onClick={() => { setDetail(null); setSourceDetail(null); setCleanedDetail(null); setViewDiff(false); setEditing(false); }} style={{ color: T.info }}><X size={18} /></button>
             </div>
 
             {viewDiff ? (
@@ -476,45 +538,85 @@ export default function RawRecordsPage() {
                 )}
               </div>
             ) : (
-              // 字段详情视图：展示清洗后数据各字段 + 查看原始记录 + 复核操作
+              // 字段详情视图：展示清洗后数据各字段 + 查看原始记录/编辑 + 复核操作
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-                <DetailSection title={t("page.rawRecords.basicInfo")} items={[
-                  [t("page.rawRecords.jobName"), cleanedDetail?.job_name ?? detail.job_name ?? "-"],
-                  [t("page.rawRecords.companyName"), cleanedDetail?.company_name ?? detail.company_name ?? "-"],
-                  [t("page.rawRecords.jobSalary"), cleanedDetail?.salary ?? "-"],
-                  [t("page.rawRecords.jobCity"), cleanedDetail?.city ?? "-"],
-                  [t("page.rawRecords.jobProvince"), cleanedDetail?.province ?? "-"],
-                  [t("page.rawRecords.jobExp"), cleanedDetail?.experience ?? "-"],
-                  [t("page.rawRecords.jobEdu"), cleanedDetail?.education ?? "-"],
-                  [t("page.rawRecords.jobMajor"), cleanedDetail?.major ?? "-"],
-                  [t("page.rawRecords.jobNature"), cleanedDetail?.nature ?? "-"],
-                  [t("page.rawRecords.jobTags"), cleanedDetail?.tags ?? "-"],
-                  [t("page.rawRecords.jobCompanySize"), cleanedDetail?.company_size ?? "-"],
-                  [t("page.rawRecords.sourcePlatform"), cleanedDetail?.source_platform ?? detail.source_platform ?? "-"],
-                  [t("page.rawRecords.jobSourceUrl"), cleanedDetail?.source_url ?? "-"],
-                  [t("page.rawRecords.publishDate"), (cleanedDetail?.publish_date ?? detail.publish_date)?.slice(0, 10) ?? "-"],
-                  [t("page.rawRecords.reviewStatus"), <StatusBadge status={detail.review_status} />],
-                  [t("page.rawRecords.reviewDate"), cleanedDetail?.reviewed_at?.slice(0, 10) ?? "-"],
-                  [t("page.rawRecords.createDate"), detail.created_at?.slice(0, 10) ?? "-"],
-                ]} />
-
-                {/* 职位描述 */}
-                {cleanedDetail?.job_description && (
-                  <div>
-                    <div className="text-[12px] font-medium mb-2" style={{ color: T.ink }}>{t("page.rawRecords.jobDesc")}</div>
-                    <div className="rounded-md p-3 text-[13px] leading-relaxed whitespace-pre-wrap" style={{ background: T.cloud, color: T.ink }}>
-                      {cleanedDetail.job_description}
+                {editing ? (
+                  /* ── 编辑态：替换详情展示，保存后以修改后内容通过复核 ── */
+                  <div className="space-y-3">
+                    <div className="text-[12px] font-medium" style={{ color: T.info }}>{t("page.rawRecords.editFields")}</div>
+                    <div className="text-[11px]" style={{ color: T.info }}>{t("page.rawRecords.editHint")}</div>
+                    <div className="grid grid-cols-2 gap-3">
+                      {([
+                        ["jobName", t("page.rawRecords.jobName")],
+                        ["companyName", t("page.rawRecords.companyName")],
+                        ["salary", t("page.rawRecords.jobSalary")],
+                        ["city", t("page.rawRecords.jobCity")],
+                        ["education", t("page.rawRecords.jobEdu")],
+                        ["experience", t("page.rawRecords.jobExp")],
+                      ] as [keyof EditForm, string][]).map(([k, label]) => (
+                        <div key={k}>
+                          <label className="text-[11px] block mb-1" style={{ color: T.info }}>{label}</label>
+                          <input className="w-full px-2.5 py-1.5 rounded text-[13px] outline-none"
+                            style={{ background: "white", border: `1px solid ${T.border}`, color: T.ink }}
+                            value={editForm[k]} onChange={e => setEditField(k, e.target.value)} />
+                        </div>
+                      ))}
+                    </div>
+                    <div>
+                      <label className="text-[11px] block mb-1" style={{ color: T.info }}>{t("page.rawRecords.jobDesc")}</label>
+                      <textarea className="w-full px-2.5 py-1.5 rounded text-[13px] outline-none resize-none"
+                        rows={3} style={{ background: "white", border: `1px solid ${T.border}`, color: T.ink }}
+                        value={editForm.jobDescription} onChange={e => setEditField("jobDescription", e.target.value)} />
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Btn variant="secondary" size="sm" onClick={cancelEdit}>{t("page.rawRecords.cancelEdit")}</Btn>
+                      <Btn size="sm" onClick={submitEdit} disabled={savingEdit}>{savingEdit ? t("page.rawRecords.saving") : t("page.rawRecords.saveEdit")}</Btn>
                     </div>
                   </div>
+                ) : (
+                  <>
+                    <DetailSection title={t("page.rawRecords.basicInfo")} items={[
+                      [t("page.rawRecords.jobName"), cleanedDetail?.job_name ?? detail.job_name ?? "-"],
+                      [t("page.rawRecords.companyName"), cleanedDetail?.company_name ?? detail.company_name ?? "-"],
+                      [t("page.rawRecords.jobSalary"), cleanedDetail?.salary ?? "-"],
+                      [t("page.rawRecords.jobCity"), cleanedDetail?.city ?? "-"],
+                      [t("page.rawRecords.jobProvince"), cleanedDetail?.province ?? "-"],
+                      [t("page.rawRecords.jobExp"), cleanedDetail?.experience ?? "-"],
+                      [t("page.rawRecords.jobEdu"), cleanedDetail?.education ?? "-"],
+                      [t("page.rawRecords.jobMajor"), cleanedDetail?.major ?? "-"],
+                      [t("page.rawRecords.jobNature"), cleanedDetail?.nature ?? "-"],
+                      [t("page.rawRecords.jobTags"), cleanedDetail?.tags ?? "-"],
+                      [t("page.rawRecords.jobCompanySize"), cleanedDetail?.company_size ?? "-"],
+                      [t("page.rawRecords.sourcePlatform"), cleanedDetail?.source_platform ?? detail.source_platform ?? "-"],
+                      [t("page.rawRecords.jobSourceUrl"), cleanedDetail?.source_url ?? "-"],
+                      [t("page.rawRecords.publishDate"), (cleanedDetail?.publish_date ?? detail.publish_date)?.slice(0, 10) ?? "-"],
+                      [t("page.rawRecords.reviewStatus"), <StatusBadge status={detail.review_status} />],
+                      [t("page.rawRecords.reviewDate"), cleanedDetail?.reviewed_at?.slice(0, 10) ?? "-"],
+                      [t("page.rawRecords.createDate"), detail.created_at?.slice(0, 10) ?? "-"],
+                    ]} />
+
+                    {/* 职位描述 */}
+                    {cleanedDetail?.job_description && (
+                      <div>
+                        <div className="text-[12px] font-medium mb-2" style={{ color: T.ink }}>{t("page.rawRecords.jobDesc")}</div>
+                        <div className="rounded-md p-3 text-[13px] leading-relaxed whitespace-pre-wrap" style={{ background: T.cloud, color: T.ink }}>
+                          {cleanedDetail.job_description}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 查看原始记录 + 编辑 */}
+                    <div className="pt-1 flex items-center gap-2">
+                      <Btn size="sm" icon={FileText} onClick={() => setViewDiff(true)}>{t("page.rawRecords.viewOriginalRecord")}</Btn>
+                      {isReviewer && detail.review_status !== "REVIEW_PASSED" && (
+                        <Btn size="sm" variant="secondary" icon={Pencil} onClick={openEdit}>{t("page.rawRecords.edit")}</Btn>
+                      )}
+                    </div>
+                  </>
                 )}
 
-                {/* 查看原始记录 → diff 对比 */}
-                <div className="pt-1">
-                  <Btn size="sm" icon={FileText} onClick={() => setViewDiff(true)}>{t("page.rawRecords.viewOriginalRecord")}</Btn>
-                </div>
-
-                {/* 审核操作：通过 / 拒绝 */}
-                {isEngineer && detail.review_status !== "REVIEW_PASSED" && (
+                {/* 审核操作：通过 / 驳回 */}
+                {!editing && isReviewer && detail.review_status !== "REVIEW_PASSED" && (
                   <div className="flex flex-col gap-2 pt-4" style={{ borderTop: `1px solid ${T.cloud}` }}>
                     <div className="text-[12px] font-medium" style={{ color: T.info }}>{t("page.rawRecords.reviewActions")}</div>
                     <div className="flex gap-2">

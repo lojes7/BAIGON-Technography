@@ -383,7 +383,13 @@
       "reviewApproved": "Approved",
       "reviewRejected": "Rejected",
       "reviewUpdated": "Updated",
-      "noDiffData": "No source/cleaned data to compare"
+      "noDiffData": "No source/cleaned data to compare",
+      "editFields": "Edit Job Fields",
+      "editHint": "Saving approves the review with the edited content and writes it to the job library",
+      "edit": "Edit",
+      "cancelEdit": "Cancel Edit",
+      "saveEdit": "Save",
+      "saving": "Saving…"
     },
     "dataExport": {
       "title": "Data Export",

@@ -8,6 +8,7 @@ import { analyzeMyResumeSkills } from "../services/resume";
 import { listMySkills } from "../services/user";
 import type { UserSkillData } from "../types/api";
 import { PageHeader, Btn, Card } from "../components/ui";
+import AbilityRadialGraph from "../components/AbilityRadialGraph";
 
 
 const PROFICIENCY_LABEL: Record<string, string> = {
@@ -60,6 +61,8 @@ export default function MySkills() {
   };
 
   const groups = groupByBatch(items);
+  // 能力图谱数据：优先本次分析结果，否则取最新一批历史快照
+  const currentSkills = latest ?? groups[0]?.skills ?? [];
 
   return (
     <div className="flex flex-col gap-5">
@@ -108,6 +111,27 @@ export default function MySkills() {
                 </div>
               )}
             </div>
+          )}
+        </div>
+      </Card>
+
+      {/* 能力图谱 */}
+      <Card title="能力图谱">
+        <div className="px-6 py-4">
+          {currentSkills.length === 0 ? (
+            <div className="py-10 text-center text-[13px]" style={{ color: T.info }}>
+              暂无能力，点击上方「开始分析」生成能力图谱
+            </div>
+          ) : (
+            <AbilityRadialGraph
+              centerLabel="我的能力"
+              abilities={currentSkills.map((s) => ({
+                name: s.skillName,
+                proficiency: s.proficiency,
+                evidence: s.evidence,
+              }))}
+              emptyHint="暂无能力，点击上方「开始分析」生成能力图谱"
+            />
           )}
         </div>
       </Card>

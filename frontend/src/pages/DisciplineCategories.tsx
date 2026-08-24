@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import T from "../constants/tokens";
 import { PageHeader, Card } from "../components/ui";
 import CatalogTree, { type CatalogNodeData } from "../components/CatalogTree";
+import CatalogSearch, { type CatalogSearchLevel } from "../components/CatalogSearch";
 import EmbeddingProgress from "../components/EmbeddingProgress";
 import { getDisciplineCategories, getMajorCategories, getMajors } from "../services/occupation";
 import type { CatalogItem } from "../types/api";
@@ -12,6 +13,7 @@ function DisciplineCategoriesPage() {
   const { t } = useTranslation();
   const [roots, setRoots] = useState<CatalogItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchActive, setSearchActive] = useState(false);
 
   useEffect(() => {
     getDisciplineCategories({ page: 0, pageSize: 100 })
@@ -30,6 +32,27 @@ function DisciplineCategoriesPage() {
     return res.data.items ?? [];
   };
 
+    const searchLevels: CatalogSearchLevel[] = [
+    {
+      label: "学科门类",
+      parents: [],
+      search: async (_parentId, kw) => (await getDisciplineCategories({ page: 0, pageSize: 100, keyword: kw })).data.items ?? [],
+    },
+    {
+      label: "专业类",
+      parents: [{ label: "学科门类", load: async () => (await getDisciplineCategories({ page: 0, pageSize: 100 })).data.items ?? [] }],
+      search: async (parentId, kw) => (await getMajorCategories({ page: 0, pageSize: 100, disciplineCategoryId: parentId, keyword: kw })).data.items ?? [],
+    },
+    {
+      label: "专业",
+      parents: [
+        { label: "学科门类", load: async () => (await getDisciplineCategories({ page: 0, pageSize: 100 })).data.items ?? [] },
+        { label: "专业类", load: async (pid) => (await getMajorCategories({ page: 0, pageSize: 100, disciplineCategoryId: pid! })).data.items ?? [] },
+      ],
+      search: async (parentId, kw) => (await getMajors({ page: 0, pageSize: 100, majorCategoryId: parentId, keyword: kw })).data.items ?? [],
+    },
+  ];
+
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
@@ -41,13 +64,21 @@ function DisciplineCategoriesPage() {
       {/* 专业名称向量化进度 + 按钮 */}
       <EmbeddingProgress kind="major" />
 
-      <Card>
-        {loading ? (
-          <div className="px-4 py-8 text-center text-[13px]" style={{ color: T.info }}>{t("common.loading")}</div>
-        ) : (
-          <CatalogTree roots={roots} loadChildren={loadChildren} maxDepth={3} leafEmbedBadge />
-        )}
-      </Card>
+      {/* 级联搜索：选层级 + 选父级 + 关键词；清空恢复树 */}
+      <CatalogSearch
+        levels={searchLevels}
+        onActiveChange={setSearchActive}
+      />
+
+      {!searchActive && (
+        <Card>
+          {loading ? (
+            <div className="px-4 py-8 text-center text-[13px]" style={{ color: T.info }}>{t("common.loading")}</div>
+          ) : (
+            <CatalogTree roots={roots} loadChildren={loadChildren} maxDepth={3} leafEmbedBadge />
+          )}
+        </Card>
+      )}
     </div>
   );
 }

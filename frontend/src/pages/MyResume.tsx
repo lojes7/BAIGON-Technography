@@ -45,6 +45,48 @@ function emptyFields(): ResumeFields {
   };
 }
 
+function buildContentFromFields(f: ResumeFields): string {
+  const lines: string[] = [];
+  const date = (s?: string, e?: string) => (s || e) ? `${s || ""} - ${e || ""}` : "";
+
+  if (f.education_experience.length) {
+    lines.push("教育经历：");
+    f.education_experience.forEach(e => {
+      const head = [e.university_name, e.major, date(e.start_date, e.end_date)].filter(Boolean).join("，");
+      lines.push(head + (e.description ? `；${e.description}` : ""));
+    });
+  }
+  if (f.work_experience.length) {
+    lines.push("工作经历：");
+    f.work_experience.forEach(w => {
+      const head = [w.occupation_name, w.company, date(w.start_date, w.end_date)].filter(Boolean).join("，");
+      lines.push(head + (w.description ? `；${w.description}` : ""));
+    });
+  }
+  if (f.project_experience.length) {
+    lines.push("项目经历：");
+    f.project_experience.forEach(p => {
+      const head = [p.project_name, date(p.start_date, p.end_date)].filter(Boolean).join("，");
+      lines.push(head + (p.description ? `；${p.description}` : ""));
+    });
+  }
+  if (f.professional_skills.length) {
+    const skills = f.professional_skills
+      .map(s => s.skill_name + (s.proficiency ? `（${s.proficiency}）` : ""))
+      .filter(Boolean);
+    if (skills.length) lines.push("专业技能：" + skills.join("、"));
+  }
+  if (f.awards.length) {
+    lines.push("获奖情况：");
+    f.awards.forEach(a => {
+      const head = [a.award_name, a.date].filter(Boolean).join("，");
+      lines.push(head + (a.description ? `；${a.description}` : ""));
+    });
+  }
+
+  return lines.join("\n");
+}
+
 // 首尾空格 trim，避免后端 requireString 的 strip 校验拒绝
 const trimStr = (s: string) => (s ?? "").trim();
 
@@ -154,7 +196,9 @@ export default function MyResume() {
     if (error) { toast.error(error); return; }
     setSaving(true);
     try {
-      const res = await editMyResume({ content: resume?.content ?? undefined, fields });
+      // 已有正文则保留；无正文时用结构化字段自动拼接，保证「我的能力」技能分析有 content 依据（否则 400）
+      const content = (resume?.content?.trim() || buildContentFromFields(fields).trim()) || undefined;
+      const res = await editMyResume({ content, fields });
       setResume(res.data);
       setEditing(false);
       setEditForm(null);
