@@ -56,7 +56,7 @@
     "rawRecords": "Data Review",
     "aiProcessing": "AI Processing",
     "extractionTasks": "Extraction Tasks",
-    "reviewQueue": "Review Queue",
+    "reviewQueue": "Skill Resolution Review",
     "aiAnalyses": "AI Analysis Records",
     "jobAnalysis": "Job Analysis Review",
     "processingErrors": "Processing Errors",

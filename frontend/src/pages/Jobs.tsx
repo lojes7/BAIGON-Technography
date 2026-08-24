@@ -1,16 +1,19 @@
 // 分页检索已审核岗位，支持多字段包含匹配，进入详情查看职业与技能。
 import { useTranslation } from "react-i18next";
-import { useState, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { X, Eye, Search, RotateCcw, Sparkles } from "lucide-react";
 import T from "../constants/tokens";
-import { listJobs, getJobDetail, matchMyResumeToJob } from "../services/jobs";
+import { getJobDetail, getLatestMyJobMatch, listJobs, matchMyResumeToJob } from "../services/jobs";
+import { isHttpErrorStatus } from "../services/http-error";
 import type { JobData, JobDetail, JobMatchResult } from "../types/api";
 import { PageHeader, Card, Btn } from "../components/ui";
 import AbilityRadialGraph from "../components/AbilityRadialGraph";
+import DirectoryPicker from "../components/job-analysis/DirectoryPicker";
 
 interface FilterForm {
   name: string;
+  majorId: string;
   occupationId: string;
   major: string;
   city: string;
@@ -23,7 +26,7 @@ interface FilterForm {
 }
 
 const EMPTY_FILTER: FilterForm = {
-  name: "", occupationId: "", major: "", city: "", province: "",
+  name: "", majorId: "", occupationId: "", major: "", city: "", province: "",
   salary: "", company: "", education: "", nature: "", companySize: "",
 };
 
@@ -35,12 +38,15 @@ export default function JobsPage() {
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<FilterForm>(EMPTY_FILTER);
   const [applied, setApplied] = useState<FilterForm>(EMPTY_FILTER);
+  const [majorFilterName, setMajorFilterName] = useState("");
+  const [occupationFilterName, setOccupationFilterName] = useState("");
 
   // 详情抽屉
   const [detail, setDetail] = useState<JobDetail | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
+  const detailRequestRef = useRef(0);
   // 人岗匹配
   const [match, setMatch] = useState<JobMatchResult | null>(null);
+  const [matchLoading, setMatchLoading] = useState(false);
   const [matching, setMatching] = useState(false);
 
   const fetchList = () => {
@@ -49,7 +55,8 @@ export default function JobsPage() {
       page: page - 1,
       pageSize: 20,
       name: applied.name || undefined,
-      occupationId: applied.occupationId ? Number(applied.occupationId) : undefined,
+      majorId: applied.majorId || undefined,
+      occupationId: applied.occupationId || undefined,
       major: applied.major || undefined,
       city: applied.city || undefined,
       province: applied.province || undefined,
@@ -60,41 +67,68 @@ export default function JobsPage() {
       companySize: applied.companySize || undefined,
     })
       .then((res) => { setItems(res.data.items ?? []); setTotal(res.data.total ?? 0); })
-      .catch(() => {})
+      .catch((error) => toast.error(error instanceof Error ? error.message : "岗位列表加载失败"))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => { fetchList(); }, [page, applied]);
 
   const applyFilter = () => { setApplied({ ...form }); setPage(1); };
-  const resetFilter = () => { setForm(EMPTY_FILTER); setApplied(EMPTY_FILTER); setPage(1); };
+  const resetFilter = () => {
+    setForm(EMPTY_FILTER);
+    setApplied(EMPTY_FILTER);
+    setMajorFilterName("");
+    setOccupationFilterName("");
+    setPage(1);
+  };
 
   const openDetail = async (id: string | number) => {
-    setDetailLoading(true);
+    const requestId = ++detailRequestRef.current;
     setDetail(null);
     setMatch(null);
-    try {
-      const res = await getJobDetail(id);
-      setDetail(res.data);
-    } catch (err) {
-      toast.error((err as Error).message);
-    } finally {
-      setDetailLoading(false);
+    setMatchLoading(true);
+    setMatching(false);
+    const [detailResult, matchResult] = await Promise.allSettled([
+      getJobDetail(id),
+      getLatestMyJobMatch(id),
+    ]);
+    if (detailRequestRef.current !== requestId) return;
+
+    if (detailResult.status === "fulfilled") {
+      setDetail(detailResult.value.data);
+    } else {
+      toast.error(detailResult.reason instanceof Error ? detailResult.reason.message : "岗位详情加载失败");
     }
+    if (matchResult.status === "fulfilled") {
+      setMatch(matchResult.value.data);
+    } else if (!isHttpErrorStatus(matchResult.reason, 404)) {
+      toast.error(matchResult.reason instanceof Error ? matchResult.reason.message : "最近匹配结果加载失败");
+    }
+    setMatchLoading(false);
   };
 
   const handleMatch = async () => {
     if (!detail?.job) return;
+    const requestId = detailRequestRef.current;
+    const jobId = detail.job.id;
     setMatching(true);
-    setMatch(null);
     try {
-      const res = await matchMyResumeToJob(detail.job.id);
-      setMatch(res.data);
+      const res = await matchMyResumeToJob(jobId);
+      if (detailRequestRef.current === requestId) setMatch(res.data);
     } catch (err) {
-      toast.error((err as Error).message);
+      if (detailRequestRef.current === requestId) toast.error((err as Error).message);
     } finally {
-      setMatching(false);
+      if (detailRequestRef.current === requestId) setMatching(false);
     }
+  };
+
+  const closeDetail = () => {
+    // 使尚未返回的详情或匹配请求失效，避免关闭后抽屉被旧请求重新打开。
+    detailRequestRef.current += 1;
+    setDetail(null);
+    setMatch(null);
+    setMatchLoading(false);
+    setMatching(false);
   };
 
   const setField = (k: keyof FilterForm, v: string) => setForm(p => ({ ...p, [k]: v }));
@@ -109,7 +143,6 @@ export default function JobsPage() {
     { key: "education", label: "学历", placeholder: "如 本科" },
     { key: "nature", label: "工作性质", placeholder: "如 全职" },
     { key: "companySize", label: "公司规模", placeholder: "如 100-499人" },
-    { key: "occupationId", label: "职业 ID", placeholder: "精确匹配", numeric: true },
   ];
 
   return (
@@ -117,7 +150,7 @@ export default function JobsPage() {
       <PageHeader
         breadcrumbs={[t("nav.jobExplore"), "岗位查询"]}
         title="岗位查询"
-        description="检索已审核的招聘岗位，支持按名称、专业、地区、薪资等多字段筛选"
+        description="检索已审核岗位，支持专业/职业 ID 精确筛选，并查看已保存的人岗匹配结果"
       />
 
       {/* 筛选区 */}
@@ -138,6 +171,43 @@ export default function JobsPage() {
               </div>
             ))}
           </div>
+          <details className="mt-3 rounded-lg bg-white px-3 py-2" style={{ border: `1px solid ${T.border}` }}>
+            <summary className="cursor-pointer text-[12px] font-medium" style={{ color: T.info }}>
+              规范目录精确筛选
+              {(form.majorId || form.occupationId) && (
+                <span className="ml-2 font-mono text-[11px]" style={{ color: T.teal }}>
+                  {form.majorId ? `专业 ${form.majorId}` : ""}{form.majorId && form.occupationId ? " · " : ""}
+                  {form.occupationId ? `职业 ${form.occupationId}` : ""}
+                </span>
+              )}
+            </summary>
+            <div className="mt-3 grid grid-cols-2 gap-4">
+              <div>
+                <div className="mb-1 text-[11px]" style={{ color: T.info }}>专业目录</div>
+                <DirectoryPicker
+                  kind="major"
+                  selectedId={form.majorId || null}
+                  selectedName={majorFilterName}
+                  onSelect={(id, name) => {
+                    setField("majorId", id);
+                    setMajorFilterName(name);
+                  }}
+                />
+              </div>
+              <div>
+                <div className="mb-1 text-[11px]" style={{ color: T.info }}>职业目录</div>
+                <DirectoryPicker
+                  kind="occupation"
+                  selectedId={form.occupationId || null}
+                  selectedName={occupationFilterName}
+                  onSelect={(id, name) => {
+                    setField("occupationId", id);
+                    setOccupationFilterName(name);
+                  }}
+                />
+              </div>
+            </div>
+          </details>
           <div className="flex items-center gap-2 mt-3">
             <Btn icon={Search} size="sm" onClick={applyFilter}>查询</Btn>
             <Btn variant="secondary" size="sm" icon={RotateCcw} onClick={resetFilter}>重置</Btn>
@@ -170,7 +240,10 @@ export default function JobsPage() {
                   <td className="px-4 py-3 text-[12px]" style={{ color: T.info }}>{j.salary || "—"}</td>
                   <td className="px-4 py-3 text-[12px]" style={{ color: T.info }}>{j.education || "—"}</td>
                   <td className="px-4 py-3 text-[12px]" style={{ color: T.info }}>{j.experience || "—"}</td>
-                  <td className="px-4 py-3 text-[12px]" style={{ color: T.info }}>{j.major || "—"}</td>
+                  <td className="px-4 py-3 text-[12px]" style={{ color: T.info }}>
+                    <div>{j.major || "—"}</div>
+                    {j.majorId && <div className="mt-0.5 font-mono text-[10px]">ID：{j.majorId}</div>}
+                  </td>
                   <td className="px-4 py-3 text-[12px]" style={{ color: T.info }}>{j.sourcePlatform || "—"}</td>
                   <td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{j.publishDate?.slice(0, 10) || "—"}</td>
                   <td className="px-4 py-3">
@@ -198,8 +271,8 @@ export default function JobsPage() {
 
       {/* 详情抽屉 */}
       {detail && (
-        <div className="fixed inset-0 z-50 flex" style={{ background: "rgba(25,50,77,0.3)" }} onClick={() => setDetail(null)}>
-          <div className="ml-auto w-[560px] h-full bg-white shadow-xl flex flex-col overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex" style={{ background: "rgba(25,50,77,0.3)" }} onClick={closeDetail}>
+          <div className="ml-auto w-[600px] h-full bg-white shadow-xl flex flex-col overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 flex-shrink-0 sticky top-0 bg-white" style={{ borderBottom: `1px solid ${T.cloud}` }}>
               <div>
                 <h3 className="text-[15px] font-medium" style={{ color: T.ink }}>{detail.job?.name || "岗位详情"}</h3>
@@ -207,13 +280,10 @@ export default function JobsPage() {
                   {[detail.job?.companyName, detail.job?.city, detail.job?.province].filter(Boolean).join(" · ")}
                 </div>
               </div>
-              <button onClick={() => setDetail(null)} style={{ color: T.info }}><X size={18} /></button>
+              <button onClick={closeDetail} style={{ color: T.info }}><X size={18} /></button>
             </div>
 
-            {detailLoading ? (
-              <div className="flex-1 flex items-center justify-center text-[13px]" style={{ color: T.info }}>加载中…</div>
-            ) : (
-              <div className="px-5 py-4 space-y-5">
+            <div className="px-5 py-4 space-y-5">
                 {/* 基本信息 */}
                 <section>
                   <div className="text-[12px] font-medium mb-2" style={{ color: T.info }}>基本信息</div>
@@ -232,6 +302,22 @@ export default function JobsPage() {
                   </div>
                 </section>
 
+                {/* 关联专业 */}
+                <section>
+                  <div className="text-[12px] font-medium mb-2" style={{ color: T.info }}>关联专业</div>
+                  {detail.major ? (
+                    <div className="rounded-lg p-3" style={{ background: T.cloud }}>
+                      <div className="text-[13px] font-medium" style={{ color: T.ink }}>{detail.major.name}</div>
+                      <div className="mt-0.5 flex gap-3 text-[12px]" style={{ color: T.info }}>
+                        {detail.major.code && <span>编码：{detail.major.code}</span>}
+                        <span className="font-mono">ID：{detail.major.id}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-[13px]" style={{ color: T.info }}>尚未关联规范专业</div>
+                  )}
+                </section>
+
                 {/* 关联职业 */}
                 <section>
                   <div className="text-[12px] font-medium mb-2" style={{ color: T.info }}>关联职业</div>
@@ -239,6 +325,7 @@ export default function JobsPage() {
                     <div className="rounded-lg p-3" style={{ background: T.cloud }}>
                       <div className="text-[13px] font-medium" style={{ color: T.ink }}>{detail.occupation.name}</div>
                       {detail.occupation.code && <div className="text-[12px] mt-0.5" style={{ color: T.info }}>编码：{detail.occupation.code}</div>}
+                      <div className="font-mono text-[12px] mt-0.5" style={{ color: T.info }}>ID：{detail.occupation.id}</div>
                       {detail.occupation.description && <div className="text-[12px] mt-0.5" style={{ color: T.info }}>{detail.occupation.description}</div>}
                     </div>
                   ) : (
@@ -277,8 +364,17 @@ export default function JobsPage() {
                         <div key={String(s.id)} className="rounded-lg p-3" style={{ background: T.cloud, border: `1px solid ${T.border}` }}>
                           <div className="flex items-center justify-between">
                             <span className="text-[13px] font-medium" style={{ color: T.ink }}>{s.skillName}</span>
-                            <span className="text-[12px]" style={{ color: T.teal }}>{s.skillProficiency || "—"}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="rounded px-1.5 py-0.5 text-[10px]" style={{
+                                background: s.skillId ? `${T.emerging}12` : `${T.pending}12`,
+                                color: s.skillId ? T.emerging : T.pending,
+                              }}>
+                                {s.skillId ? "已归一" : "待归一"}
+                              </span>
+                              <span className="text-[12px]" style={{ color: T.teal }}>{s.skillProficiency || "—"}</span>
+                            </div>
                           </div>
+                          {s.skillId && <div className="font-mono text-[11px] mt-1" style={{ color: T.info }}>规范技能 ID：{s.skillId}</div>}
                           {s.evidence && <div className="text-[12px] mt-1" style={{ color: T.info }}>{s.evidence}</div>}
                         </div>
                       ))}
@@ -300,12 +396,21 @@ export default function JobsPage() {
                   <div className="flex items-center justify-between mb-2">
                     <div className="text-[12px] font-medium" style={{ color: T.info }}>人岗匹配</div>
                     <Btn size="sm" icon={Sparkles} onClick={handleMatch} disabled={matching}>
-                      {matching ? "匹配中…" : "匹配我的简历"}
+                      {matching ? "匹配中…" : match ? "重新匹配" : "匹配我的简历"}
                     </Btn>
                   </div>
 
-                  {match ? (
+                  {matchLoading ? (
+                    <div className="rounded-lg p-4 text-center text-[12px]" style={{ background: T.cloud, color: T.info }}>
+                      正在读取最近一次匹配结果…
+                    </div>
+                  ) : match ? (
                     <div className="rounded-lg p-4 space-y-3" style={{ background: T.cloud, border: `1px solid ${T.border}` }}>
+                      <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px]" style={{ color: T.info }}>
+                        <span>结果 ID：{match.id}</span>
+                        <span>简历 ID：{match.resumeId}</span>
+                        <span>生成时间：{match.createdAt || "—"}</span>
+                      </div>
                       {/* 匹配度分数 */}
                       <div className="flex items-center gap-3">
                         <div className="w-14 h-14 rounded-full flex items-center justify-center flex-shrink-0"
@@ -357,13 +462,12 @@ export default function JobsPage() {
                   ) : (
                     !matching && (
                       <div className="rounded-lg p-4 text-center text-[12px]" style={{ background: T.cloud, color: T.info }}>
-                        点击「匹配我的简历」使用最新简历分析你与该岗位的匹配度
+                        尚无已保存的匹配结果。点击「匹配我的简历」使用最新简历开始分析
                       </div>
                     )
                   )}
                 </section>
               </div>
-            )}
           </div>
         </div>
       )}

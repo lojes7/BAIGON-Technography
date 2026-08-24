@@ -56,7 +56,7 @@
     "rawRecords": "数据复核",
     "aiProcessing": "AI处理",
     "extractionTasks": "抽取任务",
-    "reviewQueue": "复核队列",
+    "reviewQueue": "技能归一审核",
     "aiAnalyses": "AI分析记录",
     "jobAnalysis": "岗位分析审核",
     "processingErrors": "处理异常",

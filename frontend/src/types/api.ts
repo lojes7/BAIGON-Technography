@@ -911,21 +911,32 @@ export interface JobAnalysisTaskSummary {
   jobName: string;
   taskStatus: string;
   reviewStatus: string;
-  selectedOccupationId: string | number;
+  selectedOccupationId: string | number | null;
   modelName: string;
   errorMsg: string;
   attempts: number;
   createdAt: string;
   reviewedAt: string | null;
-  reviewedBy: string | number;
+  reviewedBy: string | number | null;
   occupationAnalysisStatus: string;
   jdAnalysisStatus: string;
+  jobMajor: string;
+  selectedMajorId: string | number | null;
+  majorAnalysisStatus: string;
 }
 
 // 职业候选
 export interface JobAnalysisCandidate {
   occupationId: string | number;
   occupationName: string;
+  rank: number;
+  similarity: number;
+}
+
+// 专业候选
+export interface JobAnalysisMajorCandidate {
+  majorId: string | number;
+  majorName: string;
   rank: number;
   similarity: number;
 }
@@ -944,13 +955,14 @@ export interface JobAnalysisResult {
   reviewedSkillProficiency: string;
   reviewedEvidence: string;
   reviewedAt: string | null;
-  reviewedBy: string | number;
+  reviewedBy: string | number | null;
 }
 
 // 岗位分析任务详情
 export interface JobAnalysisTaskDetail {
   task: JobAnalysisTaskSummary;
   candidates: JobAnalysisCandidate[];
+  majorCandidates: JobAnalysisMajorCandidate[];
   results: JobAnalysisResult[];
 }
 
@@ -965,17 +977,71 @@ export interface JobAnalysisSkillReviewInput {
 
 // 审核请求体
 export interface ReviewJobAnalysisParams {
+  majorId: string | number;
   occupationId: string | number;
   skillReviews: JobAnalysisSkillReviewInput[];
 }
 
-// ── 8.5 岗位查询（所有已登录角色）──
+// ── 8.5 岗位技能归一审核（ADMIN / DATA_REVIEWER）──
+
+// 全局规范技能（GET /api/auth/occupation/skills）
+export interface CanonicalSkillItem {
+  id: string;
+  name: string;
+  is_embed: boolean;
+}
+
+export type SkillResolutionAction = "SELECT_CANDIDATE" | "SELECT_EXISTING" | "CREATE_NEW";
+
+export interface JobSkillResolutionTaskSummary {
+  id: string;
+  jobSkillId: string;
+  jobId: string;
+  traceId: string;
+  skillName: string;
+  taskStatus: string;
+  reviewStatus: string;
+  resolutionAction: string;
+  selectedSkillId: string | number | null;
+  modelName: string;
+  errorMsg: string;
+  attempts: number;
+  createdAt: string;
+  reviewedAt: string | null;
+  reviewedBy: string | number | null;
+}
+
+export interface JobSkillResolutionCandidate {
+  skillId: string;
+  skillName: string;
+  rank: number;
+  similarity: number;
+}
+
+export interface JobSkillResolutionTaskDetail {
+  task: JobSkillResolutionTaskSummary;
+  jobSkill: JobSkillData;
+  candidates: JobSkillResolutionCandidate[];
+}
+
+export type ReviewJobSkillResolutionParams =
+  | {
+      resolutionAction: "SELECT_CANDIDATE" | "SELECT_EXISTING";
+      skillId: string | number;
+    }
+  | {
+      resolutionAction: "CREATE_NEW";
+      newSkillName: string;
+    };
+
+// ── 8.6 岗位查询（所有已登录角色）──
 
 // 已审核岗位数据（POST /api/jobs 列表项 / 详情 job）
 export interface JobData {
   id: string;
   name: string;
   occupationId: string | number | null;
+  majorId: string | number | null;
   publishDate: string;
   sourcePlatform: string;
   sourceUrl: string;
@@ -994,6 +1060,14 @@ export interface JobData {
   updatedAt: string;
 }
 
+// 岗位关联专业
+export interface JobMajorData {
+  id: string;
+  code: string;
+  name: string;
+  majorCategoryId: string | number;
+}
+
 // 岗位关联职业
 export interface JobOccupationData {
   id: string;
@@ -1006,6 +1080,7 @@ export interface JobOccupationData {
 // 正式岗位技能
 export interface JobSkillData {
   id: string;
+  skillId: string | number | null;
   skillName: string;
   skillProficiency: string;
   evidence: string;
@@ -1016,7 +1091,8 @@ export interface ListJobsParams {
   page?: number; // 从 0 开始
   pageSize?: number;
   name?: string;
-  occupationId?: number; // 精确匹配
+  occupationId?: string | number; // 精确匹配
+  majorId?: string | number; // 精确匹配
   major?: string;
   city?: string;
   province?: string;
@@ -1030,11 +1106,12 @@ export interface ListJobsParams {
 // 岗位详情聚合
 export interface JobDetail {
   job: JobData;
+  major: JobMajorData | null;
   occupation: JobOccupationData | null;
   jobSkills: JobSkillData[];
 }
 
-// ── 8.6 用户技能分析与能力时间线（已登录用户）──
+// ── 8.7 用户技能分析与能力时间线（已登录用户）──
 
 // 技能熟练度（ai-service AnalyzedSkill 契约，全大写四档）
 export type SkillProficiency = "EXPERT" | "ADVANCED" | "FAMILIAR" | "BASIC";
@@ -1060,7 +1137,7 @@ export interface MySkillsResult {
   items: UserSkillData[];
 }
 
-// ── 8.7 人岗匹配（POST /api/jobs/{id}/match）──
+// ── 8.8 人岗匹配（POST /api/jobs/{id}/match）──
 
 // 待学习技能建议
 export interface SkillLearningSuggestion {
@@ -1071,6 +1148,7 @@ export interface SkillLearningSuggestion {
 
 // 人岗匹配结果
 export interface JobMatchResult {
+  id: string;
   resumeId: string;
   jobId: string;
   score: number; // 0~100 整数
