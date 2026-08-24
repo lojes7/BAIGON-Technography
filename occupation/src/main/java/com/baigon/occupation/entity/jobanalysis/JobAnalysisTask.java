@@ -24,6 +24,8 @@ public class JobAnalysisTask extends BaseEntity {
     private Long jobId;
     @Column(name = "job_name", length = 64)
     private String jobName;
+    @Column(name = "job_major", length = 64)
+    private String jobMajor;
     @Column(name = "model_name")
     private String modelName;
     @Enumerated(EnumType.STRING)
@@ -36,6 +38,10 @@ public class JobAnalysisTask extends BaseEntity {
     private TaskStatus occupationAnalysisStatus = TaskStatus.PENDING;
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(name = "major_analysis_status", nullable = false, columnDefinition = "task_status")
+    private TaskStatus majorAnalysisStatus = TaskStatus.PENDING;
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(name = "jd_analysis_status", nullable = false, columnDefinition = "task_status")
     private TaskStatus jdAnalysisStatus = TaskStatus.PENDING;
     @Enumerated(EnumType.STRING)
@@ -44,6 +50,8 @@ public class JobAnalysisTask extends BaseEntity {
     private ReviewStatus reviewStatus = ReviewStatus.PENDING;
     @Column(name = "selected_occupation_id")
     private Long selectedOccupationId;
+    @Column(name = "selected_major_id")
+    private Long selectedMajorId;
     @Column(nullable = false)
     private Integer attempts = 0;
     @Column(name = "error_msg")
@@ -61,6 +69,8 @@ public class JobAnalysisTask extends BaseEntity {
     public void setJobId(Long jobId) { this.jobId = jobId; }
     public String getJobName() { return jobName; }
     public void setJobName(String jobName) { this.jobName = jobName; }
+    public String getJobMajor() { return jobMajor; }
+    public void setJobMajor(String jobMajor) { this.jobMajor = jobMajor; }
     public String getModelName() { return modelName; }
     public void setModelName(String modelName) { this.modelName = modelName; }
     public TaskStatus getTaskStatus() { return taskStatus; }
@@ -69,12 +79,18 @@ public class JobAnalysisTask extends BaseEntity {
     public void setOccupationAnalysisStatus(TaskStatus occupationAnalysisStatus) {
         this.occupationAnalysisStatus = occupationAnalysisStatus;
     }
+    public TaskStatus getMajorAnalysisStatus() { return majorAnalysisStatus; }
+    public void setMajorAnalysisStatus(TaskStatus majorAnalysisStatus) {
+        this.majorAnalysisStatus = majorAnalysisStatus;
+    }
     public TaskStatus getJdAnalysisStatus() { return jdAnalysisStatus; }
     public void setJdAnalysisStatus(TaskStatus jdAnalysisStatus) { this.jdAnalysisStatus = jdAnalysisStatus; }
     public ReviewStatus getReviewStatus() { return reviewStatus; }
     public void setReviewStatus(ReviewStatus reviewStatus) { this.reviewStatus = reviewStatus; }
     public Long getSelectedOccupationId() { return selectedOccupationId; }
     public void setSelectedOccupationId(Long selectedOccupationId) { this.selectedOccupationId = selectedOccupationId; }
+    public Long getSelectedMajorId() { return selectedMajorId; }
+    public void setSelectedMajorId(Long selectedMajorId) { this.selectedMajorId = selectedMajorId; }
     public Integer getAttempts() { return attempts; }
     public void setAttempts(Integer attempts) { this.attempts = attempts; }
     public String getErrorMsg() { return errorMsg; }

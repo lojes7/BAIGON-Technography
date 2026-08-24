@@ -696,7 +696,7 @@ func ListJobAnalysisTasksHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc 
 	}
 }
 
-// GetJobAnalysisTaskHandler 查询岗位分析任务、职业候选及 JD 技能结果。
+// GetJobAnalysisTaskHandler 查询岗位分析任务、专业/职业候选及 JD 技能结果。
 // @Summary      查询岗位分析任务详情
 // @Tags         岗位分析审核
 // @Produce      json
@@ -742,6 +742,7 @@ func GetJobAnalysisTaskHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 }
 
 type reviewJobAnalysisRequest struct {
+	MajorID      int64                    `json:"majorId" binding:"required"`
 	OccupationID int64                    `json:"occupationId" binding:"required"`
 	SkillReviews []jobAnalysisSkillReview `json:"skillReviews"`
 }
@@ -754,9 +755,9 @@ type jobAnalysisSkillReview struct {
 	Evidence         string `json:"evidence"`
 }
 
-// ReviewJobAnalysisTaskHandler 同时确认职业并逐条审核 JD 技能结果。
-// @Summary      审核岗位职业与技能分析
-// @Description  occupationId 可选择任意有效职业；skillReviews 必须覆盖全部分析结果，支持 APPROVE、APPROVE_WITH_EDIT、REJECT
+// ReviewJobAnalysisTaskHandler 同时确认专业、职业并逐条审核 JD 技能结果。
+// @Summary      审核岗位专业、职业与技能分析
+// @Description  majorId、occupationId 可选择任意有效目录记录；skillReviews 必须覆盖全部分析结果，支持 APPROVE、APPROVE_WITH_EDIT、REJECT
 // @Tags         岗位分析审核
 // @Accept       json
 // @Produce      json
@@ -777,7 +778,7 @@ func ReviewJobAnalysisTaskHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc
 			return
 		}
 		var request reviewJobAnalysisRequest
-		if err := c.ShouldBindJSON(&request); err != nil || request.OccupationID <= 0 {
+		if err := c.ShouldBindJSON(&request); err != nil || request.MajorID <= 0 || request.OccupationID <= 0 {
 			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
 			return
 		}
@@ -800,8 +801,9 @@ func ReviewJobAnalysisTaskHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc
 		resp, err := occupationpb.NewOccupationServiceClient(conn).ReviewJobAnalysisTask(
 			ctx,
 			&occupationpb.ReviewJobAnalysisTaskRequest{
-				Id: id, OccupationId: request.OccupationID, SkillReviews: skillReviews,
-				TraceId: c.GetString("trace_id"), UserId: UserIDFromContext(c),
+				Id: id, MajorId: request.MajorID, OccupationId: request.OccupationID,
+				SkillReviews: skillReviews,
+				TraceId:      c.GetString("trace_id"), UserId: UserIDFromContext(c),
 				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
 				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
 			},

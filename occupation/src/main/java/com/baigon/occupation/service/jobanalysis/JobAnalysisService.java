@@ -6,14 +6,18 @@ import com.baigon.occupation.config.JobAnalysisConfig;
 import com.baigon.occupation.entity.TaskStatus;
 import com.baigon.occupation.entity.job.Job;
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisCandidate;
+import com.baigon.occupation.entity.jobanalysis.JobAnalysisMajorCandidate;
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisResult;
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisTask;
 import com.baigon.occupation.grpc.client.ai.AIGrpcClient;
 import com.baigon.occupation.grpc.client.ai.AIAnalysisException;
 import com.baigon.occupation.repository.job.JobRepository;
 import com.baigon.occupation.repository.jobanalysis.JobAnalysisCandidateRepository;
+import com.baigon.occupation.repository.jobanalysis.JobAnalysisMajorCandidateRepository;
 import com.baigon.occupation.repository.jobanalysis.JobAnalysisResultRepository;
 import com.baigon.occupation.repository.jobanalysis.JobAnalysisTaskRepository;
+import com.baigon.occupation.repository.major.MajorCandidateProjection;
+import com.baigon.occupation.repository.major.MajorRepository;
 import com.baigon.occupation.repository.occupation.OccupationCandidateProjection;
 import com.baigon.occupation.repository.occupation.OccupationRepository;
 import com.baigon.occupation.service.AuditContext;
@@ -37,9 +41,11 @@ public class JobAnalysisService {
 
     private final JobAnalysisTaskRepository taskRepository;
     private final JobAnalysisCandidateRepository candidateRepository;
+    private final JobAnalysisMajorCandidateRepository majorCandidateRepository;
     private final JobAnalysisResultRepository resultRepository;
     private final JobRepository jobRepository;
     private final OccupationRepository occupationRepository;
+    private final MajorRepository majorRepository;
     private final AIGrpcClient aiGrpcClient;
     private final LogService logService;
     private final Snowflake snowflake;
@@ -49,9 +55,11 @@ public class JobAnalysisService {
 
     public JobAnalysisService(JobAnalysisTaskRepository taskRepository,
                               JobAnalysisCandidateRepository candidateRepository,
+                              JobAnalysisMajorCandidateRepository majorCandidateRepository,
                               JobAnalysisResultRepository resultRepository,
                               JobRepository jobRepository,
                               OccupationRepository occupationRepository,
+                              MajorRepository majorRepository,
                               AIGrpcClient aiGrpcClient,
                               LogService logService,
                               Snowflake snowflake,
@@ -60,9 +68,11 @@ public class JobAnalysisService {
                               JobAnalysisConfig config) {
         this.taskRepository = taskRepository;
         this.candidateRepository = candidateRepository;
+        this.majorCandidateRepository = majorCandidateRepository;
         this.resultRepository = resultRepository;
         this.jobRepository = jobRepository;
         this.occupationRepository = occupationRepository;
+        this.majorRepository = majorRepository;
         this.aiGrpcClient = aiGrpcClient;
         this.logService = logService;
         this.snowflake = snowflake;
@@ -91,8 +101,8 @@ public class JobAnalysisService {
     }
 
     /**
-     * 单个后台任务严格串行执行：先完成职业匹配，再分析真实 JD。
-     * 别名命中时 occupationAnalysisStatus 已是 SUCCESS，因此直接进入 JD 分析。
+     * 单个后台任务严格串行执行：先完成职业匹配，再完成专业匹配，最后分析真实 JD。
+     * 任一别名命中时对应分支已是 SUCCESS，因此跳过该分支的 Embedding。
      */
     public void analyze(Long taskId, AuditContext audit) {
         JobAnalysisTask task = taskRepository.findByIdAndDeletedAtIsNull(taskId)
@@ -116,6 +126,18 @@ public class JobAnalysisService {
             }
         }
 
+        if (task.getMajorAnalysisStatus() != TaskStatus.SUCCESS) {
+            try {
+                analyzeMajor(task, audit);
+            } catch (Exception exception) {
+                String message = safeMessage(exception);
+                taskRepository.markMajorAnalysisFailed(taskId, message);
+                logService.error(audit, message,
+                        "job major analysis failed: task_id=" + taskId);
+                return;
+            }
+        }
+
         try {
             analyzeJobDescription(task, audit);
             logService.info(audit, "job analysis success: task_id=" + taskId);
@@ -127,7 +149,7 @@ public class JobAnalysisService {
         }
     }
 
-    /** 岗位名称向量化成功并保存职业候选后，调用方才会继续执行 JD 分析。 */
+    /** 岗位名称向量化成功并保存职业候选后，调用方才会继续执行专业匹配。 */
     private void analyzeOccupation(JobAnalysisTask task, AuditContext audit) throws Exception {
         if (task.getJobName() == null || task.getJobName().isBlank()) {
             throw new IllegalArgumentException("job_name is empty");
@@ -139,6 +161,21 @@ public class JobAnalysisService {
                 occupationRepository.findNearestByNameVector(vectorLiteral, candidateLimit);
         completeOccupation(task.getId(), vectorLiteral, call.modelName(), matches);
         logService.info(audit, "job occupation analysis success: task_id=" + task.getId()
+                + ", candidates=" + matches.size());
+    }
+
+    /** 岗位专业文本向量化成功并保存专业候选后，调用方才会继续执行 JD 分析。 */
+    private void analyzeMajor(JobAnalysisTask task, AuditContext audit) throws Exception {
+        if (task.getJobMajor() == null || task.getJobMajor().isBlank()) {
+            throw new IllegalArgumentException("job_major is empty");
+        }
+        AIGrpcClient.EmbeddingCall call = aiGrpcClient.startBatch(List.of(task.getJobMajor()), audit);
+        List<Float> vector = call.await().get(0);
+        String vectorLiteral = vectorLiteral(vector);
+        List<MajorCandidateProjection> matches =
+                majorRepository.findNearestByNameVector(vectorLiteral, candidateLimit);
+        completeMajor(task.getId(), vectorLiteral, call.modelName(), matches);
+        logService.info(audit, "job major analysis success: task_id=" + task.getId()
                 + ", candidates=" + matches.size());
     }
 
@@ -190,6 +227,35 @@ public class JobAnalysisService {
         });
     }
 
+    /** 候选列表与专业分析成功状态在同一个短事务中提交。 */
+    private void completeMajor(Long taskId,
+                               String vector,
+                               String modelName,
+                               List<MajorCandidateProjection> matches) {
+        transactions.executeWithoutResult(ignored -> {
+            majorCandidateRepository.deleteByTaskId(taskId);
+            OffsetDateTime now = OffsetDateTime.now();
+            int rank = 1;
+            for (MajorCandidateProjection match : matches) {
+                JobAnalysisMajorCandidate candidate = new JobAnalysisMajorCandidate();
+                candidate.setId(snowflake.nextId());
+                candidate.setTaskId(taskId);
+                candidate.setMajorId(match.getId());
+                candidate.setMajorName(match.getName());
+                candidate.setRank(rank++);
+                candidate.setSimilarity(match.getSimilarity());
+                candidate.setCreatedAt(now);
+                candidate.setUpdatedAt(now);
+                majorCandidateRepository.save(candidate);
+            }
+            if (taskRepository.markMajorAnalysisSucceeded(
+                    taskId, vector, modelName) != 1) {
+                throw new IllegalStateException(
+                        "job analysis task not found while completing major analysis");
+            }
+        });
+    }
+
     /** AI 技能结果与总任务成功状态原子提交；空技能列表同样是合法成功结果。 */
     private void completeJobDescription(Long taskId,
                                         Long jobId,
@@ -214,7 +280,7 @@ public class JobAnalysisService {
                 resultRepository.save(result);
             }
             if (taskRepository.markJdAnalysisSucceeded(taskId, sourceLlmResponse) != 1) {
-                throw new IllegalStateException("occupation analysis is not complete");
+                throw new IllegalStateException("occupation or major analysis is not complete");
             }
         });
     }

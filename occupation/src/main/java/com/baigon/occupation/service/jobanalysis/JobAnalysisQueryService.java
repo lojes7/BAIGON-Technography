@@ -2,10 +2,12 @@
 package com.baigon.occupation.service.jobanalysis;
 
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisCandidate;
+import com.baigon.occupation.entity.jobanalysis.JobAnalysisMajorCandidate;
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisResult;
 import com.baigon.occupation.entity.ReviewStatus;
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisTask;
 import com.baigon.occupation.repository.jobanalysis.JobAnalysisCandidateRepository;
+import com.baigon.occupation.repository.jobanalysis.JobAnalysisMajorCandidateRepository;
 import com.baigon.occupation.repository.jobanalysis.JobAnalysisResultRepository;
 import com.baigon.occupation.repository.jobanalysis.JobAnalysisTaskRepository;
 import org.springframework.data.domain.Page;
@@ -26,13 +28,16 @@ public class JobAnalysisQueryService {
 
     private final JobAnalysisTaskRepository taskRepository;
     private final JobAnalysisCandidateRepository candidateRepository;
+    private final JobAnalysisMajorCandidateRepository majorCandidateRepository;
     private final JobAnalysisResultRepository resultRepository;
 
     public JobAnalysisQueryService(JobAnalysisTaskRepository taskRepository,
                                    JobAnalysisCandidateRepository candidateRepository,
+                                   JobAnalysisMajorCandidateRepository majorCandidateRepository,
                                    JobAnalysisResultRepository resultRepository) {
         this.taskRepository = taskRepository;
         this.candidateRepository = candidateRepository;
+        this.majorCandidateRepository = majorCandidateRepository;
         this.resultRepository = resultRepository;
     }
 
@@ -54,11 +59,13 @@ public class JobAnalysisQueryService {
         return taskRepository.findByIdAndDeletedAtIsNull(id).map(task -> new JobAnalysisDetail(
                 task,
                 candidateRepository.findByTaskIdAndDeletedAtIsNullOrderByRankAsc(id),
+                majorCandidateRepository.findByTaskIdAndDeletedAtIsNullOrderByRankAsc(id),
                 resultRepository.findByTaskIdAndDeletedAtIsNullOrderByRankAsc(id)));
     }
 
     public record JobAnalysisDetail(JobAnalysisTask task,
                                     List<JobAnalysisCandidate> candidates,
+                                    List<JobAnalysisMajorCandidate> majorCandidates,
                                     List<JobAnalysisResult> results) {
     }
 }

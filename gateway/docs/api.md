@@ -232,7 +232,7 @@ ADMIN 将指定用户状态设为 `NORMAL`。该操作是幂等的，重复解�
 一次请求必须覆盖任务的全部技能结果。通过项与修改后通过项写入 `job_skills`，拒绝项不写入；
 `job_analysis_results` 只更新审核状态；修改后的技能字段直接写入 `job_skills`，不会进入或覆盖 AI 原始结果。
 
-岗位分析审核只确认 `jobs.occupation_id`，不修改 `reviewed_cleaned_job_sources`。
+岗位分析审核确认 `jobs.major_id`、`jobs.occupation_id`，不修改 `reviewed_cleaned_job_sources`。
 
 ---
 
@@ -344,13 +344,14 @@ Consul 健康探测端点，**不需要认证**。
 岗位分析审核允许 **ADMIN / DATA_REVIEWER**：
 
 - `GET /job-analysis`：分页查询任务，`reviewStatus` 可选。
-- `GET /job-analysis/{id}`：返回任务、职业候选与 `job_analysis_results` 技能结果。
-- `PUT /job-analysis/{id}/review`：确认职业并逐条审核全部技能结果；职业可选择 occupations 中任意有效记录。
+- `GET /job-analysis/{id}`：返回任务、专业/职业候选与 `job_analysis_results` 技能结果。
+- `PUT /job-analysis/{id}/review`：确认专业、职业并逐条审核全部技能结果；两者均可选择对应目录中的任意有效记录。
 
 审核请求示例：
 
 ```json
 {
+  "majorId": 456,
   "occupationId": 123,
   "skillReviews": [
     { "resultId": 1001, "action": "APPROVE" },
@@ -381,6 +382,7 @@ Consul 健康探测端点，**不需要认证**。
   "page": 0,
   "pageSize": 20,
   "name": "Java",
+  "majorId": 456,
   "occupationId": 123,
   "major": "计算机",
   "city": "杭州",
@@ -393,13 +395,13 @@ Consul 健康探测端点，**不需要认证**。
 }
 ```
 
-`occupationId` 精确匹配；其他文本字段忽略大小写并执行包含匹配。字段为空时不参与筛选。
+`majorId`、`occupationId` 精确匹配；其他文本字段忽略大小写并执行包含匹配。字段为空时不参与筛选。
 响应 `data` 包含 `items`、`total`、`page`、`pageSize`。
 
 ### GET /api/jobs/{id} — 岗位详情
 
-响应 `data` 包含 `job`、`occupation`、`jobSkills`。岗位尚未归类时 `occupation` 为
-`null`；没有正式技能时 `jobSkills` 为空数组。
+响应 `data` 包含 `job`、`major`、`occupation`、`jobSkills`。对应目录外键为空时
+`major` 或 `occupation` 为 `null`；没有正式技能时 `jobSkills` 为空数组。
 
 ---
 

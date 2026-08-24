@@ -16,6 +16,7 @@ import java.util.concurrent.Executors;
 @ConfigurationProperties(prefix = "job-analysis")
 public class JobAnalysisConfig {
 
+    /** 专业与职业候选共用同一 Top N 上限。 */
     private int candidateLimit = 5;
 
     public int getCandidateLimit() {

@@ -8,13 +8,17 @@ CREATE TABLE "job_analysis_tasks" (
     "trace_id" bigint NOT NULL,
     "job_id" bigint NOT NULL REFERENCES "jobs" ("id"),
     "job_name" varchar(64),
+    "job_major" varchar(64),
     "job_name_vector" vector(1024),
+    "job_major_vector" vector(1024),
     "model_name" varchar(64),
     "task_status" task_status NOT NULL DEFAULT 'PENDING',
     "occupation_analysis_status" task_status NOT NULL DEFAULT 'PENDING',
+    "major_analysis_status" task_status NOT NULL DEFAULT 'PENDING',
     "jd_analysis_status" task_status NOT NULL DEFAULT 'PENDING',
     "review_status" review_status NOT NULL DEFAULT 'PENDING',
     "selected_occupation_id" bigint REFERENCES "occupations" ("id"),
+    "selected_major_id" bigint REFERENCES "majors" ("id"),
     "attempts" integer NOT NULL DEFAULT 0,
     "error_msg" text,
     "source_llm_response" text,
@@ -43,6 +47,23 @@ CREATE UNIQUE INDEX "idx_job_analysis_candidates_rank"
     ON "job_analysis_task_candidates" ("task_id", "rank") WHERE "deleted_at" IS NULL;
 CREATE UNIQUE INDEX "idx_job_analysis_candidates_occupation"
     ON "job_analysis_task_candidates" ("task_id", "occupation_id") WHERE "deleted_at" IS NULL;
+
+CREATE TABLE "job_analysis_task_major_candidates" (
+    "created_at" timestamp with time zone NOT NULL DEFAULT now(),
+    "updated_at" timestamp with time zone NOT NULL DEFAULT now(),
+    "deleted_at" timestamp with time zone,
+    "id" bigint PRIMARY KEY,
+    "task_id" bigint NOT NULL REFERENCES "job_analysis_tasks" ("id"),
+    "major_id" bigint NOT NULL REFERENCES "majors" ("id"),
+    "major_name" varchar(64) NOT NULL,
+    "rank" integer NOT NULL,
+    "similarity" double precision NOT NULL
+);
+
+CREATE UNIQUE INDEX "idx_job_analysis_major_candidates_rank"
+    ON "job_analysis_task_major_candidates" ("task_id", "rank") WHERE "deleted_at" IS NULL;
+CREATE UNIQUE INDEX "idx_job_analysis_major_candidates_major"
+    ON "job_analysis_task_major_candidates" ("task_id", "major_id") WHERE "deleted_at" IS NULL;
 
 -- AI 从真实 JD 中抽取的岗位技能关系；原始结果不会被人工编辑覆盖。
 CREATE TABLE "job_analysis_results" (

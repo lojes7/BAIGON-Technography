@@ -5,21 +5,26 @@ import cn.hutool.core.lang.Snowflake;
 import com.baigon.occupation.entity.ReviewStatus;
 import com.baigon.occupation.entity.TaskStatus;
 import com.baigon.occupation.entity.job.Job;
+import com.baigon.occupation.entity.job.JobMajorAlias;
 import com.baigon.occupation.entity.job.JobOccupationAlias;
 import com.baigon.occupation.entity.job.JobSkill;
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisResult;
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisReviewAction;
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisTask;
+import com.baigon.occupation.entity.major.Major;
 import com.baigon.occupation.entity.occupation.Occupation;
 import com.baigon.occupation.error.ApiException;
+import com.baigon.occupation.repository.job.JobMajorAliasRepository;
 import com.baigon.occupation.repository.job.JobOccupationAliasRepository;
 import com.baigon.occupation.repository.job.JobRepository;
 import com.baigon.occupation.repository.job.JobSkillRepository;
 import com.baigon.occupation.repository.jobanalysis.JobAnalysisResultRepository;
 import com.baigon.occupation.repository.jobanalysis.JobAnalysisTaskRepository;
+import com.baigon.occupation.repository.major.MajorRepository;
 import com.baigon.occupation.repository.occupation.OccupationRepository;
 import com.baigon.occupation.service.AuditContext;
 import com.baigon.occupation.service.LogService;
+import com.baigon.occupation.service.job.JobMajorPolicy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,8 +45,10 @@ public class JobAnalysisReviewService {
     private final JobAnalysisResultRepository resultRepository;
     private final JobRepository jobRepository;
     private final JobSkillRepository jobSkillRepository;
-    private final JobOccupationAliasRepository aliasRepository;
+    private final JobOccupationAliasRepository occupationAliasRepository;
+    private final JobMajorAliasRepository majorAliasRepository;
     private final OccupationRepository occupationRepository;
+    private final MajorRepository majorRepository;
     private final LogService logService;
     private final Snowflake snowflake;
 
@@ -49,26 +56,31 @@ public class JobAnalysisReviewService {
                                     JobAnalysisResultRepository resultRepository,
                                     JobRepository jobRepository,
                                     JobSkillRepository jobSkillRepository,
-                                    JobOccupationAliasRepository aliasRepository,
+                                    JobOccupationAliasRepository occupationAliasRepository,
+                                    JobMajorAliasRepository majorAliasRepository,
                                     OccupationRepository occupationRepository,
+                                    MajorRepository majorRepository,
                                     LogService logService,
                                     Snowflake snowflake) {
         this.taskRepository = taskRepository;
         this.resultRepository = resultRepository;
         this.jobRepository = jobRepository;
         this.jobSkillRepository = jobSkillRepository;
-        this.aliasRepository = aliasRepository;
+        this.occupationAliasRepository = occupationAliasRepository;
+        this.majorAliasRepository = majorAliasRepository;
         this.occupationRepository = occupationRepository;
+        this.majorRepository = majorRepository;
         this.logService = logService;
         this.snowflake = snowflake;
     }
 
     /**
-     * 一次事务完成职业确认和全部技能审核；可混合通过、修改后通过与拒绝。
+     * 一次事务完成专业、职业确认和全部技能审核；可混合通过、修改后通过与拒绝。
      * AI 原始字段保持不变，只有通过后的最终技能写入 job_skills。
      */
     @Transactional
     public Optional<ReviewResult> review(Long taskId,
+                                         Long majorId,
                                          Long occupationId,
                                          List<SkillReviewDecision> decisions,
                                          AuditContext audit) {
@@ -85,6 +97,10 @@ public class JobAnalysisReviewService {
                     "job analysis task is not complete");
         }
 
+        Major major = majorRepository.findByIdAndDeletedAtIsNull(majorId)
+                .orElseThrow(() -> new ApiException(
+                        ApiException.ErrorCode.NOT_FOUND,
+                        "major not found"));
         Occupation occupation = occupationRepository.findByIdAndDeletedAtIsNull(occupationId)
                 .orElseThrow(() -> new ApiException(
                         ApiException.ErrorCode.NOT_FOUND,
@@ -96,13 +112,17 @@ public class JobAnalysisReviewService {
         Map<Long, SkillReviewDecision> decisionsById = validateDecisions(results, decisions);
 
         OffsetDateTime now = OffsetDateTime.now();
+        job.setMajorId(major.getId());
         job.setOccupationId(occupation.getId());
         job.setUpdatedAt(now);
         jobRepository.save(job);
 
-        JobOccupationAlias alias = updateAlias(job, task, occupation, audit, now);
+        JobOccupationAlias occupationAlias =
+                updateOccupationAlias(job, task, occupation, audit, now);
+        JobMajorAlias majorAlias = updateMajorAlias(job, task, major, audit, now);
         int approvedSkills = reviewSkills(results, decisionsById, audit.userId(), now);
 
+        task.setSelectedMajorId(major.getId());
         task.setSelectedOccupationId(occupation.getId());
         task.setReviewStatus(ReviewStatus.PASSED);
         task.setReviewedAt(now);
@@ -110,8 +130,10 @@ public class JobAnalysisReviewService {
         task.setUpdatedAt(now);
         taskRepository.save(task);
         logService.info(audit, "job analysis reviewed: task_id=" + taskId
-                + ", occupation_id=" + occupationId + ", approved_skills=" + approvedSkills);
-        return Optional.of(new ReviewResult(task, job, occupation, alias, results));
+                + ", major_id=" + majorId + ", occupation_id=" + occupationId
+                + ", approved_skills=" + approvedSkills);
+        return Optional.of(new ReviewResult(
+                task, job, major, occupation, majorAlias, occupationAlias, results));
     }
 
     /** 必须一次覆盖任务的全部结果，避免半审核状态和部分写入 job_skills。 */
@@ -224,16 +246,16 @@ public class JobAnalysisReviewService {
         return value == null ? "" : value.trim().toUpperCase(java.util.Locale.ROOT);
     }
 
-    private JobOccupationAlias updateAlias(Job job,
-                                             JobAnalysisTask task,
-                                             Occupation occupation,
-                                             AuditContext audit,
-                                             OffsetDateTime now) {
+    private JobOccupationAlias updateOccupationAlias(Job job,
+                                                     JobAnalysisTask task,
+                                                     Occupation occupation,
+                                                     AuditContext audit,
+                                                     OffsetDateTime now) {
         if (job.getName() == null || job.getName().isBlank()) {
             return null;
         }
-        JobOccupationAlias alias = aliasRepository.findByJobNameForUpdate(job.getName())
-                .orElseGet(() -> newAlias(job, task, audit, now));
+        JobOccupationAlias alias = occupationAliasRepository.findByJobNameForUpdate(job.getName())
+                .orElseGet(() -> newOccupationAlias(job, task, audit, now));
         // 已存在映射时以本次人工审核结论更新，并记录本次关键 trace_id。
         alias.setTraceId(task.getTraceId());
         alias.setOccupationId(occupation.getId());
@@ -241,18 +263,54 @@ public class JobAnalysisReviewService {
         alias.setReviewedAt(now);
         alias.setReviewedBy(audit.userId());
         alias.setUpdatedAt(now);
-        aliasRepository.save(alias);
+        occupationAliasRepository.save(alias);
         return alias;
     }
 
-    private JobOccupationAlias newAlias(Job job,
-                                        JobAnalysisTask task,
-                                        AuditContext audit,
-                                        OffsetDateTime now) {
+    private JobOccupationAlias newOccupationAlias(Job job,
+                                                  JobAnalysisTask task,
+                                                  AuditContext audit,
+                                                  OffsetDateTime now) {
         JobOccupationAlias alias = new JobOccupationAlias();
         alias.setId(snowflake.nextId());
         alias.setTraceId(task.getTraceId());
         alias.setJobName(job.getName());
+        alias.setReviewedBy(audit.userId());
+        alias.setReviewedAt(now);
+        alias.setCreatedAt(now);
+        alias.setUpdatedAt(now);
+        return alias;
+    }
+
+    /** “专业不限”等兜底文本不沉淀为全局别名，其余映射以本次人工审核为准。 */
+    private JobMajorAlias updateMajorAlias(Job job,
+                                           JobAnalysisTask task,
+                                           Major major,
+                                           AuditContext audit,
+                                           OffsetDateTime now) {
+        if (JobMajorPolicy.shouldUseOther(job.getMajor())) {
+            return null;
+        }
+        JobMajorAlias alias = majorAliasRepository.findByJobMajorForUpdate(job.getMajor())
+                .orElseGet(() -> newMajorAlias(job, task, audit, now));
+        alias.setTraceId(task.getTraceId());
+        alias.setMajorId(major.getId());
+        alias.setMajorName(major.getName());
+        alias.setReviewedAt(now);
+        alias.setReviewedBy(audit.userId());
+        alias.setUpdatedAt(now);
+        majorAliasRepository.save(alias);
+        return alias;
+    }
+
+    private JobMajorAlias newMajorAlias(Job job,
+                                        JobAnalysisTask task,
+                                        AuditContext audit,
+                                        OffsetDateTime now) {
+        JobMajorAlias alias = new JobMajorAlias();
+        alias.setId(snowflake.nextId());
+        alias.setTraceId(task.getTraceId());
+        alias.setJobMajor(job.getMajor());
         alias.setReviewedBy(audit.userId());
         alias.setReviewedAt(now);
         alias.setCreatedAt(now);
@@ -269,8 +327,10 @@ public class JobAnalysisReviewService {
 
     public record ReviewResult(JobAnalysisTask task,
                                Job job,
+                               Major major,
                                Occupation occupation,
-                               JobOccupationAlias alias,
+                               JobMajorAlias majorAlias,
+                               JobOccupationAlias occupationAlias,
                                List<JobAnalysisResult> analysisResults) {
     }
 }

@@ -13,6 +13,7 @@ COPY discipline_categories (id, code, name) FROM STDIN WITH (FORMAT csv, NULL '\
 10,10,医学
 11,12,管理学
 12,13,艺术学
+13,99,其他
 \.
 
 COPY major_categories (id, code, name, discipline_category_id) FROM STDIN WITH (FORMAT csv, NULL '\N');
@@ -109,6 +110,7 @@ COPY major_categories (id, code, name, discipline_category_id) FROM STDIN WITH (
 91,1303,戏剧与影视学类,12
 92,1304,美术学类,12
 93,1305,设计学类,12
+94,9999,其他,13
 \.
 
 COPY majors (id, code, name, major_category_id) FROM STDIN WITH (FORMAT csv, NULL '\N');
@@ -957,4 +959,5 @@ COPY majors (id, code, name, major_category_id) FROM STDIN WITH (FORMAT csv, NUL
 843,130513TK,珠宝首饰设计与工艺,93
 844,130514T,人居设计,93
 845,130515TK,游戏艺术设计,93
+846,999999,其他,94
 \.

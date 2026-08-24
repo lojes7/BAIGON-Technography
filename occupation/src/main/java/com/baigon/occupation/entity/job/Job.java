@@ -8,7 +8,7 @@ import jakarta.persistence.Table;
 
 import java.time.OffsetDateTime;
 
-/** data-source 审核通过后无条件创建；occupationId 可在岗位分析完成前为空。 */
+/** data-source 审核通过后无条件创建；majorId、occupationId 可在岗位分析完成前为空。 */
 @Entity
 @Table(name = "jobs")
 public class Job extends BaseEntity {
@@ -18,6 +18,8 @@ public class Job extends BaseEntity {
     private String name;
     @Column(name = "occupation_id")
     private Long occupationId;
+    @Column(name = "major_id")
+    private Long majorId;
     @Column(name = "trace_id")
     private Long traceId;
     @Column(name = "job_number")
@@ -47,6 +49,8 @@ public class Job extends BaseEntity {
     public void setName(String name) { this.name = name; }
     public Long getOccupationId() { return occupationId; }
     public void setOccupationId(Long occupationId) { this.occupationId = occupationId; }
+    public Long getMajorId() { return majorId; }
+    public void setMajorId(Long majorId) { this.majorId = majorId; }
     public Long getTraceId() { return traceId; }
     public void setTraceId(Long traceId) { this.traceId = traceId; }
     public String getJobNumber() { return jobNumber; }

@@ -17,9 +17,11 @@ import com.baigon.occupation.GetJobAnalysisTaskRequest;
 import com.baigon.occupation.GetJobAnalysisTaskResponse;
 import com.baigon.occupation.JobData;
 import com.baigon.occupation.JobAnalysisCandidate;
+import com.baigon.occupation.JobAnalysisMajorCandidate;
 import com.baigon.occupation.JobAnalysisResult;
 import com.baigon.occupation.JobAnalysisTaskDetail;
 import com.baigon.occupation.JobAnalysisTaskSummary;
+import com.baigon.occupation.JobMajorData;
 import com.baigon.occupation.JobOccupationData;
 import com.baigon.occupation.JobSkillData;
 import com.baigon.occupation.ListJobAnalysisTasksRequest;
@@ -33,6 +35,7 @@ import com.baigon.occupation.entity.job.Job;
 import com.baigon.occupation.entity.job.JobSkill;
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisReviewAction;
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisTask;
+import com.baigon.occupation.entity.major.Major;
 import com.baigon.occupation.entity.occupation.Occupation;
 import com.baigon.occupation.error.ApiException;
 import com.baigon.occupation.service.AuditContext;
@@ -318,8 +321,10 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                 request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
                 request.getRequestMethod(), request.getRequestUrl());
         try {
-            if (request.getId() <= 0 || request.getOccupationId() <= 0) {
-                throw new IllegalArgumentException("id and occupation_id must be > 0");
+            if (request.getId() <= 0 || request.getMajorId() <= 0
+                    || request.getOccupationId() <= 0) {
+                throw new IllegalArgumentException(
+                        "id, major_id and occupation_id must be > 0");
             }
             var decisions = request.getSkillReviewsList().stream()
                     .map(item -> new JobAnalysisReviewService.SkillReviewDecision(
@@ -328,7 +333,7 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                             item.getSkillName(), item.getSkillProficiency(), item.getEvidence()))
                     .toList();
             var reviewed = jobAnalysisReviewService.review(
-                    request.getId(), request.getOccupationId(), decisions, audit);
+                    request.getId(), request.getMajorId(), request.getOccupationId(), decisions, audit);
             if (reviewed.isEmpty()) {
                 observer.onError(ApiException.grpcException(ApiException.ErrorCode.NOT_FOUND,
                         "job analysis task not found"));
@@ -359,7 +364,7 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                 request.getRequestMethod(), request.getRequestUrl());
         try {
             var criteria = new JobQueryService.JobSearchCriteria(
-                    request.getName(), request.getOccupationId(), request.getMajor(),
+                    request.getName(), request.getOccupationId(), request.getMajorId(), request.getMajor(),
                     request.getCity(), request.getProvince(), request.getSalary(),
                     request.getCompany(), request.getEducation(), request.getNature(),
                     request.getCompanySize());
@@ -395,6 +400,9 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                     .addAllJobSkills(detail.get().jobSkills().stream().map(this::jobSkillData).toList());
             if (detail.get().occupation() != null) {
                 response.setOccupation(jobOccupationData(detail.get().occupation()));
+            }
+            if (detail.get().major() != null) {
+                response.setMajor(jobMajorData(detail.get().major()));
             }
             respond(observer, response.build());
             logService.info(audit, "get job: id=" + request.getId());
@@ -522,6 +530,10 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                         ? "" : task.getOccupationAnalysisStatus().name())
                 .setJdAnalysisStatus(task.getJdAnalysisStatus() == null
                         ? "" : task.getJdAnalysisStatus().name())
+                .setJobMajor(orEmpty(task.getJobMajor()))
+                .setSelectedMajorId(task.getSelectedMajorId() == null ? 0 : task.getSelectedMajorId())
+                .setMajorAnalysisStatus(task.getMajorAnalysisStatus() == null
+                        ? "" : task.getMajorAnalysisStatus().name())
                 .build();
     }
 
@@ -532,6 +544,13 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                         JobAnalysisCandidate.newBuilder()
                                 .setOccupationId(candidate.getOccupationId())
                                 .setOccupationName(orEmpty(candidate.getOccupationName()))
+                                .setRank(candidate.getRank())
+                                .setSimilarity(candidate.getSimilarity())
+                                .build()).toList())
+                .addAllMajorCandidates(detail.majorCandidates().stream().map(candidate ->
+                        JobAnalysisMajorCandidate.newBuilder()
+                                .setMajorId(candidate.getMajorId())
+                                .setMajorName(orEmpty(candidate.getMajorName()))
                                 .setRank(candidate.getRank())
                                 .setSimilarity(candidate.getSimilarity())
                                 .build()).toList())
@@ -561,6 +580,7 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                 .setId(job.getId())
                 .setName(orEmpty(job.getName()))
                 .setOccupationId(job.getOccupationId() == null ? 0 : job.getOccupationId())
+                .setMajorId(job.getMajorId() == null ? 0 : job.getMajorId())
                 .setPublishDate(time(job.getPublishDate()))
                 .setSourcePlatform(orEmpty(job.getSourcePlatform()))
                 .setSourceUrl(orEmpty(job.getSourceUrl()))
@@ -577,6 +597,15 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                 .setJobDescription(orEmpty(job.getJobDescription()))
                 .setCreatedAt(time(job.getCreatedAt()))
                 .setUpdatedAt(time(job.getUpdatedAt()))
+                .build();
+    }
+
+    private JobMajorData jobMajorData(Major major) {
+        return JobMajorData.newBuilder()
+                .setId(major.getId())
+                .setCode(orEmpty(major.getCode()))
+                .setName(orEmpty(major.getName()))
+                .setMajorCategoryId(major.getMajorCategoryId())
                 .build();
     }
 

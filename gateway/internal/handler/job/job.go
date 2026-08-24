@@ -23,6 +23,7 @@ type listJobsRequest struct {
 	PageSize     int    `json:"pageSize" example:"20"`
 	Name         string `json:"name" example:"Java开发工程师"`
 	OccupationID *int64 `json:"occupationId" example:"123"`
+	MajorID      *int64 `json:"majorId" example:"456"`
 	Major        string `json:"major" example:"计算机科学与技术"`
 	City         string `json:"city" example:"杭州"`
 	Province     string `json:"province" example:"浙江"`
@@ -35,7 +36,7 @@ type listJobsRequest struct {
 
 // ListJobsHandler 分页查询 jobs，并按请求体中的岗位字段组合筛选。
 // @Summary      分页查询岗位
-// @Description  文本条件忽略大小写并执行包含匹配，occupationId 执行精确匹配
+// @Description  文本条件忽略大小写并执行包含匹配，majorId、occupationId 执行精确匹配
 // @Tags         岗位
 // @Accept       json
 // @Produce      json
@@ -58,6 +59,10 @@ func ListJobsHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 		if request.OccupationID != nil {
 			occupationID = *request.OccupationID
 		}
+		majorID := int64(0)
+		if request.MajorID != nil {
+			majorID = *request.MajorID
+		}
 		conn, err := pool.GetConn("occupation-service")
 		if err != nil {
 			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
@@ -70,7 +75,8 @@ func ListJobsHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			ctx,
 			&occupationpb.ListJobsRequest{
 				Page: int32(request.Page), PageSize: int32(request.PageSize),
-				Name: request.Name, OccupationId: occupationID, Major: request.Major,
+				Name: request.Name, OccupationId: occupationID,
+				MajorId: majorID, Major: request.Major,
 				City: request.City, Province: request.Province, Salary: request.Salary,
 				Company: request.Company, Education: request.Education,
 				Nature: request.Nature, CompanySize: request.CompanySize,
@@ -97,13 +103,13 @@ func ListJobsHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 	}
 }
 
-// GetJobHandler 聚合查询单个岗位、对应职业和正式岗位技能。
+// GetJobHandler 聚合查询单个岗位、对应专业、职业和正式岗位技能。
 // @Summary      查询岗位详情
 // @Tags         岗位
 // @Produce      json
 // @Security     Bearer
 // @Param        id path int true "jobs.id"
-// @Success      200 {object} response.SuccessBody "data 内含 job/occupation/jobSkills"
+// @Success      200 {object} response.SuccessBody "data 内含 job/major/occupation/jobSkills"
 // @Failure      400 {object} response.ErrorBody
 // @Failure      401 {object} response.ErrorBody
 // @Failure      404 {object} response.ErrorBody
@@ -140,6 +146,10 @@ func GetJobHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			return
 		}
 
+		var major any
+		if result.GetMajor() != nil {
+			major = majorData(result.GetMajor())
+		}
 		var occupation any
 		if result.GetOccupation() != nil {
 			occupation = occupationData(result.GetOccupation())
@@ -150,6 +160,7 @@ func GetJobHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 		}
 		response.Success(c, gin.H{
 			"job":        jobData(result.GetJob()),
+			"major":      major,
 			"occupation": occupation,
 			"jobSkills":  skills,
 		})
@@ -160,7 +171,8 @@ func validListRequest(request listJobsRequest) bool {
 	if request.Page < 0 || request.PageSize < 0 || request.PageSize > 100 {
 		return false
 	}
-	return request.OccupationID == nil || *request.OccupationID > 0
+	return (request.OccupationID == nil || *request.OccupationID > 0) &&
+		(request.MajorID == nil || *request.MajorID > 0)
 }
 
 func jobData(job *occupationpb.JobData) gin.H {
@@ -171,8 +183,13 @@ func jobData(job *occupationpb.JobData) gin.H {
 	if job.GetOccupationId() > 0 {
 		occupationID = job.GetOccupationId()
 	}
+	var majorID any
+	if job.GetMajorId() > 0 {
+		majorID = job.GetMajorId()
+	}
 	return gin.H{
 		"id": job.GetId(), "name": job.GetName(), "occupationId": occupationID,
+		"majorId":     majorID,
 		"publishDate": job.GetPublishDate(), "sourcePlatform": job.GetSourcePlatform(),
 		"sourceUrl": job.GetSourceUrl(), "city": job.GetCity(), "tags": job.GetTags(),
 		"major": job.GetMajor(), "nature": job.GetNature(), "salary": job.GetSalary(),
@@ -180,6 +197,13 @@ func jobData(job *occupationpb.JobData) gin.H {
 		"province": job.GetProvince(), "education": job.GetEducation(),
 		"experience": job.GetExperience(), "jobDescription": job.GetJobDescription(),
 		"createdAt": job.GetCreatedAt(), "updatedAt": job.GetUpdatedAt(),
+	}
+}
+
+func majorData(major *occupationpb.JobMajorData) gin.H {
+	return gin.H{
+		"id": major.GetId(), "code": major.GetCode(), "name": major.GetName(),
+		"majorCategoryId": major.GetMajorCategoryId(),
 	}
 }
 

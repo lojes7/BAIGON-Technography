@@ -12,6 +12,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 public interface MajorRepository extends JpaRepository<Major, Long> {
 
@@ -31,6 +32,26 @@ public interface MajorRepository extends JpaRepository<Major, Long> {
     long countByDeletedAtIsNull();
 
     long countByDeletedAtIsNullAndEmbeddingStatus(TaskStatus status);
+
+    Optional<Major> findByIdAndDeletedAtIsNull(Long id);
+
+    Optional<Major> findByCodeAndDeletedAtIsNull(String code);
+
+    /** 使用 pgvector 余弦距离返回相似度最高的 Top N 专业。 */
+    @Query(value = """
+            SELECT id AS id,
+                   name AS name,
+                   1 - (name_vector <=> CAST(:vector AS vector)) AS similarity
+            FROM majors
+            WHERE deleted_at IS NULL
+              AND name_vector IS NOT NULL
+              AND embedding_status = CAST('SUCCESS' AS task_status)
+            ORDER BY name_vector <=> CAST(:vector AS vector), id
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<MajorCandidateProjection> findNearestByNameVector(
+            @Param("vector") String vector,
+            @Param("limit") int limit);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(value = """

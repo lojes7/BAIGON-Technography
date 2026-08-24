@@ -23,6 +23,7 @@ public interface JobRepository extends JpaRepository<Job, Long> {
             WHERE job.deletedAt IS NULL
               AND (:name = '' OR LOWER(COALESCE(job.name, '')) LIKE LOWER(CONCAT('%', :name, '%')))
               AND (:occupationId IS NULL OR job.occupationId = :occupationId)
+              AND (:majorId IS NULL OR job.majorId = :majorId)
               AND (:major = '' OR LOWER(COALESCE(job.major, '')) LIKE LOWER(CONCAT('%', :major, '%')))
               AND (:city = '' OR LOWER(COALESCE(job.city, '')) LIKE LOWER(CONCAT('%', :city, '%')))
               AND (:province = '' OR LOWER(COALESCE(job.province, '')) LIKE LOWER(CONCAT('%', :province, '%')))
@@ -34,6 +35,7 @@ public interface JobRepository extends JpaRepository<Job, Long> {
             """)
     Page<Job> search(@Param("name") String name,
                      @Param("occupationId") Long occupationId,
+                     @Param("majorId") Long majorId,
                      @Param("major") String major,
                      @Param("city") String city,
                      @Param("province") String province,

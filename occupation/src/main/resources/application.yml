@@ -79,7 +79,7 @@ logging:
     org.springframework.cloud.consul: INFO
 
 job-analysis:
-  # AI 候选仅供审核参考，最终可选择 occupations 中任意有效职业。
+  # 专业与职业共用候选上限；候选仅供参考，最终可选择任意有效目录记录。
   candidate-limit: 5
 
 jwt:

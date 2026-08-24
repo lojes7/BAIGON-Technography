@@ -5,18 +5,22 @@ import cn.hutool.core.lang.Snowflake;
 import com.baigon.occupation.entity.ReviewStatus;
 import com.baigon.occupation.entity.TaskStatus;
 import com.baigon.occupation.entity.job.Job;
+import com.baigon.occupation.entity.job.JobMajorAlias;
 import com.baigon.occupation.entity.job.JobOccupationAlias;
 import com.baigon.occupation.entity.job.JobSkill;
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisResult;
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisReviewAction;
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisTask;
+import com.baigon.occupation.entity.major.Major;
 import com.baigon.occupation.entity.occupation.Occupation;
 import com.baigon.occupation.error.ApiException;
+import com.baigon.occupation.repository.job.JobMajorAliasRepository;
 import com.baigon.occupation.repository.job.JobOccupationAliasRepository;
 import com.baigon.occupation.repository.job.JobRepository;
 import com.baigon.occupation.repository.job.JobSkillRepository;
 import com.baigon.occupation.repository.jobanalysis.JobAnalysisResultRepository;
 import com.baigon.occupation.repository.jobanalysis.JobAnalysisTaskRepository;
+import com.baigon.occupation.repository.major.MajorRepository;
 import com.baigon.occupation.repository.occupation.OccupationRepository;
 import com.baigon.occupation.service.AuditContext;
 import com.baigon.occupation.service.LogService;
@@ -32,6 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -42,7 +47,9 @@ class JobAnalysisReviewServiceTest {
     private JobRepository jobRepository;
     private JobSkillRepository jobSkillRepository;
     private JobOccupationAliasRepository aliasRepository;
+    private JobMajorAliasRepository majorAliasRepository;
     private OccupationRepository occupationRepository;
+    private MajorRepository majorRepository;
     private JobAnalysisReviewService service;
 
     @BeforeEach
@@ -52,16 +59,20 @@ class JobAnalysisReviewServiceTest {
         jobRepository = mock(JobRepository.class);
         jobSkillRepository = mock(JobSkillRepository.class);
         aliasRepository = mock(JobOccupationAliasRepository.class);
+        majorAliasRepository = mock(JobMajorAliasRepository.class);
         occupationRepository = mock(OccupationRepository.class);
+        majorRepository = mock(MajorRepository.class);
         service = new JobAnalysisReviewService(
                 taskRepository, resultRepository, jobRepository, jobSkillRepository,
-                aliasRepository, occupationRepository, mock(LogService.class), new Snowflake(5, 1));
+                aliasRepository, majorAliasRepository, occupationRepository, majorRepository,
+                mock(LogService.class), new Snowflake(5, 1));
     }
 
     @Test
     void reviewerCanMixApproveEditAndRejectWithoutOverwritingAiResults() {
         JobAnalysisTask task = task();
         Job job = job();
+        Major major = major();
         Occupation occupation = occupation();
         List<JobAnalysisResult> results = List.of(
                 result(101L, 1, "Java", "ADVANCED", "熟练使用 Java"),
@@ -69,24 +80,30 @@ class JobAnalysisReviewServiceTest {
                 result(103L, 3, "学历", "BASIC", "本科及以上"));
 
         when(taskRepository.findByIdForReview(20L)).thenReturn(Optional.of(task));
+        when(majorRepository.findByIdAndDeletedAtIsNull(88L)).thenReturn(Optional.of(major));
         when(occupationRepository.findByIdAndDeletedAtIsNull(99L)).thenReturn(Optional.of(occupation));
         when(jobRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(job));
         when(resultRepository.findByTaskIdAndDeletedAtIsNullOrderByRankAsc(20L))
                 .thenReturn(results);
         when(aliasRepository.findByJobNameForUpdate(job.getName())).thenReturn(Optional.empty());
+        when(majorAliasRepository.findByJobMajorForUpdate(job.getMajor())).thenReturn(Optional.empty());
         when(aliasRepository.save(any(JobOccupationAlias.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(majorAliasRepository.save(any(JobMajorAlias.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(jobSkillRepository.save(any(JobSkill.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        service.review(20L, 99L, List.of(
+        service.review(20L, 88L, 99L, List.of(
                 decision(101L, JobAnalysisReviewAction.APPROVE, null, null, null),
                 decision(102L, JobAnalysisReviewAction.APPROVE_WITH_EDIT,
                         "Microsoft Word", "FAMILIAR", "能够使用 Word 编写文档"),
                 decision(103L, JobAnalysisReviewAction.REJECT, null, null, null)
         ), audit()).orElseThrow();
 
+        assertEquals(88L, job.getMajorId());
         assertEquals(99L, job.getOccupationId());
+        assertEquals(88L, task.getSelectedMajorId());
         assertEquals(ReviewStatus.PASSED, task.getReviewStatus());
         assertEquals(ReviewStatus.PASSED, results.get(0).getReviewStatus());
         assertEquals(ReviewStatus.PASSED, results.get(1).getReviewStatus());
@@ -108,12 +125,19 @@ class JobAnalysisReviewServiceTest {
         verify(aliasRepository).save(aliasCaptor.capture());
         assertEquals(1001L, aliasCaptor.getValue().getTraceId());
         assertEquals("计算机程序设计员", aliasCaptor.getValue().getOccupationName());
+        ArgumentCaptor<JobMajorAlias> majorAliasCaptor =
+                ArgumentCaptor.forClass(JobMajorAlias.class);
+        verify(majorAliasRepository).save(majorAliasCaptor.capture());
+        assertEquals(1001L, majorAliasCaptor.getValue().getTraceId());
+        assertEquals("软件工程", majorAliasCaptor.getValue().getMajorName());
     }
 
     @Test
     void reviewMustCoverAllAnalysisResults() {
         JobAnalysisTask task = task();
         when(taskRepository.findByIdForReview(20L)).thenReturn(Optional.of(task));
+        when(majorRepository.findByIdAndDeletedAtIsNull(88L))
+                .thenReturn(Optional.of(major()));
         when(occupationRepository.findByIdAndDeletedAtIsNull(99L))
                 .thenReturn(Optional.of(occupation()));
         when(jobRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(job()));
@@ -123,11 +147,33 @@ class JobAnalysisReviewServiceTest {
                         result(102L, 2, "Word", "BASIC", "了解 Word")));
 
         ApiException exception = assertThrows(ApiException.class, () -> service.review(
-                20L, 99L,
+                20L, 88L, 99L,
                 List.of(decision(101L, JobAnalysisReviewAction.APPROVE, null, null, null)),
                 audit()));
 
         assertEquals(ApiException.ErrorCode.BAD_REQUEST, exception.getErrorCode());
+    }
+
+    @Test
+    void unlimitedMajorShouldNotCreateGlobalAlias() {
+        JobAnalysisTask task = task();
+        Job job = job();
+        job.setMajor("专业不限");
+        when(taskRepository.findByIdForReview(20L)).thenReturn(Optional.of(task));
+        when(majorRepository.findByIdAndDeletedAtIsNull(846L))
+                .thenReturn(Optional.of(otherMajor()));
+        when(occupationRepository.findByIdAndDeletedAtIsNull(99L))
+                .thenReturn(Optional.of(occupation()));
+        when(jobRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(job));
+        when(resultRepository.findByTaskIdAndDeletedAtIsNullOrderByRankAsc(20L))
+                .thenReturn(List.of());
+        when(aliasRepository.findByJobNameForUpdate(job.getName())).thenReturn(Optional.empty());
+
+        service.review(20L, 846L, 99L, List.of(), audit()).orElseThrow();
+
+        assertEquals(846L, job.getMajorId());
+        verify(majorAliasRepository, never()).findByJobMajorForUpdate(any());
+        verify(majorAliasRepository, never()).save(any());
     }
 
     private JobAnalysisTask task() {
@@ -144,7 +190,22 @@ class JobAnalysisReviewServiceTest {
         Job job = new Job();
         job.setId(10L);
         job.setName("后端开发工程师");
+        job.setMajor("软件工程类");
         return job;
+    }
+
+    private Major major() {
+        Major major = new Major();
+        major.setId(88L);
+        major.setName("软件工程");
+        return major;
+    }
+
+    private Major otherMajor() {
+        Major major = new Major();
+        major.setId(846L);
+        major.setName("其他");
+        return major;
     }
 
     private Occupation occupation() {

@@ -9,16 +9,21 @@ import com.baigon.occupation.entity.TaskStatus;
 import com.baigon.occupation.entity.datasource.CleanedJobSource;
 import com.baigon.occupation.entity.datasource.ReviewedCleanedJobSource;
 import com.baigon.occupation.entity.job.Job;
+import com.baigon.occupation.entity.job.JobMajorAlias;
 import com.baigon.occupation.entity.job.JobOccupationAlias;
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisTask;
+import com.baigon.occupation.entity.major.Major;
 import com.baigon.occupation.error.ApiException;
 import com.baigon.occupation.repository.datasource.CleanedJobSourceRepository;
 import com.baigon.occupation.repository.datasource.ReviewedCleanedJobSourceRepository;
+import com.baigon.occupation.repository.job.JobMajorAliasRepository;
 import com.baigon.occupation.repository.job.JobOccupationAliasRepository;
 import com.baigon.occupation.repository.job.JobRepository;
 import com.baigon.occupation.repository.jobanalysis.JobAnalysisTaskRepository;
+import com.baigon.occupation.repository.major.MajorRepository;
 import com.baigon.occupation.service.AuditContext;
 import com.baigon.occupation.service.LogService;
+import com.baigon.occupation.service.job.JobMajorPolicy;
 import com.baigon.occupation.service.jobanalysis.JobAnalysisService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -48,7 +53,9 @@ public class CleanedJobSourceService {
     private final LogService logService;
     private final Snowflake snowflake;
     private final JobRepository jobRepository;
-    private final JobOccupationAliasRepository aliasRepository;
+    private final JobOccupationAliasRepository occupationAliasRepository;
+    private final JobMajorAliasRepository majorAliasRepository;
+    private final MajorRepository majorRepository;
     private final JobAnalysisTaskRepository taskRepository;
     private final JobAnalysisService jobAnalysisService;
 
@@ -57,7 +64,9 @@ public class CleanedJobSourceService {
                                    LogService logService,
                                    Snowflake snowflake,
                                    JobRepository jobRepository,
-                                   JobOccupationAliasRepository aliasRepository,
+                                   JobOccupationAliasRepository occupationAliasRepository,
+                                   JobMajorAliasRepository majorAliasRepository,
+                                   MajorRepository majorRepository,
                                    JobAnalysisTaskRepository taskRepository,
                                    JobAnalysisService jobAnalysisService) {
         this.cleanedJobSourceRepository = cleanedJobSourceRepository;
@@ -65,7 +74,9 @@ public class CleanedJobSourceService {
         this.logService = logService;
         this.snowflake = snowflake;
         this.jobRepository = jobRepository;
-        this.aliasRepository = aliasRepository;
+        this.occupationAliasRepository = occupationAliasRepository;
+        this.majorAliasRepository = majorAliasRepository;
+        this.majorRepository = majorRepository;
         this.taskRepository = taskRepository;
         this.jobAnalysisService = jobAnalysisService;
     }
@@ -163,8 +174,8 @@ public class CleanedJobSourceService {
     }
 
     /**
-     * 同步创建 jobs 和总分析任务：别名只决定是否跳过职业名称 Embedding，
-     * 真实 JD 分析始终在事务提交后执行。
+     * 同步创建 jobs 和总分析任务：职业与专业别名决定是否跳过对应 Embedding，
+     * “专业不限”直接关联“其他”，真实 JD 分析始终在事务提交后执行。
      */
     private JobAnalysisTask createJobAndPrepareAnalysis(ReviewedCleanedJobSource source,
                                                         OffsetDateTime now) {
@@ -173,10 +184,27 @@ public class CleanedJobSourceService {
 
         if (job.getOccupationId() == null && job.getName() != null && !job.getName().isBlank()) {
             Optional<JobOccupationAlias> alias =
-                    aliasRepository.findByJobNameAndDeletedAtIsNull(job.getName());
+                    occupationAliasRepository.findByJobNameAndDeletedAtIsNull(job.getName());
             if (alias.isPresent()) {
                 job.setOccupationId(alias.get().getOccupationId());
                 job.setUpdatedAt(now);
+            }
+        }
+
+        if (job.getMajorId() == null) {
+            if (JobMajorPolicy.shouldUseOther(job.getMajor())) {
+                Major other = majorRepository.findByCodeAndDeletedAtIsNull(
+                                JobMajorPolicy.OTHER_MAJOR_CODE)
+                        .orElseThrow(() -> new IllegalStateException("other major seed not found"));
+                job.setMajorId(other.getId());
+                job.setUpdatedAt(now);
+            } else {
+                Optional<JobMajorAlias> alias =
+                        majorAliasRepository.findByJobMajorAndDeletedAtIsNull(job.getMajor());
+                if (alias.isPresent()) {
+                    job.setMajorId(alias.get().getMajorId());
+                    job.setUpdatedAt(now);
+                }
             }
         }
 
@@ -189,19 +217,23 @@ public class CleanedJobSourceService {
         task.setTraceId(job.getTraceId());
         task.setJobId(job.getId());
         task.setJobName(job.getName());
+        task.setJobMajor(job.getMajor());
         task.setTaskStatus(TaskStatus.PENDING);
         task.setOccupationAnalysisStatus(
                 job.getOccupationId() == null ? TaskStatus.PENDING : TaskStatus.SUCCESS);
+        task.setMajorAnalysisStatus(
+                job.getMajorId() == null ? TaskStatus.PENDING : TaskStatus.SUCCESS);
         task.setJdAnalysisStatus(TaskStatus.PENDING);
         task.setReviewStatus(ReviewStatus.PENDING);
         task.setSelectedOccupationId(job.getOccupationId());
+        task.setSelectedMajorId(job.getMajorId());
         task.setAttempts(0);
         task.setCreatedAt(now);
         task.setUpdatedAt(now);
         return taskRepository.save(task);
     }
 
-    /** 从最终审核快照构造岗位，occupation_id 由别名命中或后续人工审核确定。 */
+    /** 从最终审核快照构造岗位，目录外键由别名、兜底规则或后续人工审核确定。 */
     private Job newJob(ReviewedCleanedJobSource source, OffsetDateTime now) {
         Job job = new Job();
         job.setId(snowflake.nextId());

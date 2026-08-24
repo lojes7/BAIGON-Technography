@@ -32,7 +32,7 @@ service OccupationService {
   rpc GetOccupationEmbeddingStatus (EmbeddingTaskRequest) returns (EmbeddingTaskStatus) {}
   rpc StopOccupationEmbedding (EmbeddingTaskRequest) returns (EmbeddingTaskStatus) {}
 
-  // 岗位分析任务查询与人工确认；最终职业不受 AI 候选范围限制。
+  // 岗位分析任务查询与人工确认；最终专业、职业不受 AI 候选范围限制。
   rpc ListJobAnalysisTasks (ListJobAnalysisTasksRequest) returns (ListJobAnalysisTasksResponse) {}
   rpc GetJobAnalysisTask (GetJobAnalysisTaskRequest) returns (GetJobAnalysisTaskResponse) {}
   rpc ReviewJobAnalysisTask (ReviewJobAnalysisTaskRequest) returns (GetJobAnalysisTaskResponse) {}
@@ -162,6 +162,8 @@ message ReviewJobAnalysisTaskRequest {
   int64 occupation_id = 2;
   // 一次提交必须覆盖当前任务的全部 job_analysis_results。
   repeated JobAnalysisSkillReview skill_reviews = 3;
+  // 可选择 majors 表中的任意有效专业，不要求出现在 AI 候选中。
+  int64 major_id = 4;
 
   string trace_id = 10;
   int64 user_id = 11;
@@ -197,11 +199,21 @@ message JobAnalysisTaskSummary {
   int64 reviewed_by = 13;
   string occupation_analysis_status = 14;
   string jd_analysis_status = 15;
+  string job_major = 16;
+  int64 selected_major_id = 17;
+  string major_analysis_status = 18;
 }
 
 message JobAnalysisCandidate {
   int64 occupation_id = 1;
   string occupation_name = 2;
+  int32 rank = 3;
+  double similarity = 4;
+}
+
+message JobAnalysisMajorCandidate {
+  int64 major_id = 1;
+  string major_name = 2;
   int32 rank = 3;
   double similarity = 4;
 }
@@ -226,6 +238,7 @@ message JobAnalysisTaskDetail {
   JobAnalysisTaskSummary task = 1;
   repeated JobAnalysisCandidate candidates = 2;
   repeated JobAnalysisResult results = 3;
+  repeated JobAnalysisMajorCandidate major_candidates = 4;
 }
 
 message ListJobAnalysisTasksResponse {
@@ -253,6 +266,7 @@ message ListJobsRequest {
   string education = 10;
   string nature = 11;
   string company_size = 12;
+  int64 major_id = 13;
 
   string trace_id = 20;
   int64 user_id = 21;
@@ -294,6 +308,14 @@ message JobData {
   string job_description = 17;
   string created_at = 18;
   string updated_at = 19;
+  int64 major_id = 20;
+}
+
+message JobMajorData {
+  int64 id = 1;
+  string code = 2;
+  string name = 3;
+  int64 major_category_id = 4;
 }
 
 message JobOccupationData {
@@ -323,4 +345,6 @@ message GetJobResponse {
   // occupation_id 为空或对应职业已软删除时不设置 occupation。
   JobOccupationData occupation = 2;
   repeated JobSkillData job_skills = 3;
+  // major_id 为空或对应专业已软删除时不设置 major。
+  JobMajorData major = 4;
 }
