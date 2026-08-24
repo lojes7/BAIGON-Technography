@@ -67,14 +67,15 @@ OCR `content`、五类结构化数组并恢复为可见的 `SYSTEM` 简历。失
 
 ## 用户技能分析与人岗匹配
 
-三项接口均要求 JWT 鉴权，服务端只接受 gateway 从 JWT 得到的当前用户，不允许客户端提交
+以下接口均要求 JWT 鉴权，服务端只接受 gateway 从 JWT 得到的当前用户，不允许客户端提交
 任意用户 ID、简历正文或岗位快照：
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | POST | `/api/auth/resumes/analyze-skills` | 分析当前用户最新简历并返回本次技能快照 |
 | GET | `/api/auth/me/skills` | 按分析时间和批内顺序返回全部历史技能记录 |
-| POST | `/api/jobs/{id}/match` | 使用当前用户最新简历匹配指定正式岗位 |
+| POST | `/api/jobs/{id}/match` | 使用当前用户最新简历匹配指定正式岗位，并返回新结果 ID |
+| GET | `/api/jobs/{id}/match` | 当前用户按岗位 ID 查询自己的最新一次人岗匹配 |
 
 最新简历不存在时返回 404。技能分析要求最新记录的 `content` 非空；人岗匹配不读取
 `content`，改用 `education_experiences`、`work_experiences`、`project_experiences`、
@@ -84,8 +85,9 @@ OCR `content`、五类结构化数组并恢复为可见的 `SYSTEM` 简历。失
 `EXPERT / ADVANCED / FAMILIAR / BASIC`，证据必须可按 NFKC 与空白归一化规则回溯简历原文。
 
 简历抽取、简历技能分析和人岗匹配均在调用 LLM 前创建 `PENDING` 的 `user_analysis_tasks`，在事务外
-调用 AI，再用独立短事务原子写结果、`source_llm_response` 和 `SUCCESS`；失败时保存可获得的模型
-原始响应、脱敏错误码并标记 `FAILED`。超过 AI deadline 再加一分钟的遗留
+调用 AI。人岗匹配成功后，独立短事务会原子追加一条 `user_job_match_results` 并把任务改为
+`SUCCESS`；同一用户可对同一岗位保留多次历史结果，每个结果都有独立 ID。失败时不创建结果，
+只在任务中保存可获得的模型原始响应、脱敏错误码并标记 `FAILED`。超过 AI deadline 再加一分钟的遗留
 `PENDING`（默认三分钟）会在下一次同目标请求中先标记 `FAILED` 再重试，未超时的重复请求返回 403。
 
 人岗匹配的简历快照只由上述五个 `resumes` JSONB 字段构造；岗位侧只查询
@@ -93,8 +95,10 @@ OCR `content`、五类结构化数组并恢复为可见的 `SYSTEM` 简历。失
 `name`、`publish_date`、`source_platform`、`source_url`、`tags`、`major`、`nature`、`salary`、
 `company_name`、`company_size`、`city`、`province`、`education`、`experience`、
 `job_description`、`occupation_id`。实现不会读取 `job_analysis_results`、`job_skills` 或职业详情。
-响应仅公开简历 ID、岗位 ID、0～100 分、摘要、学习建议、行动建议和创建时间，不公开模型名、
-trace、内部错误或正文。
+匹配响应仅公开结果 ID、简历 ID、岗位 ID、0～100 分、摘要、学习建议、行动建议和创建时间，不公开
+任务 ID、模型名、trace、内部错误、原始 LLM 响应或正文。查询最新匹配时，前端只传岗位 ID，gateway
+从 JWT 透传当前用户 ID，服务端按 `created_at DESC, id DESC` 稳定选择最新一条；不存在时返回 404。
+岗位详情接口保持纯岗位聚合查询，不附带用户匹配结果。
 
 ## 数据治理 API
 

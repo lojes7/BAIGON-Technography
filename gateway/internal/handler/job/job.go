@@ -233,7 +233,7 @@ func jobSkillData(skill *occupationpb.JobSkillData) gin.H {
 // @Produce      json
 // @Security     Bearer
 // @Param        id path int true "jobs.id"
-// @Success      200 {object} response.SuccessBody "data 内含分数、摘要、待学习技能和行动建议"
+// @Success      200 {object} response.SuccessBody "data 内含匹配结果 ID、分数、摘要、待学习技能和行动建议"
 // @Failure      400 {object} response.ErrorBody
 // @Failure      401 {object} response.ErrorBody
 // @Failure      403 {object} response.ErrorBody
@@ -248,7 +248,7 @@ func MatchMyResumeToJobHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc
 			response.Error(c, http.StatusUnauthorized, http.StatusUnauthorized)
 			return
 		}
-		jobID, ok := parsePositiveJobID(c.Param("id"))
+		jobID, ok := parsePositiveID(c.Param("id"))
 		if !ok {
 			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
 			return
@@ -277,7 +277,7 @@ func MatchMyResumeToJobHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc
 			response.Error(c, httpCode, errorCode)
 			return
 		}
-		if result == nil || result.GetResumeId() <= 0 || result.GetJobId() != jobID ||
+		if result == nil || result.GetId() <= 0 || result.GetResumeId() <= 0 || result.GetJobId() != jobID ||
 			result.GetScore() < 0 || result.GetScore() > 100 {
 			response.Error(c, http.StatusInternalServerError, http.StatusInternalServerError)
 			return
@@ -287,7 +287,66 @@ func MatchMyResumeToJobHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc
 	}
 }
 
-func parsePositiveJobID(value string) (int64, bool) {
+// GetLatestMyJobMatchHandler 按岗位 ID 查询当前用户最新一次人岗匹配结果。
+// @Summary      查询我的最新人岗匹配结果
+// @Description  前端只需提供岗位 ID；用户 ID 由 Gateway 从 JWT 透传。
+// @Tags         岗位
+// @Produce      json
+// @Security     Bearer
+// @Param        id path int true "jobs.id"
+// @Success      200 {object} response.SuccessBody "data 内含匹配结果 ID、分数、摘要、待学习技能和行动建议"
+// @Failure      400 {object} response.ErrorBody
+// @Failure      401 {object} response.ErrorBody
+// @Failure      404 {object} response.ErrorBody
+// @Failure      500 {object} response.ErrorBody
+// @Failure      503 {object} response.ErrorBody
+// @Router       /api/jobs/{id}/match [get]
+func GetLatestMyJobMatchHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := commonhandler.UserIDFromContext(c)
+		if userID <= 0 {
+			response.Error(c, http.StatusUnauthorized, http.StatusUnauthorized)
+			return
+		}
+		jobID, ok := parsePositiveID(c.Param("id"))
+		if !ok {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+
+		conn, err := pool.GetConn("occupation-service")
+		if err != nil {
+			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+		var trailer metadata.MD
+		result, err := userpb.NewUserServiceClient(conn).GetLatestMyJobMatch(
+			ctx,
+			&userpb.GetLatestMyJobMatchRequest{
+				JobId: jobID, TraceId: c.GetString("trace_id"), UserId: userID,
+				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
+				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
+			},
+			grpc.Trailer(&trailer),
+		)
+		if err != nil {
+			httpCode, errorCode := commonhandler.GRPCErrorCodes(err, trailer)
+			response.Error(c, httpCode, errorCode)
+			return
+		}
+		if result == nil || result.GetId() <= 0 || result.GetResumeId() <= 0 ||
+			result.GetJobId() != jobID || result.GetScore() < 0 || result.GetScore() > 100 {
+			response.Error(c, http.StatusInternalServerError, http.StatusInternalServerError)
+			return
+		}
+
+		response.Success(c, matchResponseData(result))
+	}
+}
+
+func parsePositiveID(value string) (int64, bool) {
 	id, err := strconv.ParseInt(value, 10, 64)
 	if err != nil || id <= 0 {
 		return 0, false
@@ -309,7 +368,7 @@ func matchResponseData(result *userpb.MatchMyResumeToJobResponse) gin.H {
 	actions := make([]string, 0, len(result.GetActionSuggestions()))
 	actions = append(actions, result.GetActionSuggestions()...)
 	return gin.H{
-		"resumeId": result.GetResumeId(), "jobId": result.GetJobId(),
+		"id": result.GetId(), "resumeId": result.GetResumeId(), "jobId": result.GetJobId(),
 		"score": result.GetScore(), "summary": result.GetSummary(),
 		"skillsToLearn": skills, "actionSuggestions": actions,
 		"createdAt": result.GetCreatedAt(),

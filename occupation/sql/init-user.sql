@@ -133,29 +133,11 @@ CREATE TABLE "user_analysis_tasks" (
     "task_type" user_analysis_type NOT NULL,
     "task_status" task_status NOT NULL DEFAULT 'PENDING',
     "model_name" varchar(64),
-    "match_score" integer,
-    "match_summary" text,
-    "skills_to_learn" jsonb NOT NULL DEFAULT '[]'::jsonb,
-    "action_suggestions" jsonb NOT NULL DEFAULT '[]'::jsonb,
     "error_msg" text,
     "source_llm_response" text,
     CONSTRAINT "ck_user_analysis_tasks_target" CHECK (
         ("task_type" IN ('RESUME_EXTRACTION', 'RESUME_SKILL_ANALYSIS') AND "job_id" IS NULL)
         OR ("task_type" = 'JOB_MATCH' AND "job_id" IS NOT NULL)
-    ),
-    CONSTRAINT "ck_user_analysis_tasks_match_score" CHECK (
-        "match_score" IS NULL OR "match_score" BETWEEN 0 AND 100
-    ),
-    CONSTRAINT "ck_user_analysis_tasks_skills_to_learn_array" CHECK (
-        jsonb_typeof("skills_to_learn") = 'array'
-    ),
-    CONSTRAINT "ck_user_analysis_tasks_action_suggestions_array" CHECK (
-        jsonb_typeof("action_suggestions") = 'array'
-    ),
-    CONSTRAINT "ck_user_analysis_tasks_successful_match" CHECK (
-        "task_type" <> 'JOB_MATCH'
-        OR "task_status" <> 'SUCCESS'
-        OR ("match_score" IS NOT NULL AND NULLIF(BTRIM("match_summary"), '') IS NOT NULL)
     )
 );
 
@@ -186,6 +168,41 @@ CREATE UNIQUE INDEX "idx_user_analysis_tasks_job_pending"
     WHERE "deleted_at" IS NULL
       AND "task_status" = 'PENDING'
       AND "task_type" = 'JOB_MATCH';
+
+-- 人岗匹配成功后的业务结果；任务表只保留执行状态与内部审计信息。
+CREATE TABLE "user_job_match_results" (
+    "created_at" timestamp with time zone NOT NULL DEFAULT now(),
+    "updated_at" timestamp with time zone NOT NULL DEFAULT now(),
+    "deleted_at" timestamp with time zone,
+    "id" bigint PRIMARY KEY,
+    "task_id" bigint NOT NULL REFERENCES "user_analysis_tasks" ("id"),
+    "user_id" bigint NOT NULL REFERENCES "users" ("id"),
+    "resume_id" bigint NOT NULL REFERENCES "resumes" ("id"),
+    "job_id" bigint NOT NULL REFERENCES "jobs" ("id"),
+    "match_score" integer NOT NULL,
+    "match_summary" text NOT NULL,
+    "skills_to_learn" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    "action_suggestions" jsonb NOT NULL DEFAULT '[]'::jsonb,
+    -- 同一个任务最多生成一份结果；再次匹配必须创建新任务与新结果。
+    CONSTRAINT "uq_user_job_match_results_task" UNIQUE ("task_id"),
+    CONSTRAINT "ck_user_job_match_results_match_score" CHECK (
+        "match_score" BETWEEN 0 AND 100
+    ),
+    CONSTRAINT "ck_user_job_match_results_match_summary" CHECK (
+        NULLIF(BTRIM("match_summary"), '') IS NOT NULL
+    ),
+    CONSTRAINT "ck_user_job_match_results_skills_to_learn_array" CHECK (
+        jsonb_typeof("skills_to_learn") = 'array'
+    ),
+    CONSTRAINT "ck_user_job_match_results_action_suggestions_array" CHECK (
+        jsonb_typeof("action_suggestions") = 'array'
+    )
+);
+
+-- 支持按用户与岗位稳定定位最新一条有效结果，同时保留全部历史匹配。
+CREATE INDEX "idx_user_job_match_results_user_job_created_active"
+    ON "user_job_match_results" ("user_id", "job_id", "created_at" DESC, "id" DESC)
+    WHERE "deleted_at" IS NULL;
 
 CREATE TABLE "user_graphs" (
     "created_at" timestamp with time zone NOT NULL DEFAULT now(),

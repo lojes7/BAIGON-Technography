@@ -41,6 +41,9 @@ service UserService {
   // 使用当前用户最新简历与指定 jobs 记录进行人岗匹配。
   rpc MatchMyResumeToJob(MatchMyResumeToJobRequest) returns (MatchMyResumeToJobResponse);
 
+  // 当前用户按岗位 ID 查询自己的最新一次人岗匹配。
+  rpc GetLatestMyJobMatch(GetLatestMyJobMatchRequest) returns (MatchMyResumeToJobResponse);
+
   // ADMIN 按用户 ID 封禁账号。
   rpc BlockUser(BlockUserRequest) returns (BlockUserResponse);
 
@@ -298,6 +301,18 @@ message MatchMyResumeToJobRequest {
   string request_url = 15;
 }
 
+// 前端只提供岗位 ID；服务端使用当前用户 ID 查询该岗位的最新匹配结果。
+message GetLatestMyJobMatchRequest {
+  int64 job_id = 1;
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
 // 对外技能记录不包含内部任务、模型、trace 或简历正文。
 message UserSkillData {
   int64 id = 1;
@@ -331,4 +346,5 @@ message MatchMyResumeToJobResponse {
   repeated SkillLearningSuggestion skills_to_learn = 5;
   repeated string action_suggestions = 6;
   string created_at = 7;
+  int64 id = 8;
 }

@@ -7,12 +7,14 @@ import com.baigon.occupation.entity.job.Job;
 import com.baigon.occupation.entity.user.Resume;
 import com.baigon.occupation.entity.user.analysis.UserAnalysisTask;
 import com.baigon.occupation.entity.user.analysis.UserGraph;
+import com.baigon.occupation.entity.user.analysis.UserJobMatchResult;
 import com.baigon.occupation.entity.user.analysis.UserAnalysisType;
 import com.baigon.occupation.error.ApiException;
 import com.baigon.occupation.grpc.client.ai.AIGrpcClient;
 import com.baigon.occupation.repository.job.JobRepository;
 import com.baigon.occupation.repository.user.analysis.UserAnalysisTaskRepository;
 import com.baigon.occupation.repository.user.analysis.UserGraphRepository;
+import com.baigon.occupation.repository.user.analysis.UserJobMatchResultRepository;
 import com.baigon.occupation.repository.user.resume.ResumeRepository;
 import com.baigon.occupation.service.AuditContext;
 import com.baigon.occupation.service.LogService;
@@ -24,11 +26,13 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.transaction.support.TransactionOperations;
 
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -42,20 +46,24 @@ class UserAnalysisServiceTest {
 
     private UserAnalysisTaskRepository taskRepository;
     private UserGraphRepository graphRepository;
+    private UserJobMatchResultRepository matchResultRepository;
     private ResumeRepository resumeRepository;
     private JobRepository jobRepository;
     private AIGrpcClient aiGrpcClient;
     private UserAnalysisService service;
     private AtomicReference<UserAnalysisTask> task;
+    private List<UserJobMatchResult> matchResults;
 
     @BeforeEach
     void setUp() {
         taskRepository = mock(UserAnalysisTaskRepository.class);
         graphRepository = mock(UserGraphRepository.class);
+        matchResultRepository = mock(UserJobMatchResultRepository.class);
         resumeRepository = mock(ResumeRepository.class);
         jobRepository = mock(JobRepository.class);
         aiGrpcClient = mock(AIGrpcClient.class);
         task = new AtomicReference<>();
+        matchResults = new ArrayList<>();
         when(taskRepository.saveAndFlush(any(UserAnalysisTask.class))).thenAnswer(invocation -> {
             UserAnalysisTask saved = invocation.getArgument(0);
             task.set(saved);
@@ -68,8 +76,15 @@ class UserAnalysisServiceTest {
                         any(), any(), any(), any(), any()))
                 .thenReturn(Optional.empty());
         when(graphRepository.saveAllAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(matchResultRepository.saveAndFlush(any(UserJobMatchResult.class)))
+                .thenAnswer(invocation -> {
+                    UserJobMatchResult saved = invocation.getArgument(0);
+                    matchResults.add(saved);
+                    return saved;
+                });
         service = new UserAnalysisService(
-                taskRepository, graphRepository, resumeRepository, jobRepository,
+                taskRepository, graphRepository, matchResultRepository,
+                resumeRepository, jobRepository,
                 aiGrpcClient, mock(LogService.class), new Snowflake(6, 1),
                 new ObjectMapper(), 120L, TransactionOperations.withoutTransaction());
     }
@@ -126,9 +141,14 @@ class UserAnalysisServiceTest {
 
         assertEquals(82, result.score());
         assertEquals(201L, result.jobId());
+        assertEquals(result.id(), matchResults.get(0).getId());
+        assertEquals(7L, matchResults.get(0).getUserId());
+        assertEquals(101L, matchResults.get(0).getResumeId());
+        assertEquals(201L, matchResults.get(0).getJobId());
+        assertEquals(82, matchResults.get(0).getMatchScore());
+        assertEquals("Kubernetes",
+                matchResults.get(0).getSkillsToLearn().get(0).get("skillName").asText());
         assertEquals(TaskStatus.SUCCESS, task.get().getTaskStatus());
-        assertEquals(82, task.get().getMatchScore());
-        assertEquals(1, task.get().getSkillsToLearn().size());
         assertEquals("raw-job-match", task.get().getSourceLlmResponse());
         verify(graphRepository, never()).saveAllAndFlush(any());
 
@@ -158,6 +178,90 @@ class UserAnalysisServiceTest {
         assertEquals(job.getEducation(), jobInput.getValue().education());
         assertEquals(job.getExperience(), jobInput.getValue().experience());
         assertEquals(job.getOccupationId(), jobInput.getValue().occupationId());
+    }
+
+    @Test
+    void repeatedMatchShouldAppendDistinctResults() {
+        Resume resume = resume(101L, null);
+        when(resumeRepository.findFirstByUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(7L))
+                .thenReturn(Optional.of(resume));
+        when(jobRepository.findByIdAndDeletedAtIsNull(201L))
+                .thenReturn(Optional.of(job(201L)));
+        when(aiGrpcClient.analyzeJobMatch(any(), any(), eq(audit())))
+                .thenReturn(new AIGrpcClient.JobMatchAnalysisResult(
+                        82, "匹配结果", List.of(), List.of("继续积累项目经验"),
+                        "spark-x", "raw-job-match"));
+
+        UserAnalysisService.JobMatchData first =
+                service.matchMyResumeToJob(7L, 201L, audit());
+        UserAnalysisService.JobMatchData second =
+                service.matchMyResumeToJob(7L, 201L, audit());
+
+        assertEquals(2, matchResults.size());
+        assertNotEquals(first.id(), second.id());
+        assertEquals(first.id(), matchResults.get(0).getId());
+        assertEquals(second.id(), matchResults.get(1).getId());
+    }
+
+    @Test
+    void getLatestMyJobMatchShouldReadLatestResultForUserAndJob() {
+        ObjectMapper mapper = new ObjectMapper();
+        UserJobMatchResult stored = new UserJobMatchResult();
+        stored.setId(501L);
+        stored.setUserId(7L);
+        stored.setResumeId(101L);
+        stored.setJobId(201L);
+        stored.setMatchScore(82);
+        stored.setMatchSummary("核心能力匹配");
+        stored.setCreatedAt(OffsetDateTime.parse("2026-08-25T10:00:00+08:00"));
+        var skills = mapper.createArrayNode();
+        skills.addObject()
+                .put("skillName", "Kubernetes")
+                .put("reason", "岗位要求")
+                .put("suggestion", "完成部署练习");
+        stored.setSkillsToLearn(skills);
+        stored.setActionSuggestions(mapper.createArrayNode().add("完善项目说明"));
+        when(matchResultRepository
+                .findFirstByUserIdAndJobIdAndDeletedAtIsNullOrderByCreatedAtDescIdDesc(
+                        7L, 201L))
+                .thenReturn(Optional.of(stored));
+
+        UserAnalysisService.JobMatchData result = service.getLatestMyJobMatch(7L, 201L);
+
+        assertEquals(501L, result.id());
+        assertEquals("Kubernetes", result.skillsToLearn().get(0).skillName());
+        assertEquals("完善项目说明", result.actionSuggestions().get(0));
+
+        when(matchResultRepository
+                .findFirstByUserIdAndJobIdAndDeletedAtIsNullOrderByCreatedAtDescIdDesc(
+                        8L, 201L))
+                .thenReturn(Optional.empty());
+        ApiException exception = assertThrows(
+                ApiException.class, () -> service.getLatestMyJobMatch(8L, 201L));
+        assertEquals(ApiException.ErrorCode.NOT_FOUND, exception.getErrorCode());
+    }
+
+    @Test
+    void matchResultPersistenceFailureShouldMarkTaskFailed() {
+        Resume resume = resume(101L, null);
+        when(resumeRepository.findFirstByUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(7L))
+                .thenReturn(Optional.of(resume));
+        when(jobRepository.findByIdAndDeletedAtIsNull(201L))
+                .thenReturn(Optional.of(job(201L)));
+        when(aiGrpcClient.analyzeJobMatch(any(), any(), eq(audit())))
+                .thenReturn(new AIGrpcClient.JobMatchAnalysisResult(
+                        82, "匹配结果", List.of(), List.of(),
+                        "spark-x", "raw-job-match"));
+        when(matchResultRepository.saveAndFlush(any(UserJobMatchResult.class)))
+                .thenThrow(new DataIntegrityViolationException("result write failed"));
+
+        ApiException exception = assertThrows(
+                ApiException.class, () -> service.matchMyResumeToJob(7L, 201L, audit()));
+
+        assertEquals(ApiException.ErrorCode.INTERNAL_ERROR, exception.getErrorCode());
+        assertEquals(TaskStatus.FAILED, task.get().getTaskStatus());
+        assertEquals("raw-job-match", task.get().getSourceLlmResponse());
+        assertEquals(0, matchResults.size());
     }
 
     @Test

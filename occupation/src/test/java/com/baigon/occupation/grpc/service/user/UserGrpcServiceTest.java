@@ -19,6 +19,7 @@ import com.baigon.user.CreateResumeUploadRequest;
 import com.baigon.user.CreateResumeUploadResponse;
 import com.baigon.user.EditMyResumeRequest;
 import com.baigon.user.EditMyResumeResponse;
+import com.baigon.user.GetLatestMyJobMatchRequest;
 import com.baigon.user.GetUserRequest;
 import com.baigon.user.GetUserResponse;
 import com.baigon.user.GetMyResumeRequest;
@@ -402,6 +403,7 @@ class UserGrpcServiceTest {
         OffsetDateTime createdAt = OffsetDateTime.parse("2026-08-20T11:00:00+08:00");
         when(userAnalysisService.matchMyResumeToJob(eq(8L), eq(201L), any())).thenReturn(
                 new UserAnalysisService.JobMatchData(
+                        301L,
                         101L,
                         201L,
                         82,
@@ -424,11 +426,50 @@ class UserGrpcServiceTest {
                 ArgumentCaptor.forClass(MatchMyResumeToJobResponse.class);
         verify(observer).onNext(response.capture());
         verify(observer).onCompleted();
+        assertEquals(301L, response.getValue().getId());
         assertEquals(101L, response.getValue().getResumeId());
         assertEquals(201L, response.getValue().getJobId());
         assertEquals(82, response.getValue().getScore());
         assertEquals("Kubernetes",
                 response.getValue().getSkillsToLearn(0).getSkillName());
+        assertEquals("补充项目量化结果", response.getValue().getActionSuggestions(0));
+        assertEquals(createdAt.toString(), response.getValue().getCreatedAt());
+    }
+
+    @Test
+    void getLatestMyJobMatchShouldReturnLatestResultForJob() {
+        OffsetDateTime createdAt = OffsetDateTime.parse("2026-08-20T11:00:00+08:00");
+        when(userAnalysisService.getLatestMyJobMatch(8L, 201L)).thenReturn(
+                new UserAnalysisService.JobMatchData(
+                        301L,
+                        101L,
+                        201L,
+                        82,
+                        "核心后端经验匹配，云原生经验仍需补足。",
+                        List.of(new UserAnalysisService.LearningSuggestionData(
+                                "Kubernetes", "岗位要求容器编排", "完成一次集群部署实践")),
+                        List.of("补充项目量化结果"),
+                        createdAt));
+        @SuppressWarnings("unchecked")
+        StreamObserver<MatchMyResumeToJobResponse> observer = mock(StreamObserver.class);
+
+        service.getLatestMyJobMatch(GetLatestMyJobMatchRequest.newBuilder()
+                .setJobId(201L)
+                .setUserId(8L)
+                .setRequestMethod("GET")
+                .setRequestUrl("/api/jobs/201/match")
+                .build(), observer);
+
+        ArgumentCaptor<MatchMyResumeToJobResponse> response =
+                ArgumentCaptor.forClass(MatchMyResumeToJobResponse.class);
+        verify(observer).onNext(response.capture());
+        verify(observer).onCompleted();
+        verify(userAnalysisService).getLatestMyJobMatch(8L, 201L);
+        assertEquals(301L, response.getValue().getId());
+        assertEquals(101L, response.getValue().getResumeId());
+        assertEquals(201L, response.getValue().getJobId());
+        assertEquals(82, response.getValue().getScore());
+        assertEquals("Kubernetes", response.getValue().getSkillsToLearn(0).getSkillName());
         assertEquals("补充项目量化结果", response.getValue().getActionSuggestions(0));
         assertEquals(createdAt.toString(), response.getValue().getCreatedAt());
     }

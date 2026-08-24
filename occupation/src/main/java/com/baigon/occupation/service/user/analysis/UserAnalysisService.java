@@ -8,6 +8,7 @@ import com.baigon.occupation.entity.user.Resume;
 import com.baigon.occupation.entity.user.analysis.UserAnalysisTask;
 import com.baigon.occupation.entity.user.analysis.UserAnalysisType;
 import com.baigon.occupation.entity.user.analysis.UserGraph;
+import com.baigon.occupation.entity.user.analysis.UserJobMatchResult;
 import com.baigon.occupation.entity.user.analysis.UserSkillProficiency;
 import com.baigon.occupation.error.ApiException;
 import com.baigon.occupation.grpc.client.ai.AIAnalysisException;
@@ -15,9 +16,11 @@ import com.baigon.occupation.grpc.client.ai.AIGrpcClient;
 import com.baigon.occupation.repository.job.JobRepository;
 import com.baigon.occupation.repository.user.analysis.UserAnalysisTaskRepository;
 import com.baigon.occupation.repository.user.analysis.UserGraphRepository;
+import com.baigon.occupation.repository.user.analysis.UserJobMatchResultRepository;
 import com.baigon.occupation.repository.user.resume.ResumeRepository;
 import com.baigon.occupation.service.AuditContext;
 import com.baigon.occupation.service.LogService;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -48,6 +51,7 @@ public class UserAnalysisService {
 
     private final UserAnalysisTaskRepository taskRepository;
     private final UserGraphRepository graphRepository;
+    private final UserJobMatchResultRepository matchResultRepository;
     private final ResumeRepository resumeRepository;
     private final JobRepository jobRepository;
     private final AIGrpcClient aiGrpcClient;
@@ -60,6 +64,7 @@ public class UserAnalysisService {
     public UserAnalysisService(
             UserAnalysisTaskRepository taskRepository,
             UserGraphRepository graphRepository,
+            UserJobMatchResultRepository matchResultRepository,
             ResumeRepository resumeRepository,
             JobRepository jobRepository,
             AIGrpcClient aiGrpcClient,
@@ -73,6 +78,7 @@ public class UserAnalysisService {
         }
         this.taskRepository = taskRepository;
         this.graphRepository = graphRepository;
+        this.matchResultRepository = matchResultRepository;
         this.resumeRepository = resumeRepository;
         this.jobRepository = jobRepository;
         this.aiGrpcClient = aiGrpcClient;
@@ -170,6 +176,19 @@ public class UserAnalysisService {
         }
     }
 
+    /** 按岗位查询当前用户最新一次人岗匹配，不暴露内部分析任务。 */
+    public JobMatchData getLatestMyJobMatch(long userId, long jobId) {
+        if (userId <= 0 || jobId <= 0) {
+            throw new IllegalArgumentException("user_id and job_id must be > 0");
+        }
+        return matchResultRepository
+                .findFirstByUserIdAndJobIdAndDeletedAtIsNullOrderByCreatedAtDescIdDesc(
+                        userId, jobId)
+                .map(this::toJobMatchData)
+                .orElseThrow(() -> new ApiException(
+                        ApiException.ErrorCode.NOT_FOUND, "job match not found"));
+    }
+
     private PreparedAnalysis prepare(
             long userId,
             Long jobId,
@@ -219,8 +238,6 @@ public class UserAnalysisService {
                 task.setJobId(job == null ? null : job.getId());
                 task.setTaskType(type);
                 task.setTaskStatus(TaskStatus.PENDING);
-                task.setSkillsToLearn(objectMapper.createArrayNode());
-                task.setActionSuggestions(objectMapper.createArrayNode());
                 taskRepository.saveAndFlush(task);
                 return new PreparedAnalysis(
                         taskId, resume.getId(), resumeContent, resumeInput,
@@ -332,17 +349,29 @@ public class UserAnalysisService {
             OffsetDateTime now = OffsetDateTime.now();
             JsonNode learningJson = objectMapper.valueToTree(match.skillsToLearn());
             JsonNode actionsJson = objectMapper.valueToTree(match.actionSuggestions());
+
+            UserJobMatchResult matchResult = new UserJobMatchResult();
+            matchResult.setId(snowflake.nextId());
+            matchResult.setCreatedAt(now);
+            matchResult.setUpdatedAt(now);
+            matchResult.setTaskId(task.getId());
+            matchResult.setUserId(task.getUserId());
+            matchResult.setResumeId(task.getResumeId());
+            matchResult.setJobId(task.getJobId());
+            matchResult.setMatchScore(match.score());
+            matchResult.setMatchSummary(match.summary());
+            matchResult.setSkillsToLearn(learningJson);
+            matchResult.setActionSuggestions(actionsJson);
+            matchResultRepository.saveAndFlush(matchResult);
+
             task.setTaskStatus(TaskStatus.SUCCESS);
             task.setModelName(modelName);
             task.setSourceLlmResponse(sourceLlmResponse);
-            task.setMatchScore(match.score());
-            task.setMatchSummary(match.summary());
-            task.setSkillsToLearn(learningJson);
-            task.setActionSuggestions(actionsJson);
             task.setUpdatedAt(now);
             taskRepository.saveAndFlush(task);
             return new JobMatchData(
-                    task.getResumeId(), task.getJobId(), match.score(), match.summary(),
+                    matchResult.getId(), task.getResumeId(), task.getJobId(),
+                    match.score(), match.summary(),
                     match.skillsToLearn(), match.actionSuggestions(), now);
         });
         if (result == null) {
@@ -358,6 +387,23 @@ public class UserAnalysisService {
             throw new IllegalStateException("user analysis task is not pending");
         }
         return task;
+    }
+
+    private JobMatchData toJobMatchData(UserJobMatchResult result) {
+        try {
+            List<LearningSuggestionData> skills = List.copyOf(objectMapper.convertValue(
+                    result.getSkillsToLearn(),
+                    new TypeReference<List<LearningSuggestionData>>() { }));
+            List<String> actions = List.copyOf(objectMapper.convertValue(
+                    result.getActionSuggestions(),
+                    new TypeReference<List<String>>() { }));
+            return new JobMatchData(
+                    result.getId(), result.getResumeId(), result.getJobId(),
+                    result.getMatchScore(), result.getMatchSummary(),
+                    skills, actions, result.getCreatedAt());
+        } catch (IllegalArgumentException | NullPointerException exception) {
+            throw new IllegalStateException("stored user job match result is invalid", exception);
+        }
     }
 
     private void markFailed(
@@ -606,6 +652,7 @@ public class UserAnalysisService {
     }
 
     public record JobMatchData(
+            long id,
             long resumeId,
             long jobId,
             int score,

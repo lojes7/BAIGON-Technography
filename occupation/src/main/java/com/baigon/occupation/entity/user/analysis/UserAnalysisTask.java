@@ -3,8 +3,6 @@ package com.baigon.occupation.entity.user.analysis;
 
 import com.baigon.occupation.entity.BaseEntity;
 import com.baigon.occupation.entity.TaskStatus;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -38,17 +36,6 @@ public class UserAnalysisTask extends BaseEntity {
 
     @Column(name = "model_name", length = 64)
     private String modelName;
-    @Column(name = "match_score")
-    private Integer matchScore;
-    @Column(name = "match_summary", columnDefinition = "text")
-    private String matchSummary;
-    // JSONB 直接保留 AI 返回的结构化建议，避免丢失字段层次。
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "skills_to_learn", nullable = false, columnDefinition = "jsonb")
-    private JsonNode skillsToLearn = JsonNodeFactory.instance.arrayNode();
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "action_suggestions", nullable = false, columnDefinition = "jsonb")
-    private JsonNode actionSuggestions = JsonNodeFactory.instance.arrayNode();
     @Column(name = "error_msg", columnDefinition = "text")
     private String errorMsg;
     @Column(name = "source_llm_response", columnDefinition = "text")
@@ -68,14 +55,6 @@ public class UserAnalysisTask extends BaseEntity {
     public void setTaskStatus(TaskStatus taskStatus) { this.taskStatus = taskStatus; }
     public String getModelName() { return modelName; }
     public void setModelName(String modelName) { this.modelName = modelName; }
-    public Integer getMatchScore() { return matchScore; }
-    public void setMatchScore(Integer matchScore) { this.matchScore = matchScore; }
-    public String getMatchSummary() { return matchSummary; }
-    public void setMatchSummary(String matchSummary) { this.matchSummary = matchSummary; }
-    public JsonNode getSkillsToLearn() { return skillsToLearn; }
-    public void setSkillsToLearn(JsonNode skillsToLearn) { this.skillsToLearn = skillsToLearn; }
-    public JsonNode getActionSuggestions() { return actionSuggestions; }
-    public void setActionSuggestions(JsonNode actionSuggestions) { this.actionSuggestions = actionSuggestions; }
     public String getErrorMsg() { return errorMsg; }
     public void setErrorMsg(String errorMsg) { this.errorMsg = errorMsg; }
     public String getSourceLlmResponse() { return sourceLlmResponse; }

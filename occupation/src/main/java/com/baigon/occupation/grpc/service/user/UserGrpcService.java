@@ -19,6 +19,7 @@ import com.baigon.user.CreateResumeUploadRequest;
 import com.baigon.user.CreateResumeUploadResponse;
 import com.baigon.user.EditMyResumeRequest;
 import com.baigon.user.EditMyResumeResponse;
+import com.baigon.user.GetLatestMyJobMatchRequest;
 import com.baigon.user.GetUserRequest;
 import com.baigon.user.GetUserResponse;
 import com.baigon.user.ListUsersRequest;
@@ -376,27 +377,51 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
         try {
             UserAnalysisService.JobMatchData result = userAnalysisService.matchMyResumeToJob(
                     request.getUserId(), request.getJobId(), audit);
-            MatchMyResumeToJobResponse response = MatchMyResumeToJobResponse.newBuilder()
-                    .setResumeId(result.resumeId())
-                    .setJobId(result.jobId())
-                    .setScore(result.score())
-                    .setSummary(result.summary())
-                    .addAllSkillsToLearn(result.skillsToLearn().stream()
-                            .map(item -> SkillLearningSuggestion.newBuilder()
-                                    .setSkillName(item.skillName())
-                                    .setReason(item.reason())
-                                    .setSuggestion(item.suggestion())
-                                    .build())
-                            .toList())
-                    .addAllActionSuggestions(result.actionSuggestions())
-                    .setCreatedAt(result.createdAt() == null ? "" : result.createdAt().toString())
-                    .build();
-            respond(observer, response);
+            respond(observer, jobMatchResponse(result));
             logService.info(audit, "match my resume to job: resume_id=" + result.resumeId()
                     + ", job_id=" + result.jobId() + ", score=" + result.score());
         } catch (Exception exception) {
             fail(observer, audit, exception, "match my resume to job failed");
         }
+    }
+
+    @Override
+    public void getLatestMyJobMatch(
+            GetLatestMyJobMatchRequest request,
+            StreamObserver<MatchMyResumeToJobResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            UserAnalysisService.JobMatchData result = userAnalysisService.getLatestMyJobMatch(
+                    request.getUserId(), request.getJobId());
+            respond(observer, jobMatchResponse(result));
+            logService.info(audit, "get latest my job match: job_id=" + result.jobId()
+                    + ", result_id=" + result.id());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "get latest my job match failed");
+        }
+    }
+
+    /** 两个人岗匹配 RPC 共享同一份公开响应映射，避免字段契约产生偏差。 */
+    private MatchMyResumeToJobResponse jobMatchResponse(
+            UserAnalysisService.JobMatchData result) {
+        return MatchMyResumeToJobResponse.newBuilder()
+                .setId(result.id())
+                .setResumeId(result.resumeId())
+                .setJobId(result.jobId())
+                .setScore(result.score())
+                .setSummary(result.summary())
+                .addAllSkillsToLearn(result.skillsToLearn().stream()
+                        .map(item -> SkillLearningSuggestion.newBuilder()
+                                .setSkillName(item.skillName())
+                                .setReason(item.reason())
+                                .setSuggestion(item.suggestion())
+                                .build())
+                        .toList())
+                .addAllActionSuggestions(result.actionSuggestions())
+                .setCreatedAt(result.createdAt() == null ? "" : result.createdAt().toString())
+                .build();
     }
 
     private UserData userData(AdminUserService.UserData user) {
