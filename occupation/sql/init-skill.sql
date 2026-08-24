@@ -17,7 +17,7 @@ CREATE TABLE "skills" (
     "embedding_next_retry_at" timestamp with time zone,
     "embedding_error" text,
     CONSTRAINT "ck_skills_name_not_blank" CHECK (btrim("name") <> ''),
-    CONSTRAINT "ck_skills_embedding_attempts" CHECK ("embedding_attempts" >= 0),
+    CONSTRAINT "ck_skills_embedding_attempts" CHECK ("embedding_attempts" >= 0)
 );
 
 -- 规范技能名在活动记录中按去首尾空格、忽略大小写后全局唯一。
