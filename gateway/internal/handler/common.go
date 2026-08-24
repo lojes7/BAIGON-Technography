@@ -28,6 +28,17 @@ func embeddableCatalogItems(items []*occupationpb.EmbeddableCatalogItem) []gin.H
 	return result
 }
 
+// canonicalSkillItems 显式保留 is_embed=false，供人工选择尚未向量化的规范技能。
+func canonicalSkillItems(items []*occupationpb.SkillData) []gin.H {
+	result := make([]gin.H, 0, len(items))
+	for _, item := range items {
+		result = append(result, gin.H{
+			"id": item.GetId(), "name": item.GetName(), "is_embed": item.GetIsEmbed(),
+		})
+	}
+	return result
+}
+
 // embeddingTaskData 将两类任务的统一状态映射成稳定的前端字段。
 func embeddingTaskData(status *occupationpb.EmbeddingTaskStatus) gin.H {
 	return gin.H{
@@ -120,6 +131,8 @@ func GRPCErrorCodes(err error, trailers ...metadata.MD) (httpCode int, errorCode
 			httpCode = http.StatusForbidden
 		case codes.NotFound:
 			httpCode = http.StatusNotFound
+		case codes.AlreadyExists, codes.Aborted:
+			httpCode = http.StatusConflict
 		case codes.ResourceExhausted:
 			httpCode = http.StatusTooManyRequests
 		case codes.Unavailable, codes.DeadlineExceeded:

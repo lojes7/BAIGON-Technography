@@ -26,12 +26,19 @@ func RegisterOccupationRoutes(api *gin.RouterGroup, pool *grpcpool.GrpcClientPoo
 	catalog.GET("/occupation-sub-categories", handler.ListOccupationSubCategoriesHandler(pool))
 	catalog.GET("/occupation-categories", handler.ListOccupationCategoriesHandler(pool))
 	catalog.GET("/occupations", handler.ListOccupationsHandler(pool))
+	catalog.GET("/skills", handler.ListSkillsHandler(pool))
 
 	analysis := occupation.Group("/job-analysis")
 	analysis.Use(middleware.RoleAuth("ADMIN", "DATA_REVIEWER"))
 	analysis.GET("", handler.ListJobAnalysisTasksHandler(pool))
 	analysis.GET("/:id", handler.GetJobAnalysisTaskHandler(pool))
 	analysis.PUT("/:id/review", handler.ReviewJobAnalysisTaskHandler(pool))
+
+	skillResolution := occupation.Group("/job-skill-resolution")
+	skillResolution.Use(middleware.RoleAuth("ADMIN", "DATA_REVIEWER"))
+	skillResolution.GET("", handler.ListJobSkillResolutionTasksHandler(pool))
+	skillResolution.GET("/:id", handler.GetJobSkillResolutionTaskHandler(pool))
+	skillResolution.PUT("/:id/review", handler.ReviewJobSkillResolutionTaskHandler(pool))
 
 	admin := occupation.Group("")
 	admin.Use(middleware.RoleAuth("ADMIN"))

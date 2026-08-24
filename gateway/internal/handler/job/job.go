@@ -216,8 +216,12 @@ func occupationData(occupation *occupationpb.JobOccupationData) gin.H {
 }
 
 func jobSkillData(skill *occupationpb.JobSkillData) gin.H {
+	var skillID any
+	if skill.GetSkillId() > 0 {
+		skillID = skill.GetSkillId()
+	}
 	return gin.H{
-		"id": skill.GetId(), "skillName": skill.GetSkillName(),
+		"id": skill.GetId(), "skillId": skillID, "skillName": skill.GetSkillName(),
 		"skillProficiency": skill.GetSkillProficiency(), "evidence": skill.GetEvidence(),
 	}
 }

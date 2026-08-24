@@ -37,6 +37,12 @@ service OccupationService {
   rpc GetJobAnalysisTask (GetJobAnalysisTaskRequest) returns (GetJobAnalysisTaskResponse) {}
   rpc ReviewJobAnalysisTask (ReviewJobAnalysisTaskRequest) returns (GetJobAnalysisTaskResponse) {}
 
+  // 全局规范技能搜索与岗位技能归一审核。
+  rpc ListSkills (ListSkillsRequest) returns (ListSkillsResponse) {}
+  rpc ListJobSkillResolutionTasks (ListJobSkillResolutionTasksRequest) returns (ListJobSkillResolutionTasksResponse) {}
+  rpc GetJobSkillResolutionTask (GetJobSkillResolutionTaskRequest) returns (GetJobSkillResolutionTaskResponse) {}
+  rpc ReviewJobSkillResolutionTask (ReviewJobSkillResolutionTaskRequest) returns (GetJobSkillResolutionTaskResponse) {}
+
   // 已审核岗位的分页检索与聚合详情。
   rpc ListJobs (ListJobsRequest) returns (ListJobsResponse) {}
   rpc GetJob (GetJobRequest) returns (GetJobResponse) {}
@@ -252,6 +258,118 @@ message GetJobAnalysisTaskResponse {
   JobAnalysisTaskDetail analysis = 1;
 }
 
+// 规范技能分页搜索；page 从 0 开始，page_size 默认 20、最大 100。
+message ListSkillsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string keyword = 3;
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+message SkillData {
+  int64 id = 1;
+  string name = 2;
+  // 严格由 embedding_status == SUCCESS 判断。
+  bool is_embed = 3;
+}
+
+message ListSkillsResponse {
+  repeated SkillData items = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message ListJobSkillResolutionTasksRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string task_status = 3;   // PENDING / RUNNING / SUCCESS / FAILED，空表示全部
+  string review_status = 4; // PENDING / PASSED，空表示全部
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+message GetJobSkillResolutionTaskRequest {
+  int64 id = 1;
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+message ReviewJobSkillResolutionTaskRequest {
+  int64 id = 1;
+  // SELECT_CANDIDATE / SELECT_EXISTING / CREATE_NEW
+  string resolution_action = 2;
+  // SELECT_CANDIDATE、SELECT_EXISTING 必填；CREATE_NEW 必须为 0。
+  int64 skill_id = 3;
+  // CREATE_NEW 必填；其余动作必须为空。
+  string new_skill_name = 4;
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+message JobSkillResolutionTaskSummary {
+  int64 id = 1;
+  int64 job_skill_id = 2;
+  int64 job_id = 3;
+  int64 trace_id = 4;
+  string skill_name = 5;
+  string task_status = 6;
+  string review_status = 7;
+  string resolution_action = 8;
+  int64 selected_skill_id = 9;
+  string model_name = 10;
+  string error_msg = 11;
+  int32 attempts = 12;
+  string created_at = 13;
+  string reviewed_at = 14;
+  int64 reviewed_by = 15;
+}
+
+message JobSkillResolutionCandidate {
+  int64 skill_id = 1;
+  string skill_name = 2;
+  int32 rank = 3;
+  double similarity = 4;
+}
+
+message JobSkillResolutionTaskDetail {
+  JobSkillResolutionTaskSummary task = 1;
+  JobSkillData job_skill = 2;
+  repeated JobSkillResolutionCandidate candidates = 3;
+}
+
+message ListJobSkillResolutionTasksResponse {
+  repeated JobSkillResolutionTaskSummary items = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message GetJobSkillResolutionTaskResponse {
+  JobSkillResolutionTaskDetail resolution = 1;
+}
+
 // 岗位列表使用请求体接收分页和筛选条件；文本字段均为包含匹配。
 message ListJobsRequest {
   int32 page = 1;
@@ -331,6 +449,8 @@ message JobSkillData {
   string skill_name = 2;
   string skill_proficiency = 3;
   string evidence = 4;
+  // 0 表示技能身份仍在等待人工归一审核。
+  int64 skill_id = 5;
 }
 
 message ListJobsResponse {

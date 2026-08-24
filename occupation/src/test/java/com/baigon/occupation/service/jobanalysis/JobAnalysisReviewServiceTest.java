@@ -17,13 +17,13 @@ import com.baigon.occupation.error.ApiException;
 import com.baigon.occupation.repository.job.JobMajorAliasRepository;
 import com.baigon.occupation.repository.job.JobOccupationAliasRepository;
 import com.baigon.occupation.repository.job.JobRepository;
-import com.baigon.occupation.repository.job.JobSkillRepository;
 import com.baigon.occupation.repository.jobanalysis.JobAnalysisResultRepository;
 import com.baigon.occupation.repository.jobanalysis.JobAnalysisTaskRepository;
 import com.baigon.occupation.repository.major.MajorRepository;
 import com.baigon.occupation.repository.occupation.OccupationRepository;
 import com.baigon.occupation.service.AuditContext;
 import com.baigon.occupation.service.LogService;
+import com.baigon.occupation.service.skill.JobSkillIdentityService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -45,7 +45,7 @@ class JobAnalysisReviewServiceTest {
     private JobAnalysisTaskRepository taskRepository;
     private JobAnalysisResultRepository resultRepository;
     private JobRepository jobRepository;
-    private JobSkillRepository jobSkillRepository;
+    private JobSkillIdentityService jobSkillIdentityService;
     private JobOccupationAliasRepository aliasRepository;
     private JobMajorAliasRepository majorAliasRepository;
     private OccupationRepository occupationRepository;
@@ -57,13 +57,13 @@ class JobAnalysisReviewServiceTest {
         taskRepository = mock(JobAnalysisTaskRepository.class);
         resultRepository = mock(JobAnalysisResultRepository.class);
         jobRepository = mock(JobRepository.class);
-        jobSkillRepository = mock(JobSkillRepository.class);
+        jobSkillIdentityService = mock(JobSkillIdentityService.class);
         aliasRepository = mock(JobOccupationAliasRepository.class);
         majorAliasRepository = mock(JobMajorAliasRepository.class);
         occupationRepository = mock(OccupationRepository.class);
         majorRepository = mock(MajorRepository.class);
         service = new JobAnalysisReviewService(
-                taskRepository, resultRepository, jobRepository, jobSkillRepository,
+                taskRepository, resultRepository, jobRepository, jobSkillIdentityService,
                 aliasRepository, majorAliasRepository, occupationRepository, majorRepository,
                 mock(LogService.class), new Snowflake(5, 1));
     }
@@ -91,9 +91,6 @@ class JobAnalysisReviewServiceTest {
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(majorAliasRepository.save(any(JobMajorAlias.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        when(jobSkillRepository.save(any(JobSkill.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
-
         service.review(20L, 88L, 99L, List.of(
                 decision(101L, JobAnalysisReviewAction.APPROVE, null, null, null),
                 decision(102L, JobAnalysisReviewAction.APPROVE_WITH_EDIT,
@@ -114,7 +111,9 @@ class JobAnalysisReviewServiceTest {
         assertNull(results.get(2).getReviewedSkillName());
 
         ArgumentCaptor<JobSkill> skillCaptor = ArgumentCaptor.forClass(JobSkill.class);
-        verify(jobSkillRepository, org.mockito.Mockito.times(2)).save(skillCaptor.capture());
+        verify(jobSkillIdentityService, org.mockito.Mockito.times(2)).saveAndResolve(
+                org.mockito.ArgumentMatchers.eq(job), skillCaptor.capture(),
+                org.mockito.ArgumentMatchers.eq(1001L), any(AuditContext.class), any());
         assertEquals("Java", skillCaptor.getAllValues().get(0).getSkillName());
         assertEquals("Microsoft Word", skillCaptor.getAllValues().get(1).getSkillName());
         assertEquals("FAMILIAR", skillCaptor.getAllValues().get(1).getSkillProficiency());

@@ -17,7 +17,6 @@ import com.baigon.occupation.error.ApiException;
 import com.baigon.occupation.repository.job.JobMajorAliasRepository;
 import com.baigon.occupation.repository.job.JobOccupationAliasRepository;
 import com.baigon.occupation.repository.job.JobRepository;
-import com.baigon.occupation.repository.job.JobSkillRepository;
 import com.baigon.occupation.repository.jobanalysis.JobAnalysisResultRepository;
 import com.baigon.occupation.repository.jobanalysis.JobAnalysisTaskRepository;
 import com.baigon.occupation.repository.major.MajorRepository;
@@ -25,6 +24,7 @@ import com.baigon.occupation.repository.occupation.OccupationRepository;
 import com.baigon.occupation.service.AuditContext;
 import com.baigon.occupation.service.LogService;
 import com.baigon.occupation.service.job.JobMajorPolicy;
+import com.baigon.occupation.service.skill.JobSkillIdentityService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,7 +44,7 @@ public class JobAnalysisReviewService {
     private final JobAnalysisTaskRepository taskRepository;
     private final JobAnalysisResultRepository resultRepository;
     private final JobRepository jobRepository;
-    private final JobSkillRepository jobSkillRepository;
+    private final JobSkillIdentityService jobSkillIdentityService;
     private final JobOccupationAliasRepository occupationAliasRepository;
     private final JobMajorAliasRepository majorAliasRepository;
     private final OccupationRepository occupationRepository;
@@ -55,7 +55,7 @@ public class JobAnalysisReviewService {
     public JobAnalysisReviewService(JobAnalysisTaskRepository taskRepository,
                                     JobAnalysisResultRepository resultRepository,
                                     JobRepository jobRepository,
-                                    JobSkillRepository jobSkillRepository,
+                                    JobSkillIdentityService jobSkillIdentityService,
                                     JobOccupationAliasRepository occupationAliasRepository,
                                     JobMajorAliasRepository majorAliasRepository,
                                     OccupationRepository occupationRepository,
@@ -65,7 +65,7 @@ public class JobAnalysisReviewService {
         this.taskRepository = taskRepository;
         this.resultRepository = resultRepository;
         this.jobRepository = jobRepository;
-        this.jobSkillRepository = jobSkillRepository;
+        this.jobSkillIdentityService = jobSkillIdentityService;
         this.occupationAliasRepository = occupationAliasRepository;
         this.majorAliasRepository = majorAliasRepository;
         this.occupationRepository = occupationRepository;
@@ -120,7 +120,8 @@ public class JobAnalysisReviewService {
         JobOccupationAlias occupationAlias =
                 updateOccupationAlias(job, task, occupation, audit, now);
         JobMajorAlias majorAlias = updateMajorAlias(job, task, major, audit, now);
-        int approvedSkills = reviewSkills(results, decisionsById, audit.userId(), now);
+        int approvedSkills = reviewSkills(
+                results, decisionsById, job, task, audit, now);
 
         task.setSelectedMajorId(major.getId());
         task.setSelectedOccupationId(occupation.getId());
@@ -170,22 +171,24 @@ public class JobAnalysisReviewService {
 
     private int reviewSkills(List<JobAnalysisResult> results,
                              Map<Long, SkillReviewDecision> decisions,
-                             Long reviewerId,
+                             Job job,
+                             JobAnalysisTask task,
+                             AuditContext audit,
                              OffsetDateTime now) {
         int approved = 0;
         for (JobAnalysisResult result : results) {
             SkillReviewDecision decision = decisions.get(result.getId());
             result.setReviewAction(decision.action());
             result.setReviewedAt(now);
-            result.setReviewedBy(reviewerId);
+            result.setReviewedBy(audit.userId());
             result.setUpdatedAt(now);
 
             switch (decision.action()) {
                 case APPROVE -> {
                     result.setReviewStatus(ReviewStatus.PASSED);
-                    saveJobSkill(result, result.getSkillName(),
+                    saveJobSkill(job, task, result, result.getSkillName(),
                             normalizedProficiency(result.getSkillProficiency()),
-                            result.getEvidence(), now);
+                            result.getEvidence(), audit, now);
                     approved++;
                 }
                 case APPROVE_WITH_EDIT -> {
@@ -196,7 +199,7 @@ public class JobAnalysisReviewService {
                     result.setReviewedSkillName(name);
                     result.setReviewedSkillProficiency(proficiency);
                     result.setReviewedEvidence(evidence);
-                    saveJobSkill(result, name, proficiency, evidence, now);
+                    saveJobSkill(job, task, result, name, proficiency, evidence, audit, now);
                     approved++;
                 }
                 case REJECT -> result.setReviewStatus(ReviewStatus.REJECTED);
@@ -206,10 +209,13 @@ public class JobAnalysisReviewService {
         return approved;
     }
 
-    private void saveJobSkill(JobAnalysisResult result,
+    private void saveJobSkill(Job job,
+                              JobAnalysisTask task,
+                              JobAnalysisResult result,
                               String name,
                               String proficiency,
                               String evidence,
+                              AuditContext audit,
                               OffsetDateTime now) {
         JobSkill skill = new JobSkill();
         skill.setId(snowflake.nextId());
@@ -220,7 +226,8 @@ public class JobAnalysisReviewService {
         skill.setEvidence(evidence);
         skill.setCreatedAt(now);
         skill.setUpdatedAt(now);
-        jobSkillRepository.save(skill);
+        jobSkillIdentityService.saveAndResolve(
+                job, skill, task.getTraceId(), audit, now);
     }
 
     private String validateEditedSkill(SkillReviewDecision decision) {

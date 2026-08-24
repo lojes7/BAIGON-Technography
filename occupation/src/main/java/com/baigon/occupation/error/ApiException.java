@@ -21,6 +21,7 @@ public class ApiException extends RuntimeException {
         ALREADY_REVIEWED(40301, Status.Code.FAILED_PRECONDITION),
         JOB_ANALYSIS_ALREADY_REVIEWED(40302, Status.Code.FAILED_PRECONDITION),
         NOT_FOUND(404, Status.Code.NOT_FOUND),
+        CONFLICT(409, Status.Code.ALREADY_EXISTS),
         INTERNAL_ERROR(500, Status.Code.INTERNAL),
         SERVICE_UNAVAILABLE(503, Status.Code.UNAVAILABLE);
 

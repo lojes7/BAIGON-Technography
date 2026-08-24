@@ -26,4 +26,18 @@ class ApiExceptionTest {
         assertNotNull(grpcException.getTrailers());
         assertEquals("40301", grpcException.getTrailers().get(errorCodeKey));
     }
+
+    @Test
+    void conflictShouldUseAlreadyExistsAnd409Trailer() {
+        ApiException exception = new ApiException(
+                ApiException.ErrorCode.CONFLICT, "conflict");
+
+        StatusRuntimeException grpcException = exception.asGrpcException();
+        Metadata.Key<String> errorCodeKey = Metadata.Key.of(
+                ApiException.ERROR_CODE_TRAILER, Metadata.ASCII_STRING_MARSHALLER);
+
+        assertEquals(Status.Code.ALREADY_EXISTS, grpcException.getStatus().getCode());
+        assertNotNull(grpcException.getTrailers());
+        assertEquals("409", grpcException.getTrailers().get(errorCodeKey));
+    }
 }

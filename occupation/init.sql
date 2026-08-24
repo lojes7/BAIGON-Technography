@@ -7,4 +7,5 @@
 \ir sql/init-occupation.sql
 \ir sql/init-job.sql
 \ir sql/init-user.sql
+\ir sql/init-skill.sql
 \ir sql/init-job-analysis.sql

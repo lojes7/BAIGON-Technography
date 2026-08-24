@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"baigon-technography/gateway/internal/grpcpool"
@@ -815,5 +816,231 @@ func ReviewJobAnalysisTaskHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc
 			return
 		}
 		response.Success(c, gin.H{"analysis": resp.GetAnalysis()})
+	}
+}
+
+// ListSkillsHandler 分页搜索全局规范技能，供候选外技能选择使用。
+// @Summary      分页搜索规范技能
+// @Tags         技能归一审核
+// @Produce      json
+// @Security     Bearer
+// @Param        page query int false "页码，从 0 开始"
+// @Param        pageSize query int false "每页条数，默认 20，最大 100"
+// @Param        keyword query string false "规范技能名称关键词"
+// @Success      200 {object} response.SuccessBody
+// @Failure      400 {object} response.ErrorBody
+// @Failure      401 {object} response.ErrorBody
+// @Failure      403 {object} response.ErrorBody
+// @Router       /api/auth/occupation/skills [get]
+func ListSkillsHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		query, err := ParseCatalogPageQuery(c)
+		if err != nil {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+		conn, err := pool.GetConn("occupation-service")
+		if err != nil {
+			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+		var trailer metadata.MD
+		resp, err := occupationpb.NewOccupationServiceClient(conn).ListSkills(
+			ctx,
+			&occupationpb.ListSkillsRequest{
+				Page: query.Page, PageSize: query.PageSize, Keyword: query.Keyword,
+				TraceId: c.GetString("trace_id"), UserId: UserIDFromContext(c),
+				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
+				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
+			},
+			grpc.Trailer(&trailer),
+		)
+		if err != nil {
+			httpCode, errorCode := GRPCErrorCodes(err, trailer)
+			response.Error(c, httpCode, errorCode)
+			return
+		}
+		response.Success(c, gin.H{
+			"items": canonicalSkillItems(resp.GetItems()), "total": resp.GetTotal(),
+			"page": resp.GetPage(), "pageSize": resp.GetPageSize(),
+		})
+	}
+}
+
+// ListJobSkillResolutionTasksHandler 分页查询岗位技能归一审核任务。
+// @Summary      分页查询岗位技能归一任务
+// @Tags         技能归一审核
+// @Produce      json
+// @Security     Bearer
+// @Param        page query int false "页码，从 0 开始"
+// @Param        pageSize query int false "每页条数，默认 20，最大 100"
+// @Param        taskStatus query string false "PENDING / RUNNING / SUCCESS / FAILED"
+// @Param        reviewStatus query string false "PENDING / PASSED"
+// @Success      200 {object} response.SuccessBody
+// @Failure      400 {object} response.ErrorBody
+// @Failure      401 {object} response.ErrorBody
+// @Failure      403 {object} response.ErrorBody
+// @Router       /api/auth/occupation/job-skill-resolution [get]
+func ListJobSkillResolutionTasksHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		query, err := ParseCatalogPageQuery(c)
+		if err != nil {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+		conn, err := pool.GetConn("occupation-service")
+		if err != nil {
+			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+		var trailer metadata.MD
+		resp, err := occupationpb.NewOccupationServiceClient(conn).ListJobSkillResolutionTasks(
+			ctx,
+			&occupationpb.ListJobSkillResolutionTasksRequest{
+				Page: query.Page, PageSize: query.PageSize,
+				TaskStatus: c.Query("taskStatus"), ReviewStatus: c.Query("reviewStatus"),
+				TraceId: c.GetString("trace_id"), UserId: UserIDFromContext(c),
+				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
+				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
+			},
+			grpc.Trailer(&trailer),
+		)
+		if err != nil {
+			httpCode, errorCode := GRPCErrorCodes(err, trailer)
+			response.Error(c, httpCode, errorCode)
+			return
+		}
+		response.Success(c, gin.H{
+			"items": resp.GetItems(), "total": resp.GetTotal(),
+			"page": resp.GetPage(), "pageSize": resp.GetPageSize(),
+		})
+	}
+}
+
+// GetJobSkillResolutionTaskHandler 查询技能归一任务、岗位技能和 Top N 候选。
+// @Summary      查询岗位技能归一任务详情
+// @Tags         技能归一审核
+// @Produce      json
+// @Security     Bearer
+// @Param        id path int true "job_skill_resolution_tasks.id"
+// @Success      200 {object} response.SuccessBody
+// @Failure      400 {object} response.ErrorBody
+// @Failure      401 {object} response.ErrorBody
+// @Failure      403 {object} response.ErrorBody
+// @Failure      404 {object} response.ErrorBody
+// @Router       /api/auth/occupation/job-skill-resolution/{id} [get]
+func GetJobSkillResolutionTaskHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+		if err != nil || id <= 0 {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+		conn, err := pool.GetConn("occupation-service")
+		if err != nil {
+			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+		var trailer metadata.MD
+		resp, err := occupationpb.NewOccupationServiceClient(conn).GetJobSkillResolutionTask(
+			ctx,
+			&occupationpb.GetJobSkillResolutionTaskRequest{
+				Id: id, TraceId: c.GetString("trace_id"), UserId: UserIDFromContext(c),
+				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
+				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
+			},
+			grpc.Trailer(&trailer),
+		)
+		if err != nil {
+			httpCode, errorCode := GRPCErrorCodes(err, trailer)
+			response.Error(c, httpCode, errorCode)
+			return
+		}
+		response.Success(c, gin.H{"resolution": resp.GetResolution()})
+	}
+}
+
+type reviewJobSkillResolutionRequest struct {
+	ResolutionAction string `json:"resolutionAction" binding:"required"`
+	SkillID          int64  `json:"skillId"`
+	NewSkillName     string `json:"newSkillName"`
+}
+
+// ReviewJobSkillResolutionTaskHandler 通过三种互斥动作确认岗位技能身份。
+// @Summary      审核岗位技能归一任务
+// @Description  SELECT_CANDIDATE 选择当前候选；SELECT_EXISTING 选择候选外规范技能；CREATE_NEW 创建新规范技能
+// @Tags         技能归一审核
+// @Accept       json
+// @Produce      json
+// @Security     Bearer
+// @Param        id path int true "job_skill_resolution_tasks.id"
+// @Param        request body reviewJobSkillResolutionRequest true "技能归一动作"
+// @Success      200 {object} response.SuccessBody
+// @Failure      400 {object} response.ErrorBody
+// @Failure      401 {object} response.ErrorBody
+// @Failure      403 {object} response.ErrorBody
+// @Failure      404 {object} response.ErrorBody
+// @Failure      409 {object} response.ErrorBody
+// @Router       /api/auth/occupation/job-skill-resolution/{id}/review [put]
+func ReviewJobSkillResolutionTaskHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+		if err != nil || id <= 0 {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+		var request reviewJobSkillResolutionRequest
+		if err := c.ShouldBindJSON(&request); err != nil {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+		action := strings.TrimSpace(request.ResolutionAction)
+		newSkillName := strings.TrimSpace(request.NewSkillName)
+		if !validJobSkillResolutionAction(action, request.SkillID, newSkillName) {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+		conn, err := pool.GetConn("occupation-service")
+		if err != nil {
+			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+		var trailer metadata.MD
+		resp, err := occupationpb.NewOccupationServiceClient(conn).ReviewJobSkillResolutionTask(
+			ctx,
+			&occupationpb.ReviewJobSkillResolutionTaskRequest{
+				Id: id, ResolutionAction: action, SkillId: request.SkillID,
+				NewSkillName: newSkillName,
+				TraceId:      c.GetString("trace_id"), UserId: UserIDFromContext(c),
+				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
+				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
+			},
+			grpc.Trailer(&trailer),
+		)
+		if err != nil {
+			httpCode, errorCode := GRPCErrorCodes(err, trailer)
+			response.Error(c, httpCode, errorCode)
+			return
+		}
+		response.Success(c, gin.H{"resolution": resp.GetResolution()})
+	}
+}
+
+func validJobSkillResolutionAction(action string, skillID int64, newSkillName string) bool {
+	switch action {
+	case "SELECT_CANDIDATE", "SELECT_EXISTING":
+		return skillID > 0 && newSkillName == ""
+	case "CREATE_NEW":
+		return skillID == 0 && newSkillName != ""
+	default:
+		return false
 	}
 }

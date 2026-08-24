@@ -14,6 +14,8 @@ public class JobSkill extends BaseEntity {
     private Long analysisResultId;
     @Column(name = "job_id", nullable = false)
     private Long jobId;
+    @Column(name = "skill_id")
+    private Long skillId;
     @Column(name = "skill_name", nullable = false, length = 100)
     private String skillName;
     @Column(name = "skill_proficiency", nullable = false, length = 32)
@@ -25,6 +27,8 @@ public class JobSkill extends BaseEntity {
     public void setAnalysisResultId(Long analysisResultId) { this.analysisResultId = analysisResultId; }
     public Long getJobId() { return jobId; }
     public void setJobId(Long jobId) { this.jobId = jobId; }
+    public Long getSkillId() { return skillId; }
+    public void setSkillId(Long skillId) { this.skillId = skillId; }
     public String getSkillName() { return skillName; }
     public void setSkillName(String skillName) { this.skillName = skillName; }
     public String getSkillProficiency() { return skillProficiency; }

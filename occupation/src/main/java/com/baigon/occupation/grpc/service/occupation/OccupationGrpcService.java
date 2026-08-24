@@ -15,6 +15,8 @@ import com.baigon.occupation.GetJobRequest;
 import com.baigon.occupation.GetJobResponse;
 import com.baigon.occupation.GetJobAnalysisTaskRequest;
 import com.baigon.occupation.GetJobAnalysisTaskResponse;
+import com.baigon.occupation.GetJobSkillResolutionTaskRequest;
+import com.baigon.occupation.GetJobSkillResolutionTaskResponse;
 import com.baigon.occupation.JobData;
 import com.baigon.occupation.JobAnalysisCandidate;
 import com.baigon.occupation.JobAnalysisMajorCandidate;
@@ -24,12 +26,20 @@ import com.baigon.occupation.JobAnalysisTaskSummary;
 import com.baigon.occupation.JobMajorData;
 import com.baigon.occupation.JobOccupationData;
 import com.baigon.occupation.JobSkillData;
+import com.baigon.occupation.JobSkillResolutionTaskDetail;
+import com.baigon.occupation.JobSkillResolutionTaskSummary;
 import com.baigon.occupation.ListJobAnalysisTasksRequest;
 import com.baigon.occupation.ListJobAnalysisTasksResponse;
+import com.baigon.occupation.ListJobSkillResolutionTasksRequest;
+import com.baigon.occupation.ListJobSkillResolutionTasksResponse;
 import com.baigon.occupation.ListJobsRequest;
 import com.baigon.occupation.ListJobsResponse;
+import com.baigon.occupation.ListSkillsRequest;
+import com.baigon.occupation.ListSkillsResponse;
 import com.baigon.occupation.OccupationServiceGrpc;
 import com.baigon.occupation.ReviewJobAnalysisTaskRequest;
+import com.baigon.occupation.ReviewJobSkillResolutionTaskRequest;
+import com.baigon.occupation.SkillData;
 import com.baigon.occupation.entity.TaskStatus;
 import com.baigon.occupation.entity.job.Job;
 import com.baigon.occupation.entity.job.JobSkill;
@@ -37,6 +47,9 @@ import com.baigon.occupation.entity.jobanalysis.JobAnalysisReviewAction;
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisTask;
 import com.baigon.occupation.entity.major.Major;
 import com.baigon.occupation.entity.occupation.Occupation;
+import com.baigon.occupation.entity.skill.JobSkillResolutionTask;
+import com.baigon.occupation.entity.skill.Skill;
+import com.baigon.occupation.entity.skill.SkillResolutionAction;
 import com.baigon.occupation.error.ApiException;
 import com.baigon.occupation.service.AuditContext;
 import com.baigon.occupation.service.EmbeddingDataService;
@@ -49,6 +62,8 @@ import com.baigon.occupation.service.jobanalysis.JobAnalysisReviewService;
 import com.baigon.occupation.service.job.JobQueryService;
 import com.baigon.occupation.service.major.MajorCatalogService;
 import com.baigon.occupation.service.occupation.OccupationCatalogService;
+import com.baigon.occupation.service.skill.SkillResolutionQueryService;
+import com.baigon.occupation.service.skill.SkillResolutionReviewService;
 import io.grpc.stub.StreamObserver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -69,6 +84,8 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
     private final EmbeddingTaskManager taskManager;
     private final JobAnalysisQueryService jobAnalysisQueryService;
     private final JobAnalysisReviewService jobAnalysisReviewService;
+    private final SkillResolutionQueryService skillResolutionQueryService;
+    private final SkillResolutionReviewService skillResolutionReviewService;
     private final JobQueryService jobQueryService;
     private final LogService logService;
 
@@ -77,6 +94,8 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                                  EmbeddingTaskManager taskManager,
                                  JobAnalysisQueryService jobAnalysisQueryService,
                                  JobAnalysisReviewService jobAnalysisReviewService,
+                                 SkillResolutionQueryService skillResolutionQueryService,
+                                 SkillResolutionReviewService skillResolutionReviewService,
                                  JobQueryService jobQueryService,
                                  LogService logService) {
         this.majorCatalogService = majorCatalogService;
@@ -84,6 +103,8 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
         this.taskManager = taskManager;
         this.jobAnalysisQueryService = jobAnalysisQueryService;
         this.jobAnalysisReviewService = jobAnalysisReviewService;
+        this.skillResolutionQueryService = skillResolutionQueryService;
+        this.skillResolutionReviewService = skillResolutionReviewService;
         this.jobQueryService = jobQueryService;
         this.logService = logService;
         logger.info("OccupationGrpcService 初始化完成");
@@ -357,6 +378,123 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
     }
 
     @Override
+    public void listSkills(ListSkillsRequest request,
+                           StreamObserver<ListSkillsResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            Page<Skill> page = skillResolutionQueryService.listSkills(
+                    request.getPage(), request.getPageSize(), request.getKeyword());
+            respond(observer, ListSkillsResponse.newBuilder()
+                    .addAllItems(page.getContent().stream().map(this::skillData).toList())
+                    .setTotal(page.getTotalElements())
+                    .setPage(page.getNumber())
+                    .setPageSize(page.getSize())
+                    .build());
+            logService.info(audit, "list canonical skills: total=" + page.getTotalElements());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "list canonical skills failed");
+        }
+    }
+
+    @Override
+    public void listJobSkillResolutionTasks(
+            ListJobSkillResolutionTasksRequest request,
+            StreamObserver<ListJobSkillResolutionTasksResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            Page<SkillResolutionQueryService.ResolutionTaskListItem> page =
+                    skillResolutionQueryService.listTasks(
+                            request.getPage(), request.getPageSize(),
+                            request.getTaskStatus(), request.getReviewStatus());
+            respond(observer, ListJobSkillResolutionTasksResponse.newBuilder()
+                    .addAllItems(page.getContent().stream()
+                            .map(item -> skillResolutionSummary(item.task(), item.jobId()))
+                            .toList())
+                    .setTotal(page.getTotalElements())
+                    .setPage(page.getNumber())
+                    .setPageSize(page.getSize())
+                    .build());
+            logService.info(audit,
+                    "list job skill resolution tasks: total=" + page.getTotalElements());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "list job skill resolution tasks failed");
+        }
+    }
+
+    @Override
+    public void getJobSkillResolutionTask(
+            GetJobSkillResolutionTaskRequest request,
+            StreamObserver<GetJobSkillResolutionTaskResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            var detail = skillResolutionQueryService.getDetail(request.getId());
+            if (detail.isEmpty()) {
+                observer.onError(ApiException.grpcException(ApiException.ErrorCode.NOT_FOUND,
+                        "job skill resolution task not found"));
+                return;
+            }
+            respond(observer, GetJobSkillResolutionTaskResponse.newBuilder()
+                    .setResolution(skillResolutionDetail(detail.get()))
+                    .build());
+            logService.info(audit, "get job skill resolution task: id=" + request.getId());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "get job skill resolution task failed");
+        }
+    }
+
+    @Override
+    public void reviewJobSkillResolutionTask(
+            ReviewJobSkillResolutionTaskRequest request,
+            StreamObserver<GetJobSkillResolutionTaskResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            if (request.getId() <= 0 || request.getResolutionAction().isBlank()) {
+                throw new IllegalArgumentException(
+                        "id must be > 0 and resolution_action is required");
+            }
+            SkillResolutionAction action = SkillResolutionAction.valueOf(
+                    request.getResolutionAction().trim().toUpperCase(Locale.ROOT));
+            Long skillId = request.getSkillId() > 0 ? request.getSkillId() : null;
+            var reviewed = skillResolutionReviewService.review(
+                    request.getId(), action, skillId, request.getNewSkillName(), audit);
+            if (reviewed.isEmpty()) {
+                observer.onError(ApiException.grpcException(ApiException.ErrorCode.NOT_FOUND,
+                        "job skill resolution task not found"));
+                return;
+            }
+            SkillResolutionQueryService.Detail detail = skillResolutionQueryService
+                    .getDetail(request.getId())
+                    .orElseThrow(() -> new IllegalStateException(
+                            "reviewed job skill resolution task not found"));
+            respond(observer, GetJobSkillResolutionTaskResponse.newBuilder()
+                    .setResolution(skillResolutionDetail(detail))
+                    .build());
+            logService.info(audit,
+                    "review job skill resolution task: id=" + request.getId()
+                            + ", action=" + action.name());
+        } catch (ApiException exception) {
+            logger.warn("review job skill resolution rejected: {}", exception.getMessage());
+            logService.warning(audit, exception.getMessage());
+            observer.onError(exception.asGrpcException());
+        } catch (IllegalArgumentException exception) {
+            logger.warn("review job skill resolution rejected: {}", exception.getMessage());
+            logService.warning(audit, exception.getMessage());
+            observer.onError(ApiException.grpcException(
+                    ApiException.ErrorCode.BAD_REQUEST, exception.getMessage()));
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "review job skill resolution task failed");
+        }
+    }
+
+    @Override
     public void listJobs(ListJobsRequest request,
                          StreamObserver<ListJobsResponse> observer) {
         AuditContext audit = AuditContext.from(
@@ -575,6 +713,55 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                 .build();
     }
 
+    private SkillData skillData(Skill skill) {
+        return SkillData.newBuilder()
+                .setId(skill.getId())
+                .setName(orEmpty(skill.getName()))
+                .setIsEmbed(skill.getEmbeddingStatus() == TaskStatus.SUCCESS)
+                .build();
+    }
+
+    private JobSkillResolutionTaskSummary skillResolutionSummary(
+            JobSkillResolutionTask task,
+            Long jobId) {
+        return JobSkillResolutionTaskSummary.newBuilder()
+                .setId(task.getId())
+                .setJobSkillId(task.getJobSkillId())
+                .setJobId(jobId == null ? 0 : jobId)
+                .setTraceId(task.getTraceId() == null ? 0 : task.getTraceId())
+                .setSkillName(orEmpty(task.getSkillName()))
+                .setTaskStatus(task.getTaskStatus() == null ? "" : task.getTaskStatus().name())
+                .setReviewStatus(task.getReviewStatus() == null ? "" : task.getReviewStatus().name())
+                .setResolutionAction(task.getResolutionAction() == null
+                        ? "" : task.getResolutionAction().name())
+                .setSelectedSkillId(task.getSelectedSkillId() == null
+                        ? 0 : task.getSelectedSkillId())
+                .setModelName(orEmpty(task.getModelName()))
+                .setErrorMsg(orEmpty(task.getErrorMsg()))
+                .setAttempts(task.getAttempts() == null ? 0 : task.getAttempts())
+                .setCreatedAt(time(task.getCreatedAt()))
+                .setReviewedAt(time(task.getReviewedAt()))
+                .setReviewedBy(task.getReviewedBy() == null ? 0 : task.getReviewedBy())
+                .build();
+    }
+
+    private JobSkillResolutionTaskDetail skillResolutionDetail(
+            SkillResolutionQueryService.Detail detail) {
+        return JobSkillResolutionTaskDetail.newBuilder()
+                .setTask(skillResolutionSummary(
+                        detail.task(), detail.jobSkill().getJobId()))
+                .setJobSkill(jobSkillData(detail.jobSkill()))
+                .addAllCandidates(detail.candidates().stream().map(candidate ->
+                        com.baigon.occupation.JobSkillResolutionCandidate.newBuilder()
+                                .setSkillId(candidate.getSkillId())
+                                .setSkillName(orEmpty(candidate.getSkillName()))
+                                .setRank(candidate.getRank() == null ? 0 : candidate.getRank())
+                                .setSimilarity(candidate.getSimilarity() == null
+                                        ? 0 : candidate.getSimilarity())
+                                .build()).toList())
+                .build();
+    }
+
     private JobData jobData(Job job) {
         return JobData.newBuilder()
                 .setId(job.getId())
@@ -622,6 +809,7 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
     private JobSkillData jobSkillData(JobSkill skill) {
         return JobSkillData.newBuilder()
                 .setId(skill.getId())
+                .setSkillId(skill.getSkillId() == null ? 0 : skill.getSkillId())
                 .setSkillName(orEmpty(skill.getSkillName()))
                 .setSkillProficiency(orEmpty(skill.getSkillProficiency()))
                 .setEvidence(orEmpty(skill.getEvidence()))

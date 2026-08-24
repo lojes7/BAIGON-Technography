@@ -112,6 +112,7 @@ CREATE TABLE "job_skills" (
     "id" bigint PRIMARY KEY,
     "analysis_result_id" bigint NOT NULL REFERENCES "job_analysis_results" ("id"),
     "job_id" bigint NOT NULL REFERENCES "jobs" ("id"),
+    "skill_id" bigint REFERENCES "skills" ("id"),
     "skill_name" varchar(100) NOT NULL,
     "skill_proficiency" varchar(32) NOT NULL,
     "evidence" text NOT NULL,
@@ -124,3 +125,81 @@ CREATE UNIQUE INDEX "idx_job_skills_analysis_result"
     ON "job_skills" ("analysis_result_id") WHERE "deleted_at" IS NULL;
 CREATE INDEX "idx_job_skills_job"
     ON "job_skills" ("job_id") WHERE "deleted_at" IS NULL;
+CREATE INDEX "idx_job_skills_skill"
+    ON "job_skills" ("skill_id") WHERE "deleted_at" IS NULL AND "skill_id" IS NOT NULL;
+
+-- 未命中技能别名的岗位技能解析任务；候选生成与人工解析分别维护状态。
+CREATE TABLE "job_skill_resolution_tasks" (
+    "created_at" timestamp with time zone NOT NULL DEFAULT now(),
+    "updated_at" timestamp with time zone NOT NULL DEFAULT now(),
+    "deleted_at" timestamp with time zone,
+    "id" bigint PRIMARY KEY,
+    "trace_id" bigint NOT NULL,
+    "job_skill_id" bigint NOT NULL REFERENCES "job_skills" ("id"),
+    "skill_name" varchar(100) NOT NULL,
+    "skill_name_vector" vector(1024),
+    "model_name" varchar(64),
+    "task_status" skill_resolution_task_status NOT NULL DEFAULT 'PENDING',
+    "review_status" review_status NOT NULL DEFAULT 'PENDING',
+    "resolution_action" varchar(32),
+    "selected_skill_id" bigint REFERENCES "skills" ("id"),
+    "attempts" integer NOT NULL DEFAULT 0,
+    "error_msg" text,
+    "reviewed_at" timestamp with time zone,
+    "reviewed_by" bigint,
+    CONSTRAINT "ck_job_skill_resolution_name_not_blank" CHECK (btrim("skill_name") <> ''),
+    CONSTRAINT "ck_job_skill_resolution_attempts" CHECK ("attempts" >= 0),
+    CONSTRAINT "ck_job_skill_resolution_success_vector" CHECK (
+        "task_status" <> 'SUCCESS' OR "skill_name_vector" IS NOT NULL
+    ),
+    CONSTRAINT "ck_job_skill_resolution_action" CHECK (
+        "resolution_action" IS NULL OR
+        "resolution_action" IN ('SELECT_CANDIDATE', 'SELECT_EXISTING', 'CREATE_NEW')
+    ),
+    -- 本业务不提供驳回动作：待审核字段必须为空，通过后必须完整记录决定。
+    CONSTRAINT "ck_job_skill_resolution_review" CHECK (
+        (
+            "review_status" = 'PENDING'
+            AND "resolution_action" IS NULL
+            AND "selected_skill_id" IS NULL
+            AND "reviewed_at" IS NULL
+            AND "reviewed_by" IS NULL
+        ) OR (
+            "review_status" = 'PASSED'
+            AND "resolution_action" IS NOT NULL
+            AND "selected_skill_id" IS NOT NULL
+            AND "reviewed_at" IS NOT NULL
+            AND "reviewed_by" IS NOT NULL
+        )
+    )
+);
+
+CREATE UNIQUE INDEX "idx_job_skill_resolution_tasks_job_skill"
+    ON "job_skill_resolution_tasks" ("job_skill_id") WHERE "deleted_at" IS NULL;
+CREATE INDEX "idx_job_skill_resolution_tasks_review"
+    ON "job_skill_resolution_tasks" ("review_status", "created_at")
+    WHERE "deleted_at" IS NULL;
+CREATE INDEX "idx_job_skill_resolution_tasks_generation"
+    ON "job_skill_resolution_tasks" ("task_status", "created_at")
+    WHERE "deleted_at" IS NULL AND "review_status" = 'PENDING';
+CREATE INDEX "idx_job_skill_resolution_tasks_trace"
+    ON "job_skill_resolution_tasks" ("trace_id") WHERE "deleted_at" IS NULL;
+
+CREATE TABLE "job_skill_resolution_candidates" (
+    "created_at" timestamp with time zone NOT NULL DEFAULT now(),
+    "updated_at" timestamp with time zone NOT NULL DEFAULT now(),
+    "deleted_at" timestamp with time zone,
+    "id" bigint PRIMARY KEY,
+    "task_id" bigint NOT NULL REFERENCES "job_skill_resolution_tasks" ("id"),
+    "skill_id" bigint NOT NULL REFERENCES "skills" ("id"),
+    "skill_name" varchar(100) NOT NULL,
+    "rank" integer NOT NULL,
+    "similarity" double precision NOT NULL,
+    CONSTRAINT "ck_job_skill_resolution_candidates_name_not_blank" CHECK (btrim("skill_name") <> ''),
+    CONSTRAINT "ck_job_skill_resolution_candidates_rank" CHECK ("rank" > 0)
+);
+
+CREATE UNIQUE INDEX "idx_job_skill_resolution_candidates_rank"
+    ON "job_skill_resolution_candidates" ("task_id", "rank") WHERE "deleted_at" IS NULL;
+CREATE UNIQUE INDEX "idx_job_skill_resolution_candidates_skill"
+    ON "job_skill_resolution_candidates" ("task_id", "skill_id") WHERE "deleted_at" IS NULL;
