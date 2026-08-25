@@ -91,3 +91,13 @@ export function getOccupationEmbeddingStatus() {
 export function stopOccupationEmbedding() {
   return request<EmbeddingTaskStatus>(`${BASE}/occupations/embedding`, { method: "DELETE", headers: hdrs() });
 }
+
+export function startSkillEmbedding() {
+  return request<EmbeddingTaskStatus>(`${BASE}/skills/embedding`, { method: "POST", headers: hdrs() });
+}
+export function getSkillEmbeddingStatus() {
+  return request<EmbeddingTaskStatus>(`${BASE}/skills/embedding`, { headers: hdrs() });
+}
+export function stopSkillEmbedding() {
+  return request<EmbeddingTaskStatus>(`${BASE}/skills/embedding`, { method: "DELETE", headers: hdrs() });
+}

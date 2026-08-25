@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// RegisterOccupationRoutes 注册专业/职业目录、向量化管理和岗位分析审核接口。
+// RegisterOccupationRoutes 注册专业/职业/技能目录、向量化管理和岗位分析审核接口。
 func RegisterOccupationRoutes(api *gin.RouterGroup, pool *grpcpool.GrpcClientPool, jwtSecret string) {
 	auth := api.Group("/auth")
 	auth.Use(middleware.Auth(jwtSecret))
@@ -37,6 +37,7 @@ func RegisterOccupationRoutes(api *gin.RouterGroup, pool *grpcpool.GrpcClientPoo
 	skillResolution := occupation.Group("/job-skill-resolution")
 	skillResolution.Use(middleware.RoleAuth("ADMIN", "DATA_REVIEWER"))
 	skillResolution.GET("", handler.ListJobSkillResolutionTasksHandler(pool))
+	skillResolution.GET("/:id/similar-skills", handler.ListJobSkillResolutionSimilarSkillsHandler(pool))
 	skillResolution.GET("/:id", handler.GetJobSkillResolutionTaskHandler(pool))
 	skillResolution.PUT("/:id/review", handler.ReviewJobSkillResolutionTaskHandler(pool))
 
@@ -50,4 +51,8 @@ func RegisterOccupationRoutes(api *gin.RouterGroup, pool *grpcpool.GrpcClientPoo
 	admin.POST("/occupations/embedding", handler.StartOccupationEmbeddingHandler(pool))
 	admin.GET("/occupations/embedding", handler.GetOccupationEmbeddingStatusHandler(pool))
 	admin.DELETE("/occupations/embedding", handler.StopOccupationEmbeddingHandler(pool))
+
+	admin.POST("/skills/embedding", handler.StartSkillEmbeddingHandler(pool))
+	admin.GET("/skills/embedding", handler.GetSkillEmbeddingStatusHandler(pool))
+	admin.DELETE("/skills/embedding", handler.StopSkillEmbeddingHandler(pool))
 }

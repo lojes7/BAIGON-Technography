@@ -23,6 +23,15 @@ public interface JobSkillResolutionTaskRepository
 
     Optional<JobSkillResolutionTask> findByJobSkillIdAndDeletedAtIsNull(Long jobSkillId);
 
+    /** 仅在计算人工审核的 Top 5 相似技能时读取待审技能向量。 */
+    @Query(value = """
+            SELECT CAST(skill_name_vector AS text)
+            FROM job_skill_resolution_tasks
+            WHERE id = :id
+              AND deleted_at IS NULL
+            """, nativeQuery = true)
+    Optional<String> findSkillNameVectorLiteralById(@Param("id") Long id);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             SELECT task FROM JobSkillResolutionTask task
@@ -35,15 +44,11 @@ public interface JobSkillResolutionTaskRepository
     Page<JobSkillResolutionTask> findByReviewStatusAndDeletedAtIsNull(
             ReviewStatus reviewStatus, Pageable pageable);
 
-    @Query("""
-            SELECT task FROM JobSkillResolutionTask task
-            WHERE task.deletedAt IS NULL
-              AND (:taskStatus IS NULL OR task.taskStatus = :taskStatus)
-              AND (:reviewStatus IS NULL OR task.reviewStatus = :reviewStatus)
-            """)
-    Page<JobSkillResolutionTask> search(@Param("taskStatus") SkillResolutionTaskStatus taskStatus,
-                                        @Param("reviewStatus") ReviewStatus reviewStatus,
-                                        Pageable pageable);
+    Page<JobSkillResolutionTask> findByTaskStatusAndDeletedAtIsNull(
+            SkillResolutionTaskStatus taskStatus, Pageable pageable);
+
+    Page<JobSkillResolutionTask> findByTaskStatusAndReviewStatusAndDeletedAtIsNull(
+            SkillResolutionTaskStatus taskStatus, ReviewStatus reviewStatus, Pageable pageable);
 
     @Transactional
     @Modifying(clearAutomatically = true, flushAutomatically = true)

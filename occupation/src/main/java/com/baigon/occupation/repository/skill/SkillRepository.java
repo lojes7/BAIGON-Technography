@@ -14,6 +14,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -71,6 +72,45 @@ public interface SkillRepository extends JpaRepository<Skill, Long> {
             ON CONFLICT DO NOTHING
             """, nativeQuery = true)
     int insertPendingIfAbsent(@Param("id") long id, @Param("name") String name);
+
+    @Transactional
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = """
+            UPDATE skills
+            SET embedding_status = CAST('PENDING' AS task_status),
+                embedding_attempts = embedding_attempts + 1,
+                embedding_next_retry_at = NULL,
+                embedding_error = NULL,
+                updated_at = now()
+            WHERE id IN (:ids) AND deleted_at IS NULL
+            """, nativeQuery = true)
+    int markAttemptStarted(@Param("ids") Collection<Long> ids);
+
+    @Transactional
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = """
+            UPDATE skills
+            SET name_vector = CAST(:vector AS vector),
+                embedding_status = CAST('SUCCESS' AS task_status),
+                embedding_next_retry_at = NULL,
+                embedding_error = NULL,
+                updated_at = now()
+            WHERE id = :id AND deleted_at IS NULL
+            """, nativeQuery = true)
+    int markSuccess(@Param("id") long id, @Param("vector") String vector);
+
+    @Transactional
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = """
+            UPDATE skills
+            SET name_vector = NULL,
+                embedding_status = CAST('FAILED' AS task_status),
+                embedding_next_retry_at = NULL,
+                embedding_error = :error,
+                updated_at = now()
+            WHERE id IN (:ids) AND deleted_at IS NULL
+            """, nativeQuery = true)
+    int markFailed(@Param("ids") Collection<Long> ids, @Param("error") String error);
 
     @Transactional
     @Modifying(clearAutomatically = true, flushAutomatically = true)

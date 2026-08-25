@@ -28,6 +28,8 @@ const TASK_STATUS_LABEL: Record<string, string> = {
   FAILED: "失败",
 };
 
+const MAX_PAGE_SIZE = 20;
+
 type ReviewAction = "APPROVE" | "APPROVE_WITH_EDIT" | "REJECT";
 const PROFICIENCIES = ["EXPERT", "ADVANCED", "FAMILIAR", "BASIC"] as const;
 
@@ -50,15 +52,21 @@ export default function JobAnalysisPage() {
   const [occupationName, setOccupationName] = useState("");
   const [skillReviews, setSkillReviews] = useState<Record<string, JobAnalysisSkillReviewInput>>({});
 
-  // 后端仅支持 reviewStatus 筛选，不支持 taskStatus 筛选，因此拉取全量后本地按 tab 分组。
+  // 后端仅支持 reviewStatus 筛选，不支持 taskStatus 筛选，因此按允许的最大页大小拉取全部分页后在本地分组。
   const fetchList = async () => {
     setLoading(true);
     try {
-      const response = await listJobAnalysisTasks({
+      const firstPage = await listJobAnalysisTasks({
         page: 0,
-        pageSize: 1000,
+        pageSize: MAX_PAGE_SIZE,
       });
-      setItems(response.data.items ?? []);
+      const allItems = [...(firstPage.data.items ?? [])];
+      const pageCount = Math.ceil((firstPage.data.total ?? 0) / MAX_PAGE_SIZE);
+      for (let page = 1; page < pageCount; page += 1) {
+        const response = await listJobAnalysisTasks({ page, pageSize: MAX_PAGE_SIZE });
+        allItems.push(...(response.data.items ?? []));
+      }
+      setItems(allItems);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "岗位分析任务加载失败");
     } finally {

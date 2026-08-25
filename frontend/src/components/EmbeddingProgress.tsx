@@ -1,6 +1,5 @@
-// 百工谱 — 向量化进度面板（专业 / 职业名称向量化）
-// 需求 5：用户正在向量化时查看进度，显示「当前正在向量化」，不做同步更新（不轮询）。
-// 页面加载时一次性拉取进度 + 任务状态；提供「向量化」按钮，点击后重新拉取一次快照。
+// 百工谱 — 向量化进度面板（专业 / 职业 / 规范技能名称向量化）
+// 页面加载时拉取进度与任务状态；运行期间定时刷新，结束后自动停止轮询。
 import { useEffect, useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { Loader2, Sparkles } from "lucide-react";
@@ -9,11 +8,12 @@ import T from "../constants/tokens";
 import {
   getEmbeddingProgress, startMajorEmbedding, getMajorEmbeddingStatus,
   startOccupationEmbedding, getOccupationEmbeddingStatus,
+  startSkillEmbedding, getSkillEmbeddingStatus,
 } from "../services/occupation";
 import type { EmbeddingProgress as ProgressType } from "../types/api";
 
 interface EmbeddingProgressProps {
-  kind: "major" | "occupation";
+  kind: "major" | "occupation" | "skill";
 }
 
 export default function EmbeddingProgress({ kind }: EmbeddingProgressProps) {
@@ -25,12 +25,18 @@ export default function EmbeddingProgress({ kind }: EmbeddingProgressProps) {
 
   const refresh = useCallback(() => {
     getEmbeddingProgress()
-      .then((res) => setProgress(isMajor ? res.data.majors : res.data.occupations))
+      .then((res) => setProgress(
+        kind === "major" ? res.data.majors
+          : kind === "occupation" ? res.data.occupations
+            : res.data.skills,
+      ))
       .catch(() => {});
-    (isMajor ? getMajorEmbeddingStatus() : getOccupationEmbeddingStatus())
+    (kind === "major" ? getMajorEmbeddingStatus()
+      : kind === "occupation" ? getOccupationEmbeddingStatus()
+        : getSkillEmbeddingStatus())
       .then((res) => setStatus(res.data.status))
       .catch(() => {});
-  }, [isMajor]);
+  }, [kind]);
 
   // 首次加载拉取一次
   useEffect(() => { refresh(); }, [refresh]);
@@ -48,7 +54,8 @@ export default function EmbeddingProgress({ kind }: EmbeddingProgressProps) {
     setStarting(true);
     try {
       if (isMajor) await startMajorEmbedding();
-      else await startOccupationEmbedding();
+      else if (kind === "occupation") await startOccupationEmbedding();
+      else await startSkillEmbedding();
       toast.success(t("embedding.started"));
       refresh(); // 启动后立即刷新一次，进入运行态并开始轮询
     } catch (err) {
@@ -58,7 +65,9 @@ export default function EmbeddingProgress({ kind }: EmbeddingProgressProps) {
     }
   };
 
-  const label = isMajor ? t("embedding.majorName") : t("embedding.occupationName");
+  const label = kind === "major" ? t("embedding.majorName")
+    : kind === "occupation" ? t("embedding.occupationName")
+      : t("embedding.skillName");
   const done = progress?.embedded ?? 0;
   const total = progress?.total ?? 0;
   const percent = total > 0 ? Math.round((done / total) * 100) : 0;

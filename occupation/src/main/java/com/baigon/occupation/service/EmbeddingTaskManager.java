@@ -1,4 +1,4 @@
-// 百工谱 — 专业/职业名称向量化后台任务管理器
+// 百工谱 — 专业/职业/规范技能名称向量化后台任务管理器
 package com.baigon.occupation.service;
 
 import cn.hutool.core.lang.Snowflake;
@@ -19,16 +19,17 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutorService;
 
 /**
- * 专业和职业拥有独立状态与停止信号，可并行；同一资源同一时间只允许一个任务。
+ * 三类资源拥有独立状态与停止信号，可并行；同一资源同一时间只允许一个任务。
  * 状态只保存在本进程，服务重启后回到 idle，数据库记录仍可继续处理。
  */
 @Service
 public class EmbeddingTaskManager {
 
-    /** 由同一任务管理器协调的两类名称向量化资源。 */
+    /** 由同一任务管理器协调的三类名称向量化资源。 */
     public enum Resource {
         MAJOR,
-        OCCUPATION
+        OCCUPATION,
+        SKILL
     }
 
     private static final Logger logger = LoggerFactory.getLogger(EmbeddingTaskManager.class);
@@ -61,8 +62,9 @@ public class EmbeddingTaskManager {
         this.logService = logService;
         this.snowflake = snowflake;
         this.executor = embeddingExecutor;
-        trackers.put(Resource.MAJOR, new TaskTracker());
-        trackers.put(Resource.OCCUPATION, new TaskTracker());
+        for (Resource resource : Resource.values()) {
+            trackers.put(resource, new TaskTracker());
+        }
     }
 
     public EmbeddingTaskSnapshot start(Resource resource, AuditContext requestAudit) {
@@ -181,7 +183,7 @@ public class EmbeddingTaskManager {
     }
 
     private String label(Resource resource) {
-        return resource == Resource.MAJOR ? "major" : "occupation";
+        return resource.name().toLowerCase();
     }
 
     private String safeMessage(Exception exception) {

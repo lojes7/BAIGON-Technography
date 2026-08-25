@@ -3,7 +3,7 @@ package com.baigon.occupation.service;
 
 import java.util.List;
 
-/** 专业域和职业域各自实现，后台任务协调器只依赖此跨域契约。 */
+/** 专业、职业与规范技能域各自实现，后台任务协调器只依赖此跨域契约。 */
 public interface EmbeddingDataService {
 
     EmbeddingTaskManager.Resource resource();

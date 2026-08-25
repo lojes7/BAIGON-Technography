@@ -18,15 +18,13 @@ export const ADMIN_NAV: NavSection[] = [
     mkChild("jobs", "nav.jobs"),
   ]),
   mk("ai-processing", "nav.aiProcessing", Sparkles, [
-    mkChild("extraction-tasks", "nav.extractionTasks"),
-    mkChild("review-queue", "nav.reviewQueue"),
-    mkChild("processing-errors", "nav.processingErrors"),
     mkChild("job-analysis", "nav.jobAnalysis"),
+    mkChild("review-queue", "nav.reviewQueue"),
   ]),
   mk("dictionaries", "nav.dictionaries", BookOpen, [
     mkChild("job-dict", "nav.jobDict"),
-    mkChild("skill-dict", "nav.skillDict"),
     mkChild("discipline", "nav.discipline"),
+    mkChild("skill-dict", "nav.skillDict"),
   ]),
   mk("graph", "nav.graph", Network, [
     mkChild("graph-browser", "nav.graphBrowser"),
@@ -116,16 +114,15 @@ export const ANALYST_NAV: NavSection[] = [
 export const REVIEWER_NAV: NavSection[] = [
   mk("dashboard", "nav.dashboard", Home, undefined),
   mk("ai-processing", "nav.aiProcessing", Sparkles, [
+    mkChild("job-analysis", "nav.jobAnalysis"),
     mkChild("review-queue", "nav.reviewQueue"),
     mkChild("ai-analyses", "nav.aiAnalyses"),
-    mkChild("job-analysis", "nav.jobAnalysis"),
-    mkChild("processing-errors", "nav.processingErrors"),
     mkChild("jobs", "nav.jobs"),
   ]),
   mk("dictionaries", "nav.dictionaries", BookOpen, [
     mkChild("job-dict", "nav.jobDict"),
-    mkChild("skill-dict", "nav.skillDict"),
     mkChild("discipline", "nav.discipline"),
+    mkChild("skill-dict", "nav.skillDict"),
   ]),
   mk("profile", "nav.personalCenter", User, [
     mkChild("account-settings", "nav.accountSettings"),

@@ -1,5 +1,5 @@
 // 百工谱 — occupation_service 接口定义
-// 专业与职业目录查询、名称向量化任务管理
+// 专业与职业目录查询，以及专业、职业、规范技能名称向量化任务管理
 
 syntax = "proto3";
 
@@ -24,7 +24,7 @@ service OccupationService {
   rpc ListOccupationCategories (ChildCatalogListRequest) returns (CatalogListResponse) {}
   rpc ListOccupations (ChildCatalogListRequest) returns (EmbeddableCatalogListResponse) {}
 
-  // 专业与职业名称向量化进度。
+  // 专业、职业与规范技能名称向量化进度。
   rpc GetEmbeddingProgress (EmbeddingTaskRequest) returns (GetEmbeddingProgressResponse) {}
 
   // 专业名称向量化后台任务。
@@ -37,6 +37,11 @@ service OccupationService {
   rpc GetOccupationEmbeddingStatus (EmbeddingTaskRequest) returns (EmbeddingTaskStatus) {}
   rpc StopOccupationEmbedding (EmbeddingTaskRequest) returns (EmbeddingTaskStatus) {}
 
+  // 规范技能名称向量化后台任务。
+  rpc StartSkillEmbedding (EmbeddingTaskRequest) returns (EmbeddingTaskStatus) {}
+  rpc GetSkillEmbeddingStatus (EmbeddingTaskRequest) returns (EmbeddingTaskStatus) {}
+  rpc StopSkillEmbedding (EmbeddingTaskRequest) returns (EmbeddingTaskStatus) {}
+
   // 岗位分析任务查询与人工确认；最终专业、职业不受 AI 候选范围限制。
   rpc ListJobAnalysisTasks (ListJobAnalysisTasksRequest) returns (ListJobAnalysisTasksResponse) {}
   rpc GetJobAnalysisTask (GetJobAnalysisTaskRequest) returns (GetJobAnalysisTaskResponse) {}
@@ -46,6 +51,7 @@ service OccupationService {
   rpc ListSkills (ListSkillsRequest) returns (ListSkillsResponse) {}
   rpc ListJobSkillResolutionTasks (ListJobSkillResolutionTasksRequest) returns (ListJobSkillResolutionTasksResponse) {}
   rpc GetJobSkillResolutionTask (GetJobSkillResolutionTaskRequest) returns (GetJobSkillResolutionTaskResponse) {}
+  rpc ListJobSkillResolutionSimilarSkills (GetJobSkillResolutionTaskRequest) returns (ListJobSkillResolutionSimilarSkillsResponse) {}
   rpc ReviewJobSkillResolutionTask (ReviewJobSkillResolutionTaskRequest) returns (GetJobSkillResolutionTaskResponse) {}
 
   // 已审核岗位的分页检索与聚合详情。
@@ -128,6 +134,7 @@ message EmbeddingProgress {
 message GetEmbeddingProgressResponse {
   EmbeddingProgress majors = 1;
   EmbeddingProgress occupations = 2;
+  EmbeddingProgress skills = 3;
 }
 
 // 任务运行态只在进程内保存，不复用数据库 task_status 枚举。
@@ -373,6 +380,11 @@ message ListJobSkillResolutionTasksResponse {
 
 message GetJobSkillResolutionTaskResponse {
   JobSkillResolutionTaskDetail resolution = 1;
+}
+
+// 待审技能向量对应的 Top 5 规范技能；无可用向量时 items 为空。
+message ListJobSkillResolutionSimilarSkillsResponse {
+  repeated JobSkillResolutionCandidate items = 1;
 }
 
 // 岗位列表使用请求体接收分页和筛选条件；文本字段均为包含匹配。

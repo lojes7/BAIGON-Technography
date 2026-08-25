@@ -35,6 +35,7 @@ import com.baigon.occupation.ListJobAnalysisTasksRequest;
 import com.baigon.occupation.ListJobAnalysisTasksResponse;
 import com.baigon.occupation.ListJobSkillResolutionTasksRequest;
 import com.baigon.occupation.ListJobSkillResolutionTasksResponse;
+import com.baigon.occupation.ListJobSkillResolutionSimilarSkillsResponse;
 import com.baigon.occupation.ListJobsRequest;
 import com.baigon.occupation.ListJobsResponse;
 import com.baigon.occupation.ListSkillsRequest;
@@ -295,9 +296,11 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
         try {
             EmbeddingDataService.Progress majors = taskManager.getProgress(Resource.MAJOR);
             EmbeddingDataService.Progress occupations = taskManager.getProgress(Resource.OCCUPATION);
+            EmbeddingDataService.Progress skills = taskManager.getProgress(Resource.SKILL);
             GetEmbeddingProgressResponse response = GetEmbeddingProgressResponse.newBuilder()
                     .setMajors(progress(majors))
                     .setOccupations(progress(occupations))
+                    .setSkills(progress(skills))
                     .build();
             respond(observer, response);
             logService.info(audit, "get embedding progress");
@@ -340,6 +343,24 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
     public void stopOccupationEmbedding(EmbeddingTaskRequest request,
                                         StreamObserver<EmbeddingTaskStatus> observer) {
         stopTask(Resource.OCCUPATION, request, observer);
+    }
+
+    @Override
+    public void startSkillEmbedding(EmbeddingTaskRequest request,
+                                    StreamObserver<EmbeddingTaskStatus> observer) {
+        startTask(Resource.SKILL, request, observer);
+    }
+
+    @Override
+    public void getSkillEmbeddingStatus(EmbeddingTaskRequest request,
+                                        StreamObserver<EmbeddingTaskStatus> observer) {
+        getTaskStatus(Resource.SKILL, request, observer);
+    }
+
+    @Override
+    public void stopSkillEmbedding(EmbeddingTaskRequest request,
+                                   StreamObserver<EmbeddingTaskStatus> observer) {
+        stopTask(Resource.SKILL, request, observer);
     }
 
     @Override
@@ -495,6 +516,40 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
             logService.info(audit, "get job skill resolution task: id=" + request.getId());
         } catch (Exception exception) {
             fail(observer, audit, exception, "get job skill resolution task failed");
+        }
+    }
+
+    @Override
+    public void listJobSkillResolutionSimilarSkills(
+            GetJobSkillResolutionTaskRequest request,
+            StreamObserver<ListJobSkillResolutionSimilarSkillsResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            var candidates = skillResolutionQueryService.listSimilarSkills(request.getId());
+            if (candidates.isEmpty()) {
+                observer.onError(ApiException.grpcException(ApiException.ErrorCode.NOT_FOUND,
+                        "job skill resolution task not found"));
+                return;
+            }
+            var response = ListJobSkillResolutionSimilarSkillsResponse.newBuilder();
+            int rank = 1;
+            for (var candidate : candidates.get()) {
+                response.addItems(com.baigon.occupation.JobSkillResolutionCandidate.newBuilder()
+                        .setSkillId(candidate.getId())
+                        .setSkillName(orEmpty(candidate.getName()))
+                        .setRank(rank++)
+                        .setSimilarity(candidate.getSimilarity() == null
+                                ? 0 : candidate.getSimilarity())
+                        .build());
+            }
+            respond(observer, response.build());
+            logService.info(audit,
+                    "list job skill resolution similar skills: task_id=" + request.getId()
+                            + ", total=" + candidates.get().size());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "list job skill resolution similar skills failed");
         }
     }
 

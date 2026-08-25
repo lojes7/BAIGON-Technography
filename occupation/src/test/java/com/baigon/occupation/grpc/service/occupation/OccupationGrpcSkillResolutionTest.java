@@ -1,9 +1,11 @@
 // 百工谱 — 规范技能与岗位技能解析 gRPC 编排测试
 package com.baigon.occupation.grpc.service.occupation;
 
+import com.baigon.occupation.GetJobSkillResolutionTaskRequest;
 import com.baigon.occupation.GetJobSkillResolutionTaskResponse;
 import com.baigon.occupation.ListSkillsRequest;
 import com.baigon.occupation.ListSkillsResponse;
+import com.baigon.occupation.ListJobSkillResolutionSimilarSkillsResponse;
 import com.baigon.occupation.ReviewJobSkillResolutionTaskRequest;
 import com.baigon.occupation.entity.ReviewStatus;
 import com.baigon.occupation.entity.TaskStatus;
@@ -23,6 +25,7 @@ import com.baigon.occupation.service.major.MajorCatalogService;
 import com.baigon.occupation.service.occupation.OccupationCatalogService;
 import com.baigon.occupation.service.skill.SkillResolutionQueryService;
 import com.baigon.occupation.service.skill.SkillResolutionReviewService;
+import com.baigon.occupation.repository.skill.SkillCandidateProjection;
 import io.grpc.stub.StreamObserver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -91,6 +94,31 @@ class OccupationGrpcSkillResolutionTest {
         assertEquals(21, response.getValue().getTotal());
         assertEquals(300L, response.getValue().getItems(0).getId());
         assertEquals(true, response.getValue().getItems(0).getIsEmbed());
+    }
+
+    @Test
+    void listResolutionSimilarSkillsShouldExposeRankedTopFiveResults() {
+        SkillCandidateProjection candidate = mock(SkillCandidateProjection.class);
+        when(candidate.getId()).thenReturn(300L);
+        when(candidate.getName()).thenReturn("检索增强生成（RAG）");
+        when(candidate.getSimilarity()).thenReturn(0.92D);
+        when(queryService.listSimilarSkills(10L))
+                .thenReturn(Optional.of(List.of(candidate)));
+        @SuppressWarnings("unchecked")
+        StreamObserver<ListJobSkillResolutionSimilarSkillsResponse> observer =
+                mock(StreamObserver.class);
+
+        service.listJobSkillResolutionSimilarSkills(
+                GetJobSkillResolutionTaskRequest.newBuilder().setId(10L).build(),
+                observer);
+
+        ArgumentCaptor<ListJobSkillResolutionSimilarSkillsResponse> response =
+                ArgumentCaptor.forClass(ListJobSkillResolutionSimilarSkillsResponse.class);
+        verify(observer).onNext(response.capture());
+        verify(observer).onCompleted();
+        assertEquals(300L, response.getValue().getItems(0).getSkillId());
+        assertEquals(1, response.getValue().getItems(0).getRank());
+        assertEquals(0.92D, response.getValue().getItems(0).getSimilarity());
     }
 
     @Test

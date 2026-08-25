@@ -40,6 +40,7 @@
   "embedding": {
     "majorName": "专业名称",
     "occupationName": "职业名称",
+    "skillName": "规范技能名称",
     "start": "向量化",
     "started": "向量化任务已启动",
     "embedding": "正在向量化…",
@@ -570,6 +571,7 @@
     },
     "skillDict": {
       "title": "能力词典",
+      "desc": "全局规范技能目录，展示每项技能的名称向量化状态并支持批量启动向量化",
       "importDict": "导入词典",
       "createSkill": "新建标准能力",
       "searchSkill": "搜索能力名称或别名…"

@@ -10,6 +10,7 @@ import com.baigon.occupation.entity.skill.SkillResolutionTaskStatus;
 import com.baigon.occupation.repository.job.JobSkillRepository;
 import com.baigon.occupation.repository.skill.JobSkillResolutionCandidateRepository;
 import com.baigon.occupation.repository.skill.JobSkillResolutionTaskRepository;
+import com.baigon.occupation.repository.skill.SkillCandidateProjection;
 import com.baigon.occupation.repository.skill.SkillRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -30,6 +31,7 @@ public class SkillResolutionQueryService {
 
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
+    private static final int SIMILAR_SKILL_LIMIT = 5;
 
     private final SkillRepository skillRepository;
     private final JobSkillResolutionTaskRepository taskRepository;
@@ -63,7 +65,7 @@ public class SkillResolutionQueryService {
         ReviewStatus parsedReviewStatus = parseReviewStatus(reviewStatus);
         PageRequest pageable = pageable(page, pageSize,
                 Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
-        Page<JobSkillResolutionTask> tasks = taskRepository.search(
+        Page<JobSkillResolutionTask> tasks = findTasks(
                 parsedTaskStatus, parsedReviewStatus, pageable);
 
         // 批量读取岗位技能，避免任务列表逐条查询 job_id。
@@ -84,6 +86,25 @@ public class SkillResolutionQueryService {
         });
     }
 
+    /**
+     * 按实际存在的筛选条件选择查询，避免 PostgreSQL 无法推断空枚举参数的类型。
+     */
+    private Page<JobSkillResolutionTask> findTasks(SkillResolutionTaskStatus taskStatus,
+                                                   ReviewStatus reviewStatus,
+                                                   PageRequest pageable) {
+        if (taskStatus != null && reviewStatus != null) {
+            return taskRepository.findByTaskStatusAndReviewStatusAndDeletedAtIsNull(
+                    taskStatus, reviewStatus, pageable);
+        }
+        if (taskStatus != null) {
+            return taskRepository.findByTaskStatusAndDeletedAtIsNull(taskStatus, pageable);
+        }
+        if (reviewStatus != null) {
+            return taskRepository.findByReviewStatusAndDeletedAtIsNull(reviewStatus, pageable);
+        }
+        return taskRepository.findByDeletedAtIsNull(pageable);
+    }
+
     /** 详情同时返回岗位技能事实与按相似度排名保存的候选快照。 */
     public Optional<Detail> getDetail(Long id) {
         if (id == null || id <= 0) {
@@ -98,6 +119,23 @@ public class SkillResolutionQueryService {
                     .findByTaskIdAndDeletedAtIsNullOrderByRankAsc(task.getId());
             return new Detail(task, jobSkill, candidates);
         });
+    }
+
+    /** 打开“选择现有技能”后，仅返回待审技能向量对应的 Top 5 规范技能。 */
+    public Optional<List<SkillCandidateProjection>> listSimilarSkills(Long taskId) {
+        if (taskId == null || taskId <= 0) {
+            throw new IllegalArgumentException("id must be > 0");
+        }
+        if (taskRepository.findByIdAndDeletedAtIsNull(taskId).isEmpty()) {
+            return Optional.empty();
+        }
+        Optional<String> vector = taskRepository.findSkillNameVectorLiteralById(taskId);
+        if (vector.isEmpty()) {
+            // AI 失败或尚未生成向量时仍允许使用下方普通技能分页列表。
+            return Optional.of(List.of());
+        }
+        return Optional.of(skillRepository.findNearestByNameVector(
+                vector.get(), SIMILAR_SKILL_LIMIT));
     }
 
     private PageRequest pageable(int page, int pageSize, Sort sort) {

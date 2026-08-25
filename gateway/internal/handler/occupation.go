@@ -383,8 +383,8 @@ func ListOccupationsHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 	}
 }
 
-// GetOccupationEmbeddingProgressHandler 返回专业与职业的已向量化数量。
-// @Summary      查询专业与职业向量化进度
+// GetOccupationEmbeddingProgressHandler 返回专业、职业与规范技能的已向量化数量。
+// @Summary      查询专业、职业与技能向量化进度
 // @Tags         专业职业管理
 // @Produce      json
 // @Security     Bearer
@@ -421,6 +421,7 @@ func GetOccupationEmbeddingProgressHandler(pool *grpcpool.GrpcClientPool) gin.Ha
 			"occupations": gin.H{
 				"embedded": resp.GetOccupations().GetEmbedded(), "total": resp.GetOccupations().GetTotal(),
 			},
+			"skills": gin.H{"embedded": resp.GetSkills().GetEmbedded(), "total": resp.GetSkills().GetTotal()},
 		})
 	}
 }
@@ -630,6 +631,117 @@ func StopOccupationEmbeddingHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFu
 		defer cancel()
 		var trailer metadata.MD
 		resp, err := occupationpb.NewOccupationServiceClient(conn).StopOccupationEmbedding(
+			ctx,
+			&occupationpb.EmbeddingTaskRequest{
+				TraceId: c.GetString("trace_id"), UserId: UserIDFromContext(c),
+				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
+				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
+			},
+			grpc.Trailer(&trailer),
+		)
+		if err != nil {
+			httpCode, errorCode := GRPCErrorCodes(err, trailer)
+			response.Error(c, httpCode, errorCode)
+			return
+		}
+		response.Success(c, embeddingTaskData(resp))
+	}
+}
+
+// StartSkillEmbeddingHandler 启动规范技能名称后台向量化。
+// @Summary      启动规范技能名称向量化
+// @Tags         专业职业管理
+// @Produce      json
+// @Security     Bearer
+// @Success      200 {object} response.SuccessBody
+// @Failure      401 {object} response.ErrorBody
+// @Failure      403 {object} response.ErrorBody
+// @Router       /api/auth/occupation/skills/embedding [post]
+func StartSkillEmbeddingHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		conn, err := pool.GetConn("occupation-service")
+		if err != nil {
+			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+		var trailer metadata.MD
+		resp, err := occupationpb.NewOccupationServiceClient(conn).StartSkillEmbedding(
+			ctx,
+			&occupationpb.EmbeddingTaskRequest{
+				TraceId: c.GetString("trace_id"), UserId: UserIDFromContext(c),
+				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
+				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
+			},
+			grpc.Trailer(&trailer),
+		)
+		if err != nil {
+			httpCode, errorCode := GRPCErrorCodes(err, trailer)
+			response.Error(c, httpCode, errorCode)
+			return
+		}
+		response.Success(c, embeddingTaskData(resp))
+	}
+}
+
+// GetSkillEmbeddingStatusHandler 查询规范技能名称向量化状态。
+// @Summary      查询规范技能名称向量化状态
+// @Tags         专业职业管理
+// @Produce      json
+// @Security     Bearer
+// @Success      200 {object} response.SuccessBody
+// @Failure      401 {object} response.ErrorBody
+// @Failure      403 {object} response.ErrorBody
+// @Router       /api/auth/occupation/skills/embedding [get]
+func GetSkillEmbeddingStatusHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		conn, err := pool.GetConn("occupation-service")
+		if err != nil {
+			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+		var trailer metadata.MD
+		resp, err := occupationpb.NewOccupationServiceClient(conn).GetSkillEmbeddingStatus(
+			ctx,
+			&occupationpb.EmbeddingTaskRequest{
+				TraceId: c.GetString("trace_id"), UserId: UserIDFromContext(c),
+				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
+				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
+			},
+			grpc.Trailer(&trailer),
+		)
+		if err != nil {
+			httpCode, errorCode := GRPCErrorCodes(err, trailer)
+			response.Error(c, httpCode, errorCode)
+			return
+		}
+		response.Success(c, embeddingTaskData(resp))
+	}
+}
+
+// StopSkillEmbeddingHandler 停止规范技能名称向量化。
+// @Summary      停止规范技能名称向量化
+// @Tags         专业职业管理
+// @Produce      json
+// @Security     Bearer
+// @Success      200 {object} response.SuccessBody
+// @Failure      401 {object} response.ErrorBody
+// @Failure      403 {object} response.ErrorBody
+// @Router       /api/auth/occupation/skills/embedding [delete]
+func StopSkillEmbeddingHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		conn, err := pool.GetConn("occupation-service")
+		if err != nil {
+			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+		var trailer metadata.MD
+		resp, err := occupationpb.NewOccupationServiceClient(conn).StopSkillEmbedding(
 			ctx,
 			&occupationpb.EmbeddingTaskRequest{
 				TraceId: c.GetString("trace_id"), UserId: UserIDFromContext(c),
@@ -963,6 +1075,52 @@ func GetJobSkillResolutionTaskHandler(pool *grpcpool.GrpcClientPool) gin.Handler
 			return
 		}
 		response.Success(c, gin.H{"resolution": resp.GetResolution()})
+	}
+}
+
+// ListJobSkillResolutionSimilarSkillsHandler 返回待审技能向量对应的 Top 5 规范技能。
+// @Summary      查询技能归一 Top 5 相似技能
+// @Tags         技能归一审核
+// @Produce      json
+// @Security     Bearer
+// @Param        id path int true "job_skill_resolution_tasks.id"
+// @Success      200 {object} response.SuccessBody
+// @Failure      400 {object} response.ErrorBody
+// @Failure      401 {object} response.ErrorBody
+// @Failure      403 {object} response.ErrorBody
+// @Failure      404 {object} response.ErrorBody
+// @Router       /api/auth/occupation/job-skill-resolution/{id}/similar-skills [get]
+func ListJobSkillResolutionSimilarSkillsHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+		if err != nil || id <= 0 {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+		conn, err := pool.GetConn("occupation-service")
+		if err != nil {
+			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+		var trailer metadata.MD
+		resp, err := occupationpb.NewOccupationServiceClient(conn).ListJobSkillResolutionSimilarSkills(
+			ctx,
+			&occupationpb.GetJobSkillResolutionTaskRequest{
+				Id:      id,
+				TraceId: c.GetString("trace_id"), UserId: UserIDFromContext(c),
+				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
+				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
+			},
+			grpc.Trailer(&trailer),
+		)
+		if err != nil {
+			httpCode, errorCode := GRPCErrorCodes(err, trailer)
+			response.Error(c, httpCode, errorCode)
+			return
+		}
+		response.Success(c, gin.H{"items": skillResolutionCandidateItems(resp.GetItems())})
 	}
 }
 

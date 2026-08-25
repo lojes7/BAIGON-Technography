@@ -165,6 +165,19 @@ export async function getSkillResolutionTask(id: string | number) {
   } as ApiResponse<{ resolution: JobSkillResolutionTaskDetail }>;
 }
 
+export async function listSkillResolutionSimilarSkills(id: string | number) {
+  const response = await request<{ items?: RawCandidate[] }>(
+    `${BASE}/${id}/similar-skills`,
+    { headers: hdrs() },
+  );
+  return {
+    ...response,
+    data: {
+      items: (response.data.items ?? []).map(normalizeCandidate),
+    },
+  } as ApiResponse<{ items: JobSkillResolutionCandidate[] }>;
+}
+
 export async function reviewSkillResolutionTask(id: string | number, body: ReviewJobSkillResolutionParams) {
   const payload = body.resolutionAction === "CREATE_NEW"
     ? { resolutionAction: body.resolutionAction, skillId: 0, newSkillName: body.newSkillName.trim() }

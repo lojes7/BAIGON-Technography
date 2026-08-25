@@ -39,7 +39,19 @@ func canonicalSkillItems(items []*occupationpb.SkillData) []gin.H {
 	return result
 }
 
-// embeddingTaskData 将两类任务的统一状态映射成稳定的前端字段。
+// skillResolutionCandidateItems 将 Top 5 相似技能映射为稳定的前端字段。
+func skillResolutionCandidateItems(items []*occupationpb.JobSkillResolutionCandidate) []gin.H {
+	result := make([]gin.H, 0, len(items))
+	for _, item := range items {
+		result = append(result, gin.H{
+			"skill_id": item.GetSkillId(), "skill_name": item.GetSkillName(),
+			"rank": item.GetRank(), "similarity": item.GetSimilarity(),
+		})
+	}
+	return result
+}
+
+// embeddingTaskData 将三类任务的统一状态映射成稳定的前端字段。
 func embeddingTaskData(status *occupationpb.EmbeddingTaskStatus) gin.H {
 	return gin.H{
 		"status": status.GetStatus(), "traceId": status.GetTraceId(), "total": status.GetTotal(),

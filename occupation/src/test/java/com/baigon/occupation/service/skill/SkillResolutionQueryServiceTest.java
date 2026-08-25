@@ -10,6 +10,7 @@ import com.baigon.occupation.entity.skill.SkillResolutionTaskStatus;
 import com.baigon.occupation.repository.job.JobSkillRepository;
 import com.baigon.occupation.repository.skill.JobSkillResolutionCandidateRepository;
 import com.baigon.occupation.repository.skill.JobSkillResolutionTaskRepository;
+import com.baigon.occupation.repository.skill.SkillCandidateProjection;
 import com.baigon.occupation.repository.skill.SkillRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -65,7 +66,7 @@ class SkillResolutionQueryServiceTest {
     void listTasksShouldParseBothStatusesAndIncludeJobId() {
         JobSkillResolutionTask task = task();
         JobSkill jobSkill = jobSkill();
-        when(taskRepository.search(
+        when(taskRepository.findByTaskStatusAndReviewStatusAndDeletedAtIsNull(
                 eq(SkillResolutionTaskStatus.SUCCESS), eq(ReviewStatus.PENDING), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(task)));
         when(jobSkillRepository.findAllById(List.of(100L))).thenReturn(List.of(jobSkill));
@@ -76,6 +77,26 @@ class SkillResolutionQueryServiceTest {
         assertEquals(1, page.getTotalElements());
         assertEquals(200L, page.getContent().get(0).jobId());
         assertEquals(task, page.getContent().get(0).task());
+    }
+
+    @Test
+    void listTasksShouldUseQueryWithoutNullableEnumParameters() {
+        when(taskRepository.findByDeletedAtIsNull(any(Pageable.class))).thenReturn(Page.empty());
+        when(taskRepository.findByTaskStatusAndDeletedAtIsNull(
+                eq(SkillResolutionTaskStatus.SUCCESS), any(Pageable.class))).thenReturn(Page.empty());
+        when(taskRepository.findByReviewStatusAndDeletedAtIsNull(
+                eq(ReviewStatus.PENDING), any(Pageable.class))).thenReturn(Page.empty());
+        when(jobSkillRepository.findAllById(List.of())).thenReturn(List.of());
+
+        service.listTasks(0, 20, "", "");
+        service.listTasks(0, 20, "SUCCESS", "");
+        service.listTasks(0, 20, "", "PENDING");
+
+        verify(taskRepository).findByDeletedAtIsNull(any(Pageable.class));
+        verify(taskRepository).findByTaskStatusAndDeletedAtIsNull(
+                eq(SkillResolutionTaskStatus.SUCCESS), any(Pageable.class));
+        verify(taskRepository).findByReviewStatusAndDeletedAtIsNull(
+                eq(ReviewStatus.PENDING), any(Pageable.class));
     }
 
     @Test
@@ -105,6 +126,34 @@ class SkillResolutionQueryServiceTest {
         assertEquals(task, detail.task());
         assertEquals(jobSkill, detail.jobSkill());
         assertEquals(List.of(candidate), detail.candidates());
+    }
+
+    @Test
+    void listSimilarSkillsShouldReuseNearestVectorQueryWithFixedTopFiveLimit() {
+        JobSkillResolutionTask task = task();
+        SkillCandidateProjection candidate = mock(SkillCandidateProjection.class);
+        when(taskRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(task));
+        when(taskRepository.findSkillNameVectorLiteralById(10L))
+                .thenReturn(Optional.of("[0.1,0.2]"));
+        when(skillRepository.findNearestByNameVector("[0.1,0.2]", 5))
+                .thenReturn(List.of(candidate));
+
+        List<SkillCandidateProjection> result = service
+                .listSimilarSkills(10L)
+                .orElseThrow();
+
+        assertEquals(List.of(candidate), result);
+        verify(skillRepository).findNearestByNameVector("[0.1,0.2]", 5);
+    }
+
+    @Test
+    void listSimilarSkillsShouldReturnEmptyListWhenTaskHasNoVector() {
+        when(taskRepository.findByIdAndDeletedAtIsNull(10L))
+                .thenReturn(Optional.of(task()));
+        when(taskRepository.findSkillNameVectorLiteralById(10L))
+                .thenReturn(Optional.empty());
+
+        assertEquals(List.of(), service.listSimilarSkills(10L).orElseThrow());
     }
 
     private JobSkillResolutionTask task() {

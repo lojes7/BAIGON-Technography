@@ -8,18 +8,21 @@ import T from "../constants/tokens";
 import { isHttpErrorStatus } from "../services/http-error";
 import {
   getSkillResolutionTask,
+  listSkillResolutionSimilarSkills,
   listSkillResolutionTasks,
   reviewSkillResolutionTask,
   searchCanonicalSkills,
 } from "../services/skill-resolution";
 import type {
   CanonicalSkillItem,
+  JobSkillResolutionCandidate,
   JobSkillResolutionTaskDetail,
   JobSkillResolutionTaskSummary,
   SkillResolutionAction,
 } from "../types/api";
 
 const PAGE_SIZE = 20;
+const SKILL_PAGE_SIZE = 50;
 
 const TASK_STATUS_LABEL: Record<string, string> = {
   PENDING: "等待处理",
@@ -54,9 +57,14 @@ function ReviewWorkbenchPage() {
   const [selectedSkillId, setSelectedSkillId] = useState("");
   const [newSkillName, setNewSkillName] = useState("");
   const [keyword, setKeyword] = useState("");
+  const [appliedKeyword, setAppliedKeyword] = useState("");
+  const [similarSkills, setSimilarSkills] = useState<JobSkillResolutionCandidate[]>([]);
   const [skillResults, setSkillResults] = useState<CanonicalSkillItem[]>([]);
+  const [skillTotal, setSkillTotal] = useState(0);
+  const [skillPage, setSkillPage] = useState(1);
+  const [skillRefreshKey, setSkillRefreshKey] = useState(0);
+  const [loadingSimilarSkills, setLoadingSimilarSkills] = useState(false);
   const [searching, setSearching] = useState(false);
-  const [searched, setSearched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const fetchList = async () => {
@@ -82,14 +90,21 @@ function ReviewWorkbenchPage() {
   const initializeDetail = (nextDetail: JobSkillResolutionTaskDetail) => {
     setDetail(nextDetail);
     setKeyword("");
+    setAppliedKeyword("");
+    setSimilarSkills([]);
     setSkillResults([]);
-    setSearched(false);
+    setSkillTotal(0);
+    setSkillPage(1);
+    setLoadingSimilarSkills(false);
+    setSearching(false);
     setNewSkillName("");
 
     const persistedAction = nextDetail.task.resolutionAction as SkillResolutionAction;
     if (persistedAction === "SELECT_CANDIDATE" || persistedAction === "SELECT_EXISTING" || persistedAction === "CREATE_NEW") {
       setAction(persistedAction);
       setSelectedSkillId(String(nextDetail.task.selectedSkillId ?? ""));
+      setLoadingSimilarSkills(persistedAction === "SELECT_EXISTING");
+      setSearching(persistedAction === "SELECT_EXISTING");
       return;
     }
     if (nextDetail.task.taskStatus === "SUCCESS" && nextDetail.candidates.length > 0) {
@@ -99,6 +114,8 @@ function ReviewWorkbenchPage() {
       // AI 失败时后端只允许选择现有技能或新建技能。
       setAction("SELECT_EXISTING");
       setSelectedSkillId("");
+      setLoadingSimilarSkills(true);
+      setSearching(true);
     }
   };
 
@@ -114,20 +131,58 @@ function ReviewWorkbenchPage() {
     }
   };
 
-  const searchSkills = async () => {
-    if (!detail) return;
+  // Top 5 只按待审技能向量计算一次，不与下方普通分页筛选混用。
+  useEffect(() => {
+    if (!detail || action !== "SELECT_EXISTING") return;
+    let active = true;
+    listSkillResolutionSimilarSkills(detail.task.id)
+      .then((response) => {
+        if (active) setSimilarSkills(response.data.items ?? []);
+      })
+      .catch((error) => {
+        if (active) toast.error(error instanceof Error ? error.message : "相似技能加载失败");
+      })
+      .finally(() => {
+        if (active) setLoadingSimilarSkills(false);
+      });
+    return () => { active = false; };
+  }, [detail, action]);
+
+  // 下方列表复用普通规范技能分页查询，按名称稳定排序，搜索只是可选筛选。
+  useEffect(() => {
+    if (!detail || action !== "SELECT_EXISTING") return;
+    let active = true;
+    searchCanonicalSkills({
+      page: skillPage - 1,
+      pageSize: SKILL_PAGE_SIZE,
+      keyword: appliedKeyword || undefined,
+    })
+      .then((response) => {
+        if (!active) return;
+        setSkillResults(response.data.items ?? []);
+        setSkillTotal(response.data.total ?? 0);
+      })
+      .catch((error) => {
+        if (active) toast.error(error instanceof Error ? error.message : "规范技能列表加载失败");
+      })
+      .finally(() => {
+        if (active) setSearching(false);
+      });
+    return () => { active = false; };
+  }, [detail, action, skillPage, appliedKeyword, skillRefreshKey]);
+
+  const filterSkills = () => {
     setSearching(true);
-    try {
-      const response = await searchCanonicalSkills({ page: 0, pageSize: 50, keyword });
-      const candidateIds = new Set(detail.candidates.map((candidate) => String(candidate.skillId)));
-      // 后端要求候选技能只能走 SELECT_CANDIDATE；现有技能搜索中排除当前任务候选。
-      setSkillResults((response.data.items ?? []).filter((skill) => !candidateIds.has(String(skill.id))));
-      setSearched(true);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "规范技能查询失败");
-    } finally {
-      setSearching(false);
-    }
+    setSkillPage(1);
+    setAppliedKeyword(keyword.trim());
+    setSelectedSkillId("");
+    setSkillRefreshKey((value) => value + 1);
+  };
+
+  const changeSkillPage = (nextPage: number) => {
+    setSearching(true);
+    setSkillPage(nextPage);
+    setSelectedSkillId("");
   };
 
   const submit = async () => {
@@ -143,9 +198,16 @@ function ReviewWorkbenchPage() {
 
     setSubmitting(true);
     try {
-      const body = action === "CREATE_NEW"
-        ? { resolutionAction: action, newSkillName: newSkillName.trim() } as const
-        : { resolutionAction: action, skillId: selectedSkillId } as const;
+      // Top 5 与普通分页列表都可能包含 AI 候选，提交时保留后端的候选动作审计语义。
+      const selectedSkillIsCandidate = detail.candidates.some(
+        (candidate) => String(candidate.skillId) === String(selectedSkillId),
+      );
+      const effectiveAction = action === "SELECT_EXISTING" && selectedSkillIsCandidate
+        ? "SELECT_CANDIDATE"
+        : action;
+      const body = effectiveAction === "CREATE_NEW"
+        ? { resolutionAction: effectiveAction, newSkillName: newSkillName.trim() } as const
+        : { resolutionAction: effectiveAction, skillId: selectedSkillId } as const;
       const response = await reviewSkillResolutionTask(detail.task.id, body);
       initializeDetail(response.data.resolution);
       toast.success("技能归一审核已提交");
@@ -165,14 +227,16 @@ function ReviewWorkbenchPage() {
 
   const closeDetail = () => {
     setDetail(null);
+    setSimilarSkills([]);
     setSkillResults([]);
-    setSearched(false);
+    setSkillTotal(0);
   };
 
   const canReview = detail?.task.reviewStatus === "PENDING"
     && (detail.task.taskStatus === "SUCCESS" || detail.task.taskStatus === "FAILED");
   const canSelectCandidate = detail?.task.taskStatus === "SUCCESS" && detail.candidates.length > 0;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const skillPageCount = Math.max(1, Math.ceil(skillTotal / SKILL_PAGE_SIZE));
 
   return (
     <div className="flex h-full flex-col gap-5">
@@ -297,21 +361,32 @@ function ReviewWorkbenchPage() {
                     disabled={!canReview || !canSelectCandidate}
                     icon={CheckCircle}
                     label="选择 AI 候选"
-                    onClick={() => setAction("SELECT_CANDIDATE")}
+                    onClick={() => {
+                      setAction("SELECT_CANDIDATE");
+                    }}
                   />
                   <ActionButton
                     active={action === "SELECT_EXISTING"}
                     disabled={!canReview}
                     icon={Search}
                     label="选择现有技能"
-                    onClick={() => { setAction("SELECT_EXISTING"); setSelectedSkillId(""); }}
+                    onClick={() => {
+                      if (action !== "SELECT_EXISTING") setLoadingSimilarSkills(true);
+                      setAction("SELECT_EXISTING");
+                      setSelectedSkillId("");
+                      setSearching(true);
+                      setSkillRefreshKey((value) => value + 1);
+                    }}
                   />
                   <ActionButton
                     active={action === "CREATE_NEW"}
                     disabled={!canReview}
                     icon={Plus}
                     label="新建规范技能"
-                    onClick={() => { setAction("CREATE_NEW"); setSelectedSkillId(""); }}
+                    onClick={() => {
+                      setAction("CREATE_NEW");
+                      setSelectedSkillId("");
+                    }}
                   />
                 </div>
                 {detail.task.taskStatus === "FAILED" && detail.task.reviewStatus === "PENDING" && (
@@ -334,7 +409,9 @@ function ReviewWorkbenchPage() {
                         background: String(selectedSkillId) === String(candidate.skillId) ? `${T.teal}10` : "white",
                       }}
                       disabled={!canReview}
-                      onClick={() => setSelectedSkillId(String(candidate.skillId))}
+                      onClick={() => {
+                        setSelectedSkillId(String(candidate.skillId));
+                      }}
                     >
                       <span className="font-mono text-[11px]" style={{ color: T.info }}>#{candidate.rank}</span>
                       <span className="flex-1 text-[13px] font-medium" style={{ color: T.ink }}>{candidate.skillName}</span>
@@ -345,55 +422,124 @@ function ReviewWorkbenchPage() {
               )}
 
               {action === "SELECT_EXISTING" && (
-                <section className="space-y-2">
-                  <div className="text-[12px] font-medium" style={{ color: T.info }}>全局规范技能搜索</div>
-                  {canReview && (
-                    <div className="flex gap-2">
-                      <input
-                        className="h-9 flex-1 rounded-md px-3 text-[13px] outline-none"
-                        style={{ border: `1px solid ${T.border}`, color: T.ink }}
-                        placeholder="输入技能名称关键词；当前 AI 候选会自动排除"
-                        value={keyword}
-                        onChange={(event) => setKeyword(event.target.value)}
-                        onKeyDown={(event) => { if (event.key === "Enter") void searchSkills(); }}
-                      />
-                      <Btn size="sm" icon={Search} disabled={searching} onClick={() => void searchSkills()}>
-                        {searching ? "搜索中…" : "搜索"}
-                      </Btn>
-                    </div>
-                  )}
+                <section className="space-y-4">
                   {detail.task.reviewStatus === "PASSED" && detail.task.selectedSkillId && (
                     <div className="rounded-md px-3 py-2 font-mono text-[12px]" style={{ background: T.cloud, color: T.ink }}>
                       已选规范技能 ID：{detail.task.selectedSkillId}
                     </div>
                   )}
-                  {searched && (
-                    <div className="max-h-60 overflow-y-auto rounded-md" style={{ border: `1px solid ${T.border}` }}>
-                      {skillResults.length === 0 ? (
-                        <div className="px-3 py-6 text-center text-[12px]" style={{ color: T.info }}>未找到规范技能</div>
-                      ) : skillResults.map((skill) => (
+
+                  <div className="space-y-2">
+                    <div>
+                      <div className="text-[12px] font-medium" style={{ color: T.info }}>相似技能 Top 5</div>
+                      <div className="mt-1 text-[11px]" style={{ color: T.info }}>
+                        仅使用待审技能向量计算最相似的 5 个已向量化规范技能。
+                      </div>
+                    </div>
+                    <div className="overflow-hidden rounded-md" style={{ border: `1px solid ${T.border}` }}>
+                      {loadingSimilarSkills ? (
+                        <div className="flex items-center justify-center gap-2 px-3 py-8 text-[12px]" style={{ color: T.info }}>
+                          <Loader2 size={13} className="animate-spin" />正在计算 Top 5…
+                        </div>
+                      ) : similarSkills.length === 0 ? (
+                        <div className="px-3 py-8 text-center text-[12px]" style={{ color: T.info }}>
+                          待审技能暂无可用向量，无法计算相似技能
+                        </div>
+                      ) : similarSkills.map((skill) => (
                         <button
                           type="button"
-                          key={skill.id}
-                          className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-gray-50"
+                          key={skill.skillId}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 disabled:cursor-not-allowed"
                           style={{
-                            background: selectedSkillId === skill.id ? `${T.teal}10` : "transparent",
+                            background: String(selectedSkillId) === String(skill.skillId) ? `${T.teal}10` : "transparent",
                             borderBottom: `1px solid ${T.cloud}`,
                           }}
-                          onClick={() => setSelectedSkillId(skill.id)}
+                          disabled={!canReview}
+                          onClick={() => setSelectedSkillId(String(skill.skillId))}
                         >
-                          <span className="flex-1 text-[13px]" style={{ color: T.ink }}>{skill.name}</span>
-                          <span className="font-mono text-[11px]" style={{ color: T.info }}>{skill.id}</span>
-                          <span className="rounded px-1.5 py-0.5 text-[10px]" style={{
-                            background: skill.is_embed ? `${T.emerging}12` : `${T.pending}12`,
-                            color: skill.is_embed ? T.emerging : T.pending,
-                          }}>
-                            {skill.is_embed ? "已向量化" : "未向量化"}
+                          <span className="w-6 font-mono text-[11px]" style={{ color: T.info }}>#{skill.rank}</span>
+                          <span className="flex-1 text-[13px] font-medium" style={{ color: T.ink }}>{skill.skillName}</span>
+                          {detail.candidates.some((candidate) => String(candidate.skillId) === String(skill.skillId)) && (
+                            <span className="rounded px-1.5 py-0.5 text-[10px]" style={{ background: `${T.teal}12`, color: T.teal }}>
+                              AI 候选
+                            </span>
+                          )}
+                          <span className="w-14 text-right font-mono text-[11px]" style={{ color: T.info }}>
+                            {(skill.similarity * 100).toFixed(1)}%
                           </span>
                         </button>
                       ))}
                     </div>
-                  )}
+                  </div>
+
+                  <div className="space-y-2 border-t pt-4" style={{ borderColor: T.cloud }}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-[12px] font-medium" style={{ color: T.info }}>全部规范技能</div>
+                        <div className="mt-1 text-[11px]" style={{ color: T.info }}>
+                          普通分页列表按技能名称稳定排序，可直接浏览；搜索仅用于可选筛选。
+                        </div>
+                      </div>
+                      <span className="shrink-0 font-mono text-[11px]" style={{ color: T.info }}>共 {skillTotal} 项</span>
+                    </div>
+                    {canReview && (
+                      <div className="flex gap-2">
+                        <input
+                          className="h-9 flex-1 rounded-md px-3 text-[13px] outline-none"
+                          style={{ border: `1px solid ${T.border}`, color: T.ink }}
+                          placeholder="可选：按技能名称筛选"
+                          value={keyword}
+                          onChange={(event) => setKeyword(event.target.value)}
+                          onKeyDown={(event) => { if (event.key === "Enter") filterSkills(); }}
+                        />
+                        <Btn size="sm" icon={Search} disabled={searching} onClick={filterSkills}>
+                          筛选
+                        </Btn>
+                      </div>
+                    )}
+                    <div className="max-h-72 overflow-y-auto rounded-md" style={{ border: `1px solid ${T.border}` }}>
+                      {searching ? (
+                        <div className="flex items-center justify-center gap-2 px-3 py-8 text-[12px]" style={{ color: T.info }}>
+                          <Loader2 size={13} className="animate-spin" />正在加载规范技能…
+                        </div>
+                      ) : skillResults.length === 0 ? (
+                        <div className="px-3 py-8 text-center text-[12px]" style={{ color: T.info }}>暂无符合条件的规范技能</div>
+                      ) : skillResults.map((skill) => (
+                          <button
+                            type="button"
+                            key={skill.id}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 disabled:cursor-not-allowed"
+                            style={{
+                              background: String(selectedSkillId) === String(skill.id) ? `${T.teal}10` : "transparent",
+                              borderBottom: `1px solid ${T.cloud}`,
+                            }}
+                            disabled={!canReview}
+                            onClick={() => setSelectedSkillId(String(skill.id))}
+                          >
+                            <span className="flex-1 text-[13px]" style={{ color: T.ink }}>{skill.name}</span>
+                            {detail.candidates.some((candidate) => String(candidate.skillId) === String(skill.id)) && (
+                              <span className="rounded px-1.5 py-0.5 text-[10px]" style={{ background: `${T.teal}12`, color: T.teal }}>
+                                AI 候选
+                              </span>
+                            )}
+                            <span className="font-mono text-[10px]" style={{ color: T.info }}>ID {skill.id}</span>
+                            <span className="rounded px-1.5 py-0.5 text-[10px]" style={{
+                              background: skill.is_embed ? `${T.emerging}12` : `${T.pending}12`,
+                              color: skill.is_embed ? T.emerging : T.pending,
+                            }}>
+                              {skill.is_embed ? "已向量化" : "未向量化"}
+                            </span>
+                          </button>
+                        ))}
+                    </div>
+                    {skillTotal > SKILL_PAGE_SIZE && (
+                      <div className="flex items-center justify-center gap-2 pt-1 text-[12px]">
+                        <Btn variant="secondary" size="sm" disabled={skillPage <= 1 || searching} onClick={() => changeSkillPage(skillPage - 1)}>上一页</Btn>
+                        <span style={{ color: T.info }}>{skillPage} / {skillPageCount}</span>
+                        <Btn variant="secondary" size="sm" disabled={skillPage >= skillPageCount || searching} onClick={() => changeSkillPage(skillPage + 1)}>下一页</Btn>
+                      </div>
+                    )}
+                  </div>
                 </section>
               )}
 

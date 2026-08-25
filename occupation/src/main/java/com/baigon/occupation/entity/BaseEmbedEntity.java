@@ -10,7 +10,7 @@ import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
 
-/** 专业与职业共享的记录级向量化元数据。 */
+/** 专业、职业与规范技能共享的记录级向量化元数据。 */
 @MappedSuperclass
 public abstract class BaseEmbedEntity extends BaseEntity {
 

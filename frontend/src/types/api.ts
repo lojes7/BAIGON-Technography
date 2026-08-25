@@ -683,10 +683,11 @@ export interface EmbeddingProgress {
   total: number;
 }
 
-// 专业与职业向量化进度汇总
+// 专业、职业与规范技能向量化进度汇总
 export interface EmbeddingProgressResponse {
   majors: EmbeddingProgress;
   occupations: EmbeddingProgress;
+  skills: EmbeddingProgress;
 }
 
 // 向量化任务状态（gateway 返回 camelCase）

@@ -1,4 +1,4 @@
-// 百工谱 — 专业/职业并行向量化任务状态机测试
+// 百工谱 — 专业/职业/规范技能并行向量化任务状态机测试
 package com.baigon.occupation.service;
 
 import cn.hutool.core.lang.Snowflake;
@@ -33,6 +33,7 @@ class EmbeddingTaskManagerTest {
 
     private EmbeddingDataService majorDataService;
     private EmbeddingDataService occupationDataService;
+    private EmbeddingDataService skillDataService;
     private AIGrpcClient aiClient;
     private LogService logService;
     private ExecutorService executor;
@@ -42,15 +43,17 @@ class EmbeddingTaskManagerTest {
     void setUp() {
         majorDataService = mock(EmbeddingDataService.class);
         occupationDataService = mock(EmbeddingDataService.class);
+        skillDataService = mock(EmbeddingDataService.class);
         when(majorDataService.resource()).thenReturn(Resource.MAJOR);
         when(occupationDataService.resource()).thenReturn(Resource.OCCUPATION);
+        when(skillDataService.resource()).thenReturn(Resource.SKILL);
         aiClient = mock(AIGrpcClient.class);
         logService = mock(LogService.class);
         Snowflake snowflake = mock(Snowflake.class);
-        executor = Executors.newFixedThreadPool(2);
+        executor = Executors.newFixedThreadPool(3);
         when(aiClient.getConfiguredBatchSize()).thenReturn(2);
         manager = new EmbeddingTaskManager(
-                List.of(majorDataService, occupationDataService),
+                List.of(majorDataService, occupationDataService, skillDataService),
                 aiClient,
                 logService,
                 snowflake,
@@ -63,33 +66,41 @@ class EmbeddingTaskManagerTest {
     }
 
     @Test
-    void majorAndOccupationTasksCanRunInParallel() throws Exception {
+    void threeResourceTasksCanRunInParallel() throws Exception {
         when(majorDataService.findCandidates())
                 .thenReturn(List.of(new EmbeddingCandidate(1L, "计算机科学与技术")));
         when(occupationDataService.findCandidates())
                 .thenReturn(List.of(new EmbeddingCandidate(2L, "软件工程师")));
+        when(skillDataService.findCandidates())
+                .thenReturn(List.of(new EmbeddingCandidate(3L, "向量数据库")));
 
         EmbeddingCall majorCall = mock(EmbeddingCall.class);
         EmbeddingCall occupationCall = mock(EmbeddingCall.class);
-        CountDownLatch entered = new CountDownLatch(2);
+        EmbeddingCall skillCall = mock(EmbeddingCall.class);
+        CountDownLatch entered = new CountDownLatch(3);
         CountDownLatch release = new CountDownLatch(1);
         when(majorCall.await()).thenAnswer(ignored -> awaitAndReturn(entered, release));
         when(occupationCall.await()).thenAnswer(ignored -> awaitAndReturn(entered, release));
+        when(skillCall.await()).thenAnswer(ignored -> awaitAndReturn(entered, release));
         when(aiClient.startBatch(anyList(), any(AuditContext.class)))
-                .thenReturn(majorCall, occupationCall);
+                .thenReturn(majorCall, occupationCall, skillCall);
 
         manager.start(Resource.MAJOR, audit(1001L));
         manager.start(Resource.OCCUPATION, audit(1002L));
+        manager.start(Resource.SKILL, audit(1003L));
 
-        assertTrue(entered.await(2, TimeUnit.SECONDS), "两类任务应同时进入 AI 调用");
+        assertTrue(entered.await(2, TimeUnit.SECONDS), "三类任务应同时进入 AI 调用");
         assertEquals("running", manager.getStatus(Resource.MAJOR).status());
         assertEquals("running", manager.getStatus(Resource.OCCUPATION).status());
+        assertEquals("running", manager.getStatus(Resource.SKILL).status());
         release.countDown();
 
         awaitStatus(Resource.MAJOR, "success");
         awaitStatus(Resource.OCCUPATION, "success");
+        awaitStatus(Resource.SKILL, "success");
         verify(majorDataService).markSuccess(anyList(), anyList());
         verify(occupationDataService).markSuccess(anyList(), anyList());
+        verify(skillDataService).markSuccess(anyList(), anyList());
     }
 
     @Test
