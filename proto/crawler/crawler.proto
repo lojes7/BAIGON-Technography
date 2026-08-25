@@ -5,11 +5,16 @@ syntax = "proto3";
 
 package baigon.crawler;
 
+import "common/audit.proto";
+
 option java_package = "com.baigon.crawler";
 option java_multiple_files = true;
 option go_package = "baigon-technography/proto/gen/crawler;crawler";
 
 service CrawlerService {
+  // ADMIN 分页查询 crawler 独立数据库中的审计日志。
+  rpc PagedSearchAuditLogs (baigon.common.PagedSearchAuditLogsRequest) returns (baigon.common.PagedSearchAuditLogsResponse) {}
+
   // 采集数据
   rpc Crawl (CrawlRequest) returns (CrawlResponse) {}
 

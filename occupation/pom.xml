@@ -89,6 +89,7 @@
                     <pluginArtifact>io.grpc:protoc-gen-grpc-java:${grpc.version}:exe:${os.detected.classifier}</pluginArtifact>
                     <protoSourceRoot>${proto.root}</protoSourceRoot>
                     <includes>
+                        <include>common/audit.proto</include>
                         <include>data_source/data_source.proto</include>
                         <include>occupation/occupation.proto</include>
                         <include>user/user.proto</include>

@@ -3,7 +3,7 @@
 import logging
 from datetime import datetime, timezone
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import sessionmaker
 
 from src.entity.log import Log
@@ -62,6 +62,40 @@ class LogRepository:
         with self._session_factory() as session:
             session.add(entity)
             session.commit()
+
+    def paged_search(
+        self,
+        *,
+        page: int,
+        page_size: int,
+        level: str | None,
+        created_at_from: datetime | None,
+        created_at_to: datetime | None,
+        target_user_id: int | None,
+    ) -> tuple[list[Log], int]:
+        """按稳定倒序分页查询 AI 脱敏审计日志。"""
+        filters = [Log.deleted_at.is_(None)]
+        if level is not None:
+            filters.append(Log.level == level)
+        if created_at_from is not None:
+            filters.append(Log.created_at >= created_at_from)
+        if created_at_to is not None:
+            filters.append(Log.created_at <= created_at_to)
+        if target_user_id is not None:
+            filters.append(Log.user_id == target_user_id)
+
+        query = (
+            select(Log)
+            .where(*filters)
+            .order_by(Log.created_at.desc(), Log.id.desc())
+            .offset(page * page_size)
+            .limit(page_size)
+        )
+        count_query = select(func.count()).select_from(Log).where(*filters)
+        with self._session_factory() as session:
+            items = list(session.scalars(query).all())
+            total = int(session.scalar(count_query) or 0)
+        return items, total
 
     def close(self) -> None:
         """释放数据库连接池。"""

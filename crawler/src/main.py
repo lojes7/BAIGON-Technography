@@ -22,6 +22,7 @@ from src.server.health import router as health_router
 from src.repository.job_source import JobSourceRepository
 from src.repository.log import LogRepository
 from src.service.log_service import LogService
+from src.service.audit.log_query_service import AuditLogQueryService
 from src.service.processing_pipeline import RecordProcessingPipeline
 from src.service.Zhi_Lian_crawler import ZhaopinCrawler
 
@@ -84,6 +85,7 @@ def create_grpc_server(
     log_service: LogService,
     pipeline: RecordProcessingPipeline,
     crawler: ZhaopinCrawler,
+    audit_log_query_service: AuditLogQueryService,
 ) -> grpc.Server:
     """创建 gRPC 服务器并注册 CrawlerService。"""
     server = grpc.server(
@@ -103,6 +105,7 @@ def create_grpc_server(
             pipeline=pipeline,
             crawler=crawler,
             max_documents=crawl_config.max_documents_per_task,
+            audit_log_query_service=audit_log_query_service,
         ),
         server,
     )
@@ -130,6 +133,7 @@ async def main():
     db = JobSourceRepository(config.db_url_sync)
     log_repo = LogRepository(config.db_url_sync)
     log_service = LogService(log_repo)
+    audit_log_query_service = AuditLogQueryService(log_repo)
     producer = KafkaProducerClient(
         config.kafka_bootstrap_servers, config.kafka_topic_ingested
     )
@@ -159,6 +163,7 @@ async def main():
         log_service,
         pipeline,
         crawler,
+        audit_log_query_service,
     )
 
     try:

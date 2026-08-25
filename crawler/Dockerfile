@@ -33,9 +33,14 @@ RUN mkdir -p /app/pb_gen \
     && mkdir -p /app/src/pb \
     && cp /app/pb_gen/crawler/crawler_pb2.py /app/pb_gen/crawler/crawler_pb2_grpc.py \
        /app/pb_gen/ai/ai_pb2.py /app/pb_gen/ai/ai_pb2_grpc.py \
+       /app/pb_gen/common/audit_pb2.py \
        /app/pb_gen/common/evidence_pb2.py /app/pb_gen/common/evidence_pb2_grpc.py \
        /app/src/pb/ \
     && sed -i 's/^from common import evidence_pb2 as common_dot_evidence__pb2/from . import evidence_pb2 as common_dot_evidence__pb2/' /app/src/pb/crawler_pb2.py \
+    && sed -i 's/^from common import audit_pb2 as common_dot_audit__pb2/from . import audit_pb2 as common_dot_audit__pb2/' /app/src/pb/crawler_pb2.py \
+    && sed -i 's/^from common import audit_pb2 as common_dot_audit__pb2/from . import audit_pb2 as common_dot_audit__pb2/' /app/src/pb/crawler_pb2_grpc.py \
+    && sed -i 's/^from common import audit_pb2 as common_dot_audit__pb2/from . import audit_pb2 as common_dot_audit__pb2/' /app/src/pb/ai_pb2.py \
+    && sed -i 's/^from common import audit_pb2 as common_dot_audit__pb2/from . import audit_pb2 as common_dot_audit__pb2/' /app/src/pb/ai_pb2_grpc.py \
     && sed -i 's/^from crawler import crawler_pb2 as crawler_dot_crawler__pb2/from . import crawler_pb2 as crawler_dot_crawler__pb2/' /app/src/pb/crawler_pb2_grpc.py \
     && sed -i 's/^from ai import ai_pb2 as ai_dot_ai__pb2/from . import ai_pb2 as ai_dot_ai__pb2/' /app/src/pb/ai_pb2_grpc.py \
     && touch /app/src/pb/__init__.py

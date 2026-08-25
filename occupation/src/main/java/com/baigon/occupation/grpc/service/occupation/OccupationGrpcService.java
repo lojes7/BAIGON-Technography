@@ -1,6 +1,9 @@
 // 百工谱 — OccupationService gRPC 实现
 package com.baigon.occupation.grpc.service.occupation;
 
+import com.baigon.common.AuditLogItem;
+import com.baigon.common.PagedSearchAuditLogsRequest;
+import com.baigon.common.PagedSearchAuditLogsResponse;
 import com.baigon.occupation.CatalogItem;
 import com.baigon.occupation.CatalogListRequest;
 import com.baigon.occupation.CatalogListResponse;
@@ -41,6 +44,7 @@ import com.baigon.occupation.ReviewJobAnalysisTaskRequest;
 import com.baigon.occupation.ReviewJobSkillResolutionTaskRequest;
 import com.baigon.occupation.SkillData;
 import com.baigon.occupation.entity.TaskStatus;
+import com.baigon.occupation.entity.Log;
 import com.baigon.occupation.entity.job.Job;
 import com.baigon.occupation.entity.job.JobSkill;
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisReviewAction;
@@ -50,6 +54,7 @@ import com.baigon.occupation.entity.occupation.Occupation;
 import com.baigon.occupation.entity.skill.JobSkillResolutionTask;
 import com.baigon.occupation.entity.skill.Skill;
 import com.baigon.occupation.entity.skill.SkillResolutionAction;
+import com.baigon.occupation.entity.user.User;
 import com.baigon.occupation.error.ApiException;
 import com.baigon.occupation.service.AuditContext;
 import com.baigon.occupation.service.EmbeddingDataService;
@@ -57,6 +62,7 @@ import com.baigon.occupation.service.EmbeddingTaskManager;
 import com.baigon.occupation.service.EmbeddingTaskManager.Resource;
 import com.baigon.occupation.service.EmbeddingTaskSnapshot;
 import com.baigon.occupation.service.LogService;
+import com.baigon.occupation.service.audit.AuditLogQueryService;
 import com.baigon.occupation.service.jobanalysis.JobAnalysisQueryService;
 import com.baigon.occupation.service.jobanalysis.JobAnalysisReviewService;
 import com.baigon.occupation.service.job.JobQueryService;
@@ -87,6 +93,7 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
     private final SkillResolutionQueryService skillResolutionQueryService;
     private final SkillResolutionReviewService skillResolutionReviewService;
     private final JobQueryService jobQueryService;
+    private final AuditLogQueryService auditLogQueryService;
     private final LogService logService;
 
     public OccupationGrpcService(MajorCatalogService majorCatalogService,
@@ -97,6 +104,7 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                                  SkillResolutionQueryService skillResolutionQueryService,
                                  SkillResolutionReviewService skillResolutionReviewService,
                                  JobQueryService jobQueryService,
+                                 AuditLogQueryService auditLogQueryService,
                                  LogService logService) {
         this.majorCatalogService = majorCatalogService;
         this.occupationCatalogService = occupationCatalogService;
@@ -106,8 +114,45 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
         this.skillResolutionQueryService = skillResolutionQueryService;
         this.skillResolutionReviewService = skillResolutionReviewService;
         this.jobQueryService = jobQueryService;
+        this.auditLogQueryService = auditLogQueryService;
         this.logService = logService;
         logger.info("OccupationGrpcService 初始化完成");
+    }
+
+    @Override
+    public void pagedSearchAuditLogs(PagedSearchAuditLogsRequest request,
+                                     StreamObserver<PagedSearchAuditLogsResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            User.Role requesterRole = enumOrNull(User.Role.class, request.getUserRole(), "user_role");
+            Log.Level level = enumOrNull(Log.Level.class, request.getLevel(), "level");
+            User.Role userType = requesterRole == User.Role.ADMIN
+                    ? enumOrNull(User.Role.class, request.getUserType(), "user_type")
+                    : null;
+            Page<AuditLogQueryService.AuditLogEntry> page = auditLogQueryService.pagedSearch(
+                    request.getUserId(),
+                    requesterRole,
+                    request.getPage(),
+                    request.getPageSize(),
+                    new AuditLogQueryService.SearchCriteria(
+                            level,
+                            timeOrNull(request.getCreatedAtFrom(), "created_at_from"),
+                            timeOrNull(request.getCreatedAtTo(), "created_at_to"),
+                            request.getTargetUserId() == 0 ? null : request.getTargetUserId(),
+                            userType));
+
+            respond(observer, PagedSearchAuditLogsResponse.newBuilder()
+                    .addAllItems(page.getContent().stream().map(this::auditLogItem).toList())
+                    .setTotal(page.getTotalElements())
+                    .setPage(page.getNumber())
+                    .setPageSize(page.getSize())
+                    .build());
+            logService.info(audit, "paged search occupation audit logs: total=" + page.getTotalElements());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "paged search occupation audit logs failed");
+        }
     }
 
     @Override
@@ -816,6 +861,24 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                 .build();
     }
 
+    private AuditLogItem auditLogItem(AuditLogQueryService.AuditLogEntry entry) {
+        Log log = entry.log();
+        return AuditLogItem.newBuilder()
+                .setId(log.getId())
+                .setTraceId(log.getTraceId() == null ? 0 : log.getTraceId())
+                .setUserId(log.getUserId())
+                .setUserName(orEmpty(log.getUserName()))
+                .setUserType(orEmpty(entry.userType()))
+                .setUserIp(orEmpty(log.getUserIp()))
+                .setLevel(log.getLevel() == null ? "" : log.getLevel().name())
+                .setRequestMethod(log.getRequestMethod() == null ? "" : log.getRequestMethod().name())
+                .setRequestUrl(orEmpty(log.getRequestUrl()))
+                .setErrorMsg(orEmpty(log.getErrorMsg()))
+                .setDetail(orEmpty(log.getDetail()))
+                .setCreatedAt(time(log.getCreatedAt()))
+                .build();
+    }
+
     private <T> void respond(StreamObserver<T> observer, T response) {
         observer.onNext(response);
         observer.onCompleted();
@@ -838,6 +901,28 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
 
     private String orEmpty(String value) {
         return value == null ? "" : value;
+    }
+
+    private <E extends Enum<E>> E enumOrNull(Class<E> type, String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Enum.valueOf(type, value.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("invalid " + fieldName);
+        }
+    }
+
+    private OffsetDateTime timeOrNull(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return OffsetDateTime.parse(value.trim());
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("invalid " + fieldName);
+        }
     }
 
     private String time(OffsetDateTime value) {

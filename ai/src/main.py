@@ -16,6 +16,7 @@ from src.repository.log import LogRepository
 from src.server.grpc_server import AIServicer
 from src.server.health import router as health_router
 from src.service.log_service import LogService
+from src.service.audit.log_query_service import AuditLogQueryService
 
 logging.basicConfig(
     level=logging.INFO,
@@ -58,7 +59,10 @@ def deregister_from_consul(consul_client, service_id):
             pass
 
 
-def create_grpc_server(log_service: LogService | None = None) -> grpc.Server:
+def create_grpc_server(
+    log_service: LogService | None = None,
+    audit_log_query_service: AuditLogQueryService | None = None,
+) -> grpc.Server:
     """创建 gRPC 服务；测试可不注入数据库日志服务。"""
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=10),
@@ -68,7 +72,10 @@ def create_grpc_server(log_service: LogService | None = None) -> grpc.Server:
         ],
     )
     ai_pb2_grpc.add_AIServiceServicer_to_server(
-        AIServicer(log_service=log_service),
+        AIServicer(
+            log_service=log_service,
+            audit_log_query_service=audit_log_query_service,
+        ),
         server,
     )
     return server
@@ -87,7 +94,8 @@ async def main():
     consul_client, service_id = register_to_consul()
     log_repository = LogRepository(config.db_url_sync)
     log_service = LogService(log_repository)
-    grpc_server = create_grpc_server(log_service)
+    audit_log_query_service = AuditLogQueryService(log_repository)
+    grpc_server = create_grpc_server(log_service, audit_log_query_service)
 
     try:
         grpc_task = asyncio.create_task(run_grpc_server(grpc_server))

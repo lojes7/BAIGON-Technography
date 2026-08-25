@@ -5,11 +5,16 @@ syntax = "proto3";
 
 package baigon.occupation;
 
+import "common/audit.proto";
+
 option java_package = "com.baigon.occupation";
 option java_multiple_files = true;
 option go_package = "baigon-technography/proto/gen/occupation;occupation";
 
 service OccupationService {
+  // 分页查询 occupation 审计日志；普通用户只允许查询本人，ADMIN 可查询全部用户。
+  rpc PagedSearchAuditLogs (baigon.common.PagedSearchAuditLogsRequest) returns (baigon.common.PagedSearchAuditLogsResponse) {}
+
   // 七级专业/职业目录分页查询。
   rpc ListDisciplineCategories (CatalogListRequest) returns (CatalogListResponse) {}
   rpc ListMajorCategories (ChildCatalogListRequest) returns (CatalogListResponse) {}

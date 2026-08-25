@@ -12,6 +12,5 @@ export { GRAPH_NODES, GRAPH_EDGES, getNodePos } from "./graph";
 export { MOCK_FILE, fileChecks, changeList, miniNodePositions, miniEdges } from "./import-wizard";
 export { cooccurrenceNodes, comboChanges } from "./skill-combos";
 export { matrixData, courseNames } from "./programs";
-export { auditEntries, actionTypeColors } from "./audit";
 export { taxonomyTree, typeColors2, TAX_PARENTS } from "./taxonomy";
 export { default as versionDiff } from "./version-diff";

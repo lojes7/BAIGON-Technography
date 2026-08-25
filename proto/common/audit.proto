@@ -1,0 +1,51 @@
+// 百工谱 — 跨服务审计日志分页查询公共契约
+// 三个服务独立查询、独立分页，不在 Gateway 做跨库归并。
+
+syntax = "proto3";
+
+package baigon.common;
+
+option java_package = "com.baigon.common";
+option java_multiple_files = true;
+option go_package = "baigon-technography/proto/gen/common;common";
+
+message PagedSearchAuditLogsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string level = 3; // INFO / WARNING / ERROR，空字符串表示全部
+  string created_at_from = 4; // RFC3339，空字符串表示不限制
+  string created_at_to = 5; // RFC3339，空字符串表示不限制
+  int64 target_user_id = 6; // 0 表示不按具体用户筛选
+  string user_type = 7; // occupation 使用；其他服务忽略
+
+  // Gateway 鉴权后透传的请求者上下文；后端据此做纵深权限校验并写业务日志。
+  string trace_id = 20;
+  int64 user_id = 21;
+  string user_name = 22;
+  string user_role = 23;
+  string user_ip = 24;
+  string request_method = 25;
+  string request_url = 26;
+}
+
+message AuditLogItem {
+  int64 id = 1;
+  int64 trace_id = 2;
+  int64 user_id = 3;
+  string user_name = 4;
+  string user_type = 5; // occupation 通过 users.role 关联得到；其他服务为空
+  string user_ip = 6;
+  string level = 7;
+  string request_method = 8;
+  string request_url = 9;
+  string error_msg = 10;
+  string detail = 11;
+  string created_at = 12; // RFC3339
+}
+
+message PagedSearchAuditLogsResponse {
+  repeated AuditLogItem items = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}

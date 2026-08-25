@@ -11,9 +11,10 @@ import grpc
 from src.config.ai import ai_config
 from src.config.pipeline import pipeline_config
 from src.kafka.producer import KafkaProducerClient
-from src.pb import crawler_pb2, crawler_pb2_grpc
+from src.pb import audit_pb2, crawler_pb2, crawler_pb2_grpc
 from src.repository.job_source import JobSourceRepository
 from src.service.log_service import LogService
+from src.service.audit.log_query_service import AuditLogQueryService
 from src.service.processing_pipeline import (
     BatchProcessingResult,
     BatchSubmissionCancelled,
@@ -36,6 +37,7 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
         pipeline: RecordProcessingPipeline,
         crawler: ZhaopinCrawler,
         max_documents: int,
+        audit_log_query_service: AuditLogQueryService | None = None,
     ):
         self._db = db
         self._producer = producer
@@ -43,6 +45,7 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
         self._pipeline = pipeline
         self._max_documents = max_documents
         self._crawler = crawler
+        self._audit_log_query_service = audit_log_query_service
         # 采集互斥锁：同一时间只允许一个采集任务
         self._lock = threading.Lock()
         # 停止信号（StopCrawl 设置，后台线程检查）
@@ -54,6 +57,67 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
             "status": "idle", "count": "0", "message": "",
             "current_category": "", "progress": 0, "total_cleaned": 0,
         }
+
+    def PagedSearchAuditLogs(self, request, context):
+        """ADMIN 分页查询 crawler 独立数据库中的日志。"""
+        log_ctx = {
+            # gRPC 审计协议使用字符串承载雪花 ID，入库前恢复为整数。
+            "trace_id": int(request.trace_id) if request.trace_id and request.trace_id.isdigit() else None,
+            "user_id": request.user_id,
+            "user_name": request.user_name or "system",
+            "user_ip": request.user_ip,
+            "request_method": request.request_method,
+            "request_url": request.request_url,
+        }
+        if self._audit_log_query_service is None:
+            self._log.error(error_msg="query service unavailable", detail="paged search audit logs failed", **log_ctx)
+            context.abort(grpc.StatusCode.UNAVAILABLE, "audit log query unavailable")
+
+        try:
+            page = self._audit_log_query_service.paged_search(
+                requester_role=request.user_role,
+                page=request.page,
+                page_size=request.page_size,
+                level=request.level,
+                created_at_from=request.created_at_from,
+                created_at_to=request.created_at_to,
+                target_user_id=request.target_user_id,
+            )
+            response = audit_pb2.PagedSearchAuditLogsResponse(
+                items=[self._audit_log_item(item) for item in page.items],
+                total=page.total,
+                page=page.page,
+                page_size=page.page_size,
+            )
+            self._log.info(detail=f"paged search crawler audit logs: total={page.total}", **log_ctx)
+            return response
+        except PermissionError:
+            self._log.warning(error_msg="permission denied", detail="paged search audit logs denied", **log_ctx)
+            context.abort(grpc.StatusCode.PERMISSION_DENIED, "ADMIN role required")
+        except ValueError as exception:
+            self._log.warning(error_msg=str(exception)[:2000], detail="paged search audit logs invalid", **log_ctx)
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exception))
+        except Exception as exception:
+            logger.exception("分页查询 crawler 审计日志失败")
+            self._log.error(error_msg=type(exception).__name__, detail="paged search audit logs failed", **log_ctx)
+            context.abort(grpc.StatusCode.INTERNAL, "server error")
+
+    @staticmethod
+    def _audit_log_item(item):
+        return audit_pb2.AuditLogItem(
+            id=item.id,
+            trace_id=item.trace_id or 0,
+            user_id=item.user_id,
+            user_name=item.user_name or "",
+            user_type="",
+            user_ip=item.user_ip or "",
+            level=item.level or "",
+            request_method=item.request_method or "",
+            request_url=item.request_url or "",
+            error_msg=item.error_msg or "",
+            detail=item.detail or "",
+            created_at=item.created_at.isoformat() if item.created_at else "",
+        )
 
     # ============================================================
     # 采集

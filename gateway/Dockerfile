@@ -26,6 +26,7 @@ COPY proto/common/ /app/proto/common/
 COPY proto/user/ /app/proto/user/
 COPY proto/crawler/ /app/proto/crawler/
 COPY proto/data_source/ /app/proto/data_source/
+COPY proto/ai/ /app/proto/ai/
 COPY proto/occupation/ /app/proto/occupation/
 COPY gateway/ ./
 RUN mkdir -p /app/gateway/pb \
@@ -34,24 +35,29 @@ RUN mkdir -p /app/gateway/pb \
     --go_out=/app/gateway/pb --go_opt=paths=source_relative \
     --go-grpc_out=/app/gateway/pb --go-grpc_opt=paths=source_relative \
     --go_opt=Muser/user.proto=baigon-technography/gateway/pb/userpb \
+    --go_opt=Mcommon/audit.proto=baigon-technography/gateway/pb/commonpb \
     --go_opt=Mcommon/evidence.proto=baigon-technography/gateway/pb/commonpb \
+    --go_opt=Mai/ai.proto=baigon-technography/gateway/pb/aipb \
     --go_opt=Mcrawler/crawler.proto=baigon-technography/gateway/pb/crawlerpb \
     --go_opt=Mdata_source/data_source.proto=baigon-technography/gateway/pb/datasourcepb \
     --go_opt=Moccupation/occupation.proto=baigon-technography/gateway/pb/occupationpb \
     --go-grpc_opt=Muser/user.proto=baigon-technography/gateway/pb/userpb \
+    --go-grpc_opt=Mcommon/audit.proto=baigon-technography/gateway/pb/commonpb \
     --go-grpc_opt=Mcommon/evidence.proto=baigon-technography/gateway/pb/commonpb \
+    --go-grpc_opt=Mai/ai.proto=baigon-technography/gateway/pb/aipb \
     --go-grpc_opt=Mcrawler/crawler.proto=baigon-technography/gateway/pb/crawlerpb \
     --go-grpc_opt=Mdata_source/data_source.proto=baigon-technography/gateway/pb/datasourcepb \
     --go-grpc_opt=Moccupation/occupation.proto=baigon-technography/gateway/pb/occupationpb \
     /app/proto/common/*.proto /app/proto/user/*.proto \
-    /app/proto/crawler/*.proto /app/proto/data_source/*.proto /app/proto/occupation/*.proto \
+    /app/proto/crawler/*.proto /app/proto/data_source/*.proto /app/proto/ai/*.proto /app/proto/occupation/*.proto \
     # source_relative 输出到 pb/user 等子目录，mv 对齐包名目录。
     # 注意：必须先 rm 旧目标再 mv——目标已存在时 mv 会嵌套成 userpb/user/，导致 go build 找不到包
-    && rm -rf /app/gateway/pb/userpb /app/gateway/pb/commonpb /app/gateway/pb/crawlerpb /app/gateway/pb/datasourcepb /app/gateway/pb/occupationpb \
+    && rm -rf /app/gateway/pb/userpb /app/gateway/pb/commonpb /app/gateway/pb/crawlerpb /app/gateway/pb/datasourcepb /app/gateway/pb/aipb /app/gateway/pb/occupationpb \
     && mv /app/gateway/pb/user /app/gateway/pb/userpb \
     && mv /app/gateway/pb/common /app/gateway/pb/commonpb \
     && mv /app/gateway/pb/crawler /app/gateway/pb/crawlerpb \
     && mv /app/gateway/pb/data_source /app/gateway/pb/datasourcepb \
+    && mv /app/gateway/pb/ai /app/gateway/pb/aipb \
     && mv /app/gateway/pb/occupation /app/gateway/pb/occupationpb
 
 # 生成 Swagger 文档（main.go blank import 了 docs 包，必须在 go build 前生成）

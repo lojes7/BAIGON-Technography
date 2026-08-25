@@ -50,11 +50,16 @@ python-crawler: $(GEN_DIR)
 	# grpc_tools.protoc 按 proto 目录结构输出（common/、crawler/ 子目录），cp 各文件到目标
 	@cp $(GEN_DIR)/python-crawler/crawler/crawler_pb2.py $(GEN_DIR)/python-crawler/crawler/crawler_pb2_grpc.py \
 		$(GEN_DIR)/python-crawler/ai/ai_pb2.py $(GEN_DIR)/python-crawler/ai/ai_pb2_grpc.py \
+		$(GEN_DIR)/python-crawler/common/audit_pb2.py \
 		$(GEN_DIR)/python-crawler/common/evidence_pb2.py $(GEN_DIR)/python-crawler/common/evidence_pb2_grpc.py \
 		../crawler/src/pb/
 	# 相对导入修复（生成代码是 from common import evidence_pb2 as xxx 形式，改为包内相对导入）
 	@cd ../crawler/src/pb && \
 		sed -i '' 's/^from common import evidence_pb2 as common_dot_evidence__pb2/from . import evidence_pb2 as common_dot_evidence__pb2/' crawler_pb2.py && \
+		sed -i '' 's/^from common import audit_pb2 as common_dot_audit__pb2/from . import audit_pb2 as common_dot_audit__pb2/' crawler_pb2.py && \
+		sed -i '' 's/^from common import audit_pb2 as common_dot_audit__pb2/from . import audit_pb2 as common_dot_audit__pb2/' crawler_pb2_grpc.py && \
+		sed -i '' 's/^from common import audit_pb2 as common_dot_audit__pb2/from . import audit_pb2 as common_dot_audit__pb2/' ai_pb2.py && \
+		sed -i '' 's/^from common import audit_pb2 as common_dot_audit__pb2/from . import audit_pb2 as common_dot_audit__pb2/' ai_pb2_grpc.py && \
 		sed -i '' 's/^from crawler import crawler_pb2 as crawler_dot_crawler__pb2/from . import crawler_pb2 as crawler_dot_crawler__pb2/' crawler_pb2_grpc.py && \
 		sed -i '' 's/^from ai import ai_pb2 as ai_dot_ai__pb2/from . import ai_pb2 as ai_dot_ai__pb2/' ai_pb2_grpc.py
 	@touch ../crawler/src/pb/__init__.py
@@ -69,9 +74,13 @@ python-ai: $(GEN_DIR)
 		-I $(PROTO_DIR) \
 		--python_out=$(GEN_DIR)/python-ai \
 		--grpc_python_out=$(GEN_DIR)/python-ai \
+		$(PROTO_DIR)/common/audit.proto \
 		$(PROTO_DIR)/ai/ai.proto
-	@cp $(GEN_DIR)/python-ai/ai/ai_pb2.py $(GEN_DIR)/python-ai/ai/ai_pb2_grpc.py ../ai/src/pb/
+	@cp $(GEN_DIR)/python-ai/ai/ai_pb2.py $(GEN_DIR)/python-ai/ai/ai_pb2_grpc.py \
+		$(GEN_DIR)/python-ai/common/audit_pb2.py ../ai/src/pb/
 	@cd ../ai/src/pb && \
+		sed -i '' 's/^from common import audit_pb2 as common_dot_audit__pb2/from . import audit_pb2 as common_dot_audit__pb2/' ai_pb2.py && \
+		sed -i '' 's/^from common import audit_pb2 as common_dot_audit__pb2/from . import audit_pb2 as common_dot_audit__pb2/' ai_pb2_grpc.py && \
 		sed -i '' 's/^from ai import ai_pb2 as ai_dot_ai__pb2/from . import ai_pb2 as ai_dot_ai__pb2/' ai_pb2_grpc.py
 	@touch ../ai/src/pb/__init__.py
 	@echo "ai python stub 已生成到 ai/src/pb"
@@ -105,12 +114,16 @@ go:
 		--go-grpc_out=$(GO_PB_DIR) \
 		--go-grpc_opt=paths=source_relative \
 		--go_opt=Muser/user.proto=baigon-technography/gateway/pb/userpb \
+		--go_opt=Mcommon/audit.proto=baigon-technography/gateway/pb/commonpb \
 		--go_opt=Mcommon/evidence.proto=baigon-technography/gateway/pb/commonpb \
+		--go_opt=Mai/ai.proto=baigon-technography/gateway/pb/aipb \
 		--go_opt=Mcrawler/crawler.proto=baigon-technography/gateway/pb/crawlerpb \
 		--go_opt=Mdata_source/data_source.proto=baigon-technography/gateway/pb/datasourcepb \
 		--go_opt=Moccupation/occupation.proto=baigon-technography/gateway/pb/occupationpb \
 		--go-grpc_opt=Muser/user.proto=baigon-technography/gateway/pb/userpb \
+		--go-grpc_opt=Mcommon/audit.proto=baigon-technography/gateway/pb/commonpb \
 		--go-grpc_opt=Mcommon/evidence.proto=baigon-technography/gateway/pb/commonpb \
+		--go-grpc_opt=Mai/ai.proto=baigon-technography/gateway/pb/aipb \
 		--go-grpc_opt=Mcrawler/crawler.proto=baigon-technography/gateway/pb/crawlerpb \
 		--go-grpc_opt=Mdata_source/data_source.proto=baigon-technography/gateway/pb/datasourcepb \
 		--go-grpc_opt=Moccupation/occupation.proto=baigon-technography/gateway/pb/occupationpb \
@@ -118,14 +131,16 @@ go:
 		$(PROTO_DIR)/user/*.proto \
 		$(PROTO_DIR)/crawler/*.proto \
 		$(PROTO_DIR)/data_source/*.proto \
+		$(PROTO_DIR)/ai/*.proto \
 		$(PROTO_DIR)/occupation/*.proto
 	# source_relative 按 proto 目录输出，mv 到包名目录
 	# 注意：目标已存在时 mv 会嵌套目录，必须先清理旧目录
-	@rm -rf $(GO_PB_DIR)/userpb $(GO_PB_DIR)/commonpb $(GO_PB_DIR)/crawlerpb $(GO_PB_DIR)/datasourcepb $(GO_PB_DIR)/occupationpb
+	@rm -rf $(GO_PB_DIR)/userpb $(GO_PB_DIR)/commonpb $(GO_PB_DIR)/crawlerpb $(GO_PB_DIR)/datasourcepb $(GO_PB_DIR)/aipb $(GO_PB_DIR)/occupationpb
 	@mv -f $(GO_PB_DIR)/user $(GO_PB_DIR)/userpb 2>/dev/null || true
 	@mv -f $(GO_PB_DIR)/common $(GO_PB_DIR)/commonpb 2>/dev/null || true
 	@mv -f $(GO_PB_DIR)/crawler $(GO_PB_DIR)/crawlerpb 2>/dev/null || true
 	@mv -f $(GO_PB_DIR)/data_source $(GO_PB_DIR)/datasourcepb 2>/dev/null || true
+	@mv -f $(GO_PB_DIR)/ai $(GO_PB_DIR)/aipb 2>/dev/null || true
 	@mv -f $(GO_PB_DIR)/occupation $(GO_PB_DIR)/occupationpb 2>/dev/null || true
 
 # ==================== 清理 ====================

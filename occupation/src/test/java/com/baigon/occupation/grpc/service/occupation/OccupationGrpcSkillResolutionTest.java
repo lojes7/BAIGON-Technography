@@ -15,6 +15,7 @@ import com.baigon.occupation.entity.skill.SkillResolutionAction;
 import com.baigon.occupation.entity.skill.SkillResolutionTaskStatus;
 import com.baigon.occupation.service.EmbeddingTaskManager;
 import com.baigon.occupation.service.LogService;
+import com.baigon.occupation.service.audit.AuditLogQueryService;
 import com.baigon.occupation.service.job.JobQueryService;
 import com.baigon.occupation.service.jobanalysis.JobAnalysisQueryService;
 import com.baigon.occupation.service.jobanalysis.JobAnalysisReviewService;
@@ -60,6 +61,7 @@ class OccupationGrpcSkillResolutionTest {
                 queryService,
                 reviewService,
                 mock(JobQueryService.class),
+                mock(AuditLogQueryService.class),
                 mock(LogService.class));
     }
 

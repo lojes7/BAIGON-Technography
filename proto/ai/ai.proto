@@ -5,6 +5,8 @@ syntax = "proto3";
 
 package baigon.ai;
 
+import "common/audit.proto";
+
 option java_package = "com.baigon.ai";
 option java_multiple_files = true;
 option go_package = "baigon-technography/proto/gen/ai;aipb";
@@ -12,6 +14,9 @@ option go_package = "baigon-technography/proto/gen/ai;aipb";
 // ==================== 服务定义 ====================
 
 service AIService {
+  // ADMIN 分页查询 AI 独立数据库中的脱敏审计日志。
+  rpc PagedSearchAuditLogs(baigon.common.PagedSearchAuditLogsRequest) returns (baigon.common.PagedSearchAuditLogsResponse) {}
+
   // 使用星火模型分析单条 JD，返回经过严格校验的技能对象列表。
   rpc AnalyzeJobDescription(AnalyzeJobDescriptionRequest) returns (AnalyzeJobDescriptionResponse) {}
 

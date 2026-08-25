@@ -11,6 +11,7 @@ RUN APT_MIRROR="${APT_MIRROR}" sh /usr/local/bin/configure-apt-mirror \
 COPY ai/requirements.txt requirements.txt
 # 网络较慢时，默认 15 秒读取超时会中断大体积 arm64 wheel 下载。
 RUN pip install -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple --timeout 180 -r requirements.txt
+COPY proto/common/ /app/proto/common/
 COPY proto/ai/ /app/proto/ai/
 COPY ai/src/ ./src/
 # 在镜像内生成 AI gRPC stub，部署不依赖本地生成物。
@@ -19,8 +20,11 @@ RUN mkdir -p /app/pb_gen /app/src/pb \
        -I /app/proto \
        --python_out=/app/pb_gen \
        --grpc_python_out=/app/pb_gen \
-       /app/proto/ai/ai.proto \
-    && cp /app/pb_gen/ai/ai_pb2.py /app/pb_gen/ai/ai_pb2_grpc.py /app/src/pb/ \
+       /app/proto/common/audit.proto /app/proto/ai/ai.proto \
+    && cp /app/pb_gen/ai/ai_pb2.py /app/pb_gen/ai/ai_pb2_grpc.py \
+       /app/pb_gen/common/audit_pb2.py /app/src/pb/ \
+    && sed -i 's/^from common import audit_pb2 as common_dot_audit__pb2/from . import audit_pb2 as common_dot_audit__pb2/' /app/src/pb/ai_pb2.py \
+    && sed -i 's/^from common import audit_pb2 as common_dot_audit__pb2/from . import audit_pb2 as common_dot_audit__pb2/' /app/src/pb/ai_pb2_grpc.py \
     && sed -i 's/^from ai import ai_pb2 as ai_dot_ai__pb2/from . import ai_pb2 as ai_dot_ai__pb2/' /app/src/pb/ai_pb2_grpc.py \
     && touch /app/src/pb/__init__.py
 EXPOSE 50053 8000

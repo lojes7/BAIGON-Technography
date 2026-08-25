@@ -9,7 +9,8 @@ from openai import OpenAIError
 
 from src.config import model_config
 from src.llm.exceptions import ModelConfigurationError, ModelResponseError
-from src.pb import ai_pb2, ai_pb2_grpc
+from src.pb import ai_pb2, ai_pb2_grpc, audit_pb2
+from src.service.audit.log_query_service import AuditLogQueryService
 from src.service.job_analysis import MAX_JD_LENGTH
 from src.service.job_match import JobMatchProfile, ResumeMatchProfile
 from src.service.log_service import LogService
@@ -33,11 +34,64 @@ class AIServicer(ai_pb2_grpc.AIServiceServicer):
         self,
         model_service: AIModelService | Any | None = None,
         log_service: LogService | Any | None = None,
+        audit_log_query_service: AuditLogQueryService | Any | None = None,
     ):
         # 支持注入,在不调用外部模型的情况下测试 Handler。
         self.model_service = model_service or AIModelService()
         # 单元测试使用内存 fake；未注入时保持既有纯模型测试无需数据库。
         self.log_service = log_service
+        self.audit_log_query_service = audit_log_query_service
+
+    def PagedSearchAuditLogs(self, request, context):
+        """ADMIN 分页查询 AI 独立数据库中的脱敏审计日志。"""
+        if self.audit_log_query_service is None:
+            self._audit_failure(request, "PagedSearchAuditLogs", "QUERY_SERVICE_UNAVAILABLE")
+            context.abort(grpc.StatusCode.UNAVAILABLE, "audit log query unavailable")
+        try:
+            page = self.audit_log_query_service.paged_search(
+                requester_role=request.user_role,
+                page=request.page,
+                page_size=request.page_size,
+                level=request.level,
+                created_at_from=request.created_at_from,
+                created_at_to=request.created_at_to,
+                target_user_id=request.target_user_id,
+            )
+            response = audit_pb2.PagedSearchAuditLogsResponse(
+                items=[self._audit_log_item(item) for item in page.items],
+                total=page.total,
+                page=page.page,
+                page_size=page.page_size,
+            )
+            self._audit_success(request, "PagedSearchAuditLogs")
+            return response
+        except PermissionError:
+            self._audit_failure(request, "PagedSearchAuditLogs", "PERMISSION_DENIED")
+            context.abort(grpc.StatusCode.PERMISSION_DENIED, "ADMIN role required")
+        except ValueError as exception:
+            self._audit_failure(request, "PagedSearchAuditLogs", "INVALID_ARGUMENT")
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exception))
+        except Exception:
+            logger.exception("分页查询 AI 审计日志失败")
+            self._audit_failure(request, "PagedSearchAuditLogs", "INTERNAL_ERROR")
+            context.abort(grpc.StatusCode.INTERNAL, "server error")
+
+    @staticmethod
+    def _audit_log_item(item: Any):
+        return audit_pb2.AuditLogItem(
+            id=item.id,
+            trace_id=item.trace_id or 0,
+            user_id=item.user_id,
+            user_name=item.user_name or "",
+            user_type="",
+            user_ip=item.user_ip or "",
+            level=item.level or "",
+            request_method=item.request_method or "",
+            request_url=item.request_url or "",
+            error_msg=item.error_msg or "",
+            detail=item.detail or "",
+            created_at=item.created_at.isoformat() if item.created_at else "",
+        )
 
     def AnalyzeJobDescription(self, request, context):
         """调用星火分析 JD；请求只接收 jd 一个业务参数。"""

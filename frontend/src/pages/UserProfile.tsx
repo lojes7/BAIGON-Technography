@@ -5,10 +5,10 @@ import { ChevronLeft, Pencil, X } from "lucide-react";
 import T from "../constants/tokens";
 import { useAuth } from "../auth/AuthContext";
 import { PAGE_PERMISSIONS, ROLES, type RoleKey } from "../auth/roles";
-import { auditEntries, actionTypeColors } from "../data";
 import { Btn, Card, StatusBadge } from "../components/ui";
+import { pagedSearchAuditLogs } from "../services/audit";
 import { getMe } from "../services/user";
-import type { CurrentUser } from "../types/api";
+import type { AuditLogItem, CurrentUser } from "../types/api";
 
 // ── 各角色的 Mock 详细资料 ──
 const PROFILE: Record<RoleKey, {
@@ -149,17 +149,27 @@ function UserProfilePage() {
   const [editOpen, setEditOpen] = useState(false);
   const [bio, setBio] = useState("");
   const [me, setMe] = useState<CurrentUser | null>(null);
+  const [recentLogs, setRecentLogs] = useState<AuditLogItem[]>([]);
 
   // 接入 GET /api/auth/me，获取真实的校园归属（大学/学院/系部）
   useEffect(() => {
     getMe().then((res) => setMe(res.data)).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (!user?.id) return;
+    pagedSearchAuditLogs("occupation", {
+      page: 0,
+      pageSize: 8,
+      // ADMIN 查看个人页时只取自己的 occupation 操作，普通用户由后端强制限定为本人。
+      targetUserId: user.role === "admin" ? user.id : undefined,
+    }).then((response) => setRecentLogs(response.data.items)).catch(() => setRecentLogs([]));
+  }, [user?.id, user?.role]);
+
   const role = user?.role ?? "admin";
   const name = me?.name || user?.name || "未知用户";
   const roleLabel = ROLES.find(r => r.key === role)?.labelKey ?? "未知角色";
   const profile = PROFILE[role] ?? PROFILE.admin;
-  const myEntries = auditEntries.filter(e => e.user === name);
 
   // 组织归属：优先真实数据（me），缺省回退 mock
   const institution = me?.university_name || profile.institution;
@@ -218,26 +228,26 @@ function UserProfilePage() {
         {/* 左：最近操作记录 */}
         <Card title="最近操作记录">
           <div className="divide-y" style={{ borderColor: T.cloud, maxHeight: 360, overflowY: "auto" }}>
-            {myEntries.length > 0 ? myEntries.map((e, i) => {
-              const col = actionTypeColors[e.type] ?? T.info;
+            {recentLogs.length > 0 ? recentLogs.map((entry) => {
+              const col = entry.level === "ERROR" ? T.risk : entry.level === "WARNING" ? T.pending : T.stable;
               return (
-                <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+                <div key={entry.id} className="flex items-center gap-3 px-4 py-2.5">
                   <span className="text-[11px] font-mono px-1.5 py-0.5 rounded flex-shrink-0"
-                    style={{ color: col, background: `${col}18` }}>{e.type}</span>
-                  <span className="flex-1 text-[13px]" style={{ color: T.ink }}>{e.action}</span>
-                  <span className="text-[11px] max-w-[140px] truncate" style={{ color: T.info }}>{e.entity}</span>
-                  <span className="font-mono text-[11px] flex-shrink-0" style={{ color: T.info }}>{e.time.slice(11)}</span>
+                    style={{ color: col, background: `${col}18` }}>{entry.level}</span>
+                  <span className="flex-1 text-[13px] truncate" style={{ color: T.ink }}>{entry.detail || entry.requestUrl || "操作记录"}</span>
+                  <span className="text-[11px] max-w-[180px] truncate font-mono" style={{ color: T.info }}>{entry.requestUrl || "—"}</span>
+                  <span className="font-mono text-[11px] flex-shrink-0" style={{ color: T.info }}>
+                    {entry.createdAt ? new Date(entry.createdAt).toLocaleTimeString("zh-CN", { hour12: false }) : "—"}
+                  </span>
                 </div>
               );
             }) : (
               <div className="px-4 py-12 text-center text-[13px]" style={{ color: T.info }}>暂无操作记录</div>
             )}
           </div>
-          {role === "admin" && (
-            <div className="px-4 py-2" style={{ borderTop: `1px solid ${T.cloud}` }}>
-              <button className="text-[12px]" style={{ color: T.teal }} onClick={() => navigate("/audit-log")}>查看完整审计日志 →</button>
-            </div>
-          )}
+          <div className="px-4 py-2" style={{ borderTop: `1px solid ${T.cloud}` }}>
+            <button className="text-[12px]" style={{ color: T.teal }} onClick={() => navigate("/audit-log")}>查看完整审计日志 →</button>
+          </div>
         </Card>
 
         {/* 右：权限 + 账户 堆叠 */}

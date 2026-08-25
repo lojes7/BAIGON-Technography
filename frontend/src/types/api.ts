@@ -1157,3 +1157,34 @@ export interface JobMatchResult {
   actionSuggestions: string[]; // 行动建议
   createdAt: string;
 }
+
+// ── 审计日志（按服务独立分页）──
+
+export type AuditLogSource = "occupation" | "crawler" | "ai";
+export type AuditLogLevel = "" | "INFO" | "WARNING" | "ERROR";
+
+export interface AuditLogItem {
+  id: string;
+  traceId: string;
+  userId: string;
+  userName: string;
+  userType: string;
+  userIp: string;
+  level: Exclude<AuditLogLevel, "">;
+  requestMethod: string;
+  requestUrl: string;
+  errorMsg: string;
+  detail: string;
+  createdAt: string;
+  sourceService: AuditLogSource;
+}
+
+export interface PagedSearchAuditLogsParams {
+  page?: number;
+  pageSize?: number;
+  level?: AuditLogLevel;
+  createdAtFrom?: string;
+  createdAtTo?: string;
+  targetUserId?: string;
+  userType?: string;
+}
