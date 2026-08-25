@@ -4,7 +4,7 @@ import unittest
 from datetime import datetime, timezone
 
 from src.kafka.producer import _record_to_dict
-from src.service.Zhi_Lian_crawler import JobRecord
+from src.service.Zhi_Lian_crawler import JobRecord, _parse_publish_date
 
 
 class KafkaPayloadTest(unittest.TestCase):
@@ -37,11 +37,17 @@ class KafkaPayloadTest(unittest.TestCase):
 
         self.assertEqual(payload["job_number"], "1001")
 
-    def test_naive_publish_date_is_serialized_with_china_timezone(self):
-        """无时区的智联发布时间必须补 +08:00，避免消费端解析成 NULL。"""
+    def test_naive_publish_date_is_serialized_as_utc_without_time_shift(self):
+        """无时区时间补 UTC，但不得改变源数据的墙上时间。"""
         payload = _record_to_dict(self._record(datetime(2026, 8, 25, 12, 0, 0)))
 
-        self.assertEqual(payload["publish_date"], "2026-08-25T12:00:00+08:00")
+        self.assertEqual(payload["publish_date"], "2026-08-25T12:00:00+00:00")
+
+    def test_publish_date_parser_returns_utc_aware_value(self):
+        """入口解析即明确 UTC，源表与 Kafka 不再依赖数据库会话时区。"""
+        parsed = _parse_publish_date("2026-08-25 12:00:00")
+
+        self.assertEqual(parsed, datetime(2026, 8, 25, 12, 0, 0, tzinfo=timezone.utc))
 
     def test_aware_publish_date_keeps_original_timezone(self):
         """已带时区的时间不应被重新解释。"""

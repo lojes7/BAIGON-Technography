@@ -32,7 +32,7 @@ class CrawlerEventConsumerTest {
                     "user_ip": null,
                     "documents": [{
                       "trace_id": 1001,
-                      "publish_date": "2026-08-25T12:00:00+08:00",
+                      "publish_date": "2026-08-25T12:00:00+00:00",
                       "source_platform": "智联招聘",
                       "job_name": "后端工程师"
                     }]
@@ -47,6 +47,6 @@ class CrawlerEventConsumerTest {
                 jobCaptor.capture(), anyLong(), anyLong(), anyString(), isNull());
         OffsetDateTime publishDate = jobCaptor.getValue().getPublishDate();
         assertNotNull(publishDate);
-        assertEquals(OffsetDateTime.parse("2026-08-25T12:00:00+08:00"), publishDate);
+        assertEquals(OffsetDateTime.parse("2026-08-25T12:00:00+00:00"), publishDate);
     }
 }
