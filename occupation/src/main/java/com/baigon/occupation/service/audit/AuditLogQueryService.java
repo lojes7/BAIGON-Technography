@@ -33,7 +33,7 @@ public class AuditLogQueryService {
         this.userRepository = userRepository;
     }
 
-    /** 普通用户的目标用户条件永远覆盖为本人，客户端无法越权扩大查询范围。 */
+    /** 审计日志属于系统管理数据，仅 ADMIN 可以查询。 */
     public Page<AuditLogEntry> pagedSearch(long requesterUserId,
                                             User.Role requesterRole,
                                             int page,
@@ -42,16 +42,15 @@ public class AuditLogQueryService {
         if (requesterUserId <= 0 || requesterRole == null) {
             throw new ApiException(ApiException.ErrorCode.UNAUTHORIZED, "invalid requester");
         }
+        if (requesterRole != User.Role.ADMIN) {
+            throw new ApiException(ApiException.ErrorCode.FORBIDDEN, "ADMIN role required");
+        }
         if (page < 0) {
             throw new IllegalArgumentException("page must be >= 0");
         }
 
         SearchCriteria filter = criteria == null ? SearchCriteria.empty() : criteria;
-        // 两个分支都显式保持 Long，避免 ADMIN 未指定用户时把 null 自动拆箱为 long。
-        Long targetUserId = requesterRole == User.Role.ADMIN
-                ? positiveOrNull(filter.targetUserId())
-                : Long.valueOf(requesterUserId);
-        User.Role userType = requesterRole == User.Role.ADMIN ? filter.userType() : null;
+        Long targetUserId = positiveOrNull(filter.targetUserId());
         if (filter.createdAtFrom() != null && filter.createdAtTo() != null
                 && filter.createdAtFrom().isAfter(filter.createdAtTo())) {
             throw new IllegalArgumentException("created_at_from must not be after created_at_to");
@@ -63,7 +62,7 @@ public class AuditLogQueryService {
                 Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
         Page<Log> logs = logRepository.pagedSearch(
                 targetUserId,
-                userType,
+                filter.userType(),
                 filter.level(),
                 filter.createdAtFrom(),
                 filter.createdAtTo(),

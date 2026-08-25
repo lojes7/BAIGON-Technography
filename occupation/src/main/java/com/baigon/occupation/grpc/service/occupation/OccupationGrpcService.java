@@ -127,10 +127,15 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                 request.getRequestMethod(), request.getRequestUrl());
         try {
             User.Role requesterRole = enumOrNull(User.Role.class, request.getUserRole(), "user_role");
+            if (request.getUserId() <= 0 || requesterRole == null) {
+                throw new ApiException(ApiException.ErrorCode.UNAUTHORIZED, "invalid requester");
+            }
+            if (requesterRole != User.Role.ADMIN) {
+                // gRPC 入口先拒绝非管理员，业务层仍保留相同校验作为纵深防御。
+                throw new ApiException(ApiException.ErrorCode.FORBIDDEN, "ADMIN role required");
+            }
             Log.Level level = enumOrNull(Log.Level.class, request.getLevel(), "level");
-            User.Role userType = requesterRole == User.Role.ADMIN
-                    ? enumOrNull(User.Role.class, request.getUserType(), "user_type")
-                    : null;
+            User.Role userType = enumOrNull(User.Role.class, request.getUserType(), "user_type");
             Page<AuditLogQueryService.AuditLogEntry> page = auditLogQueryService.pagedSearch(
                     request.getUserId(),
                     requesterRole,

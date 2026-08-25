@@ -31,25 +31,25 @@ export const PAGE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
   ],
   reviewer: [
     "dashboard", "review-queue", "ai-analyses", "processing-errors",
-    "job-dict", "skill-dict", "audit-log", "account-settings",
+    "job-dict", "skill-dict", "account-settings",
     "job-analysis", "jobs",
   ],
   analyst: [
     "dashboard",
     "graph-browser", "graph-snapshots", "relation-evidence",
-    "evolution-trends", "evolution-events", "skill-combos", "audit-log", "account-settings",
+    "evolution-trends", "evolution-events", "skill-combos", "account-settings",
     "jobs",
   ],
   teacher: [
     "dashboard",
     "graph-browser", "evolution-trends",
     "programs", "course-evidence", "gap-analysis", "response-lag", "recommendations",
-    "my-students", "audit-log", "account-settings",
+    "my-students", "account-settings",
     "jobs",
   ],
   student: [
     "dashboard",
-    "my-resume", "my-skills", "audit-log", "account-settings",
+    "my-resume", "my-skills", "account-settings",
     "graph-browser", "evolution-trends",
     "skill-analysis", "skill-compare", "gap-report", "learning-path",
     "jobs",
@@ -57,7 +57,7 @@ export const PAGE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
   student_affair: [
     "dashboard",
     "teacher-management", "student-management",
-    "grade-import", "audit-log", "account-settings",
+    "grade-import", "account-settings",
     "jobs",
   ],
 };

@@ -14,11 +14,9 @@ func RegisterAuditLogRoutes(api *gin.RouterGroup, pool *grpcpool.GrpcClientPool,
 	auth.Use(middleware.Auth(jwtSecret))
 
 	logs := auth.Group("/audit-logs")
-	// 所有登录用户可调用；handler 与 occupation-service 都会把普通用户限定为本人。
+	// 审计日志属于系统管理数据，三个来源统一只允许 ADMIN 访问。
+	logs.Use(middleware.RoleAuth("ADMIN"))
 	logs.POST("/occupation", audithandler.ListOccupationAuditLogsHandler(pool))
-
-	admin := logs.Group("")
-	admin.Use(middleware.RoleAuth("ADMIN"))
-	admin.POST("/crawler", audithandler.ListCrawlerAuditLogsHandler(pool))
-	admin.POST("/ai", audithandler.ListAIAuditLogsHandler(pool))
+	logs.POST("/crawler", audithandler.ListCrawlerAuditLogsHandler(pool))
+	logs.POST("/ai", audithandler.ListAIAuditLogsHandler(pool))
 }

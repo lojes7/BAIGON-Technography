@@ -5,9 +5,7 @@ import {
   ChevronRight,
   RefreshCw,
   Search,
-  ShieldCheck,
 } from "lucide-react";
-import { useAuth } from "../auth/AuthContext";
 import { Btn, Card, PageHeader } from "../components/ui";
 import T from "../constants/tokens";
 import { pagedSearchAuditLogs } from "../services/audit";
@@ -81,8 +79,6 @@ function levelColor(level: string): string {
 }
 
 export default function AuditLogPage() {
-  const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
   const [source, setSource] = useState<AuditLogSource>("occupation");
   const [draftFilters, setDraftFilters] = useState<Filters>(EMPTY_FILTERS);
   const [appliedFilters, setAppliedFilters] = useState<Filters>(EMPTY_FILTERS);
@@ -108,8 +104,8 @@ export default function AuditLogPage() {
         level: appliedFilters.level,
         createdAtFrom: toRFC3339(appliedFilters.createdAtFrom),
         createdAtTo: toRFC3339(appliedFilters.createdAtTo),
-        targetUserId: source === "occupation" && isAdmin ? appliedFilters.targetUserId : "",
-        userType: source === "occupation" && isAdmin ? appliedFilters.userType : "",
+        targetUserId: source === "occupation" ? appliedFilters.targetUserId : "",
+        userType: source === "occupation" ? appliedFilters.userType : "",
       });
       setResult(response.data);
     } catch (requestError) {
@@ -118,10 +114,9 @@ export default function AuditLogPage() {
     } finally {
       setLoading(false);
     }
-  }, [appliedFilters, isAdmin, page, source]);
+  }, [appliedFilters, page, source]);
 
   const loadUsers = useCallback(async (keyword: string, role: string) => {
-    if (!isAdmin) return;
     await Promise.resolve();
     setUsersLoading(true);
     setUserSearchError("");
@@ -134,7 +129,7 @@ export default function AuditLogPage() {
     } finally {
       setUsersLoading(false);
     }
-  }, [isAdmin]);
+  }, []);
 
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- 分页、来源和筛选状态变化后重新读取服务端数据。
@@ -143,8 +138,8 @@ export default function AuditLogPage() {
 
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- ADMIN 首次进入时加载可发现的用户筛选项。
-    if (isAdmin) void loadUsers("", "");
-  }, [isAdmin, loadUsers]);
+    void loadUsers("", "");
+  }, [loadUsers]);
 
   const applyFilters = () => {
     if (draftFilters.createdAtFrom && draftFilters.createdAtTo
@@ -163,7 +158,7 @@ export default function AuditLogPage() {
     setUserKeyword("");
     setPage(0);
     setQueryVersion((value) => value + 1);
-    if (isAdmin) void loadUsers("", "");
+    void loadUsers("", "");
   };
 
   const switchSource = (nextSource: AuditLogSource) => {
@@ -173,46 +168,37 @@ export default function AuditLogPage() {
   };
 
   const totalPages = Math.max(1, Math.ceil(result.total / Math.max(1, result.pageSize)));
-  const showUserFilters = isAdmin && source === "occupation";
+  const showUserFilters = source === "occupation";
 
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        breadcrumbs={[isAdmin ? "系统管理" : "个人中心", "审计日志"]}
+        breadcrumbs={["系统管理", "审计日志"]}
         title="审计日志"
-        description={isAdmin
-          ? "按服务分别查看用户业务、数据采集和 AI 操作日志"
-          : "仅显示你本人在用户与业务服务中的操作日志"}
+        description="按服务分别查看用户业务、数据采集和 AI 操作日志"
         actions={<Btn variant="secondary" size="sm" icon={RefreshCw} onClick={() => setQueryVersion((value) => value + 1)}>刷新</Btn>}
       />
 
-      {isAdmin ? (
-        <div className="grid grid-cols-3 gap-3">
-          {SOURCE_OPTIONS.map((option) => {
-            const active = source === option.value;
-            return (
-              <button
-                type="button"
-                key={option.value}
-                className="text-left rounded-lg px-4 py-3 transition-colors"
-                style={{
-                  border: `1px solid ${active ? T.teal : T.border}`,
-                  background: active ? `${T.teal}0c` : T.white,
-                }}
-                onClick={() => switchSource(option.value)}
-              >
-                <div className="text-[13px] font-medium" style={{ color: active ? T.teal : T.ink }}>{option.label}</div>
-                <div className="text-[11px] font-mono mt-0.5" style={{ color: T.info }}>{option.description}</div>
-              </button>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-md text-[12px]" style={{ background: `${T.teal}0c`, color: T.ink }}>
-          <ShieldCheck size={15} style={{ color: T.teal }} />
-          后端已强制限定为当前账号，无法通过修改筛选参数查询其他用户。
-        </div>
-      )}
+      <div className="grid grid-cols-3 gap-3">
+        {SOURCE_OPTIONS.map((option) => {
+          const active = source === option.value;
+          return (
+            <button
+              type="button"
+              key={option.value}
+              className="text-left rounded-lg px-4 py-3 transition-colors"
+              style={{
+                border: `1px solid ${active ? T.teal : T.border}`,
+                background: active ? `${T.teal}0c` : T.white,
+              }}
+              onClick={() => switchSource(option.value)}
+            >
+              <div className="text-[13px] font-medium" style={{ color: active ? T.teal : T.ink }}>{option.label}</div>
+              <div className="text-[11px] font-mono mt-0.5" style={{ color: T.info }}>{option.description}</div>
+            </button>
+          );
+        })}
+      </div>
 
       <Card>
         <div className="p-4 space-y-3">

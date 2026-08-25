@@ -40,7 +40,7 @@ type pagedSearchRequest struct {
 
 // ListOccupationAuditLogsHandler 分页查询 occupation 日志。
 // @Summary      分页查询 occupation 审计日志
-// @Description  普通用户只能查询本人；ADMIN 可按用户类型、具体用户、时间和级别查询。
+// @Description  仅 ADMIN 可按用户类型、具体用户、时间和级别查询。
 // @Tags         审计日志
 // @Accept       json
 // @Produce      json
@@ -49,6 +49,7 @@ type pagedSearchRequest struct {
 // @Success      200 {object} response.SuccessBody
 // @Failure      400 {object} response.ErrorBody
 // @Failure      401 {object} response.ErrorBody
+// @Failure      403 {object} response.ErrorBody
 // @Failure      503 {object} response.ErrorBody
 // @Router       /api/auth/audit-logs/occupation [post]
 func ListOccupationAuditLogsHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc {
@@ -91,22 +92,22 @@ func ListAIAuditLogsHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc {
 
 func pagedSearchHandler(pool grpcpool.ConnectionProvider, logSource source) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var request pagedSearchRequest
-		if err := c.ShouldBindJSON(&request); err != nil || !validRequest(&request) {
-			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
-			return
-		}
-
 		role := c.GetString("role")
 		userID := commonhandler.UserIDFromContext(c)
 		if userID <= 0 || role == "" {
 			response.Error(c, http.StatusUnauthorized, http.StatusUnauthorized)
 			return
 		}
-		if logSource == sourceOccupation && role != "ADMIN" {
-			// 普通用户即使伪造筛选条件，也只能查询本人 occupation 日志。
-			request.TargetUserID = userID
-			request.UserType = ""
+		if role != "ADMIN" {
+			// 即使路由被误注册或 handler 被直接调用，也不允许普通用户读取日志。
+			response.Error(c, http.StatusForbidden, http.StatusForbidden)
+			return
+		}
+
+		var request pagedSearchRequest
+		if err := c.ShouldBindJSON(&request); err != nil || !validRequest(&request) {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
 		}
 		if logSource != sourceOccupation {
 			request.TargetUserID = 0

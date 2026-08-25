@@ -20,9 +20,8 @@ COPY crawler/requirements.txt .
 RUN pip install -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple --timeout 180 -r requirements.txt
 
 # 生成 python gRPC stub（在镜像内完成，部署免手动 make python-crawler）
-COPY proto/common/ /app/proto/common/
-COPY proto/crawler/ /app/proto/crawler/
-COPY proto/ai/ /app/proto/ai/
+COPY ./proto/ ./proto/
+
 COPY crawler/src/ /app/src/
 RUN mkdir -p /app/pb_gen \
     && python -m grpc_tools.protoc \

@@ -62,7 +62,6 @@ export const STUDENT_NAV: NavSection[] = [
   mk("profile", "nav.personalCenter", User, [
     mkChild("my-resume", "nav.myResume"),
     mkChild("my-skills", "nav.mySkills"),
-    mkChild("audit-log", "nav.auditLog"),
     mkChild("account-settings", "nav.accountSettings"),
   ]),
   mk("explore", "nav.jobExplore", Search, [
@@ -94,7 +93,6 @@ export const TEACHER_NAV: NavSection[] = [
   ]),
   mk("profile", "nav.personalCenter", User, [
     mkChild("my-students", "nav.myStudents"),
-    mkChild("audit-log", "nav.auditLog"),
     mkChild("account-settings", "nav.accountSettings"),
   ]),
 ];
@@ -112,7 +110,6 @@ export const ANALYST_NAV: NavSection[] = [
     mkChild("skill-combos", "nav.skillCombos"),
   ]),
   mk("profile", "nav.personalCenter", User, [
-    mkChild("audit-log", "nav.auditLog"),
     mkChild("account-settings", "nav.accountSettings"),
   ]),
 ];
@@ -132,7 +129,6 @@ export const REVIEWER_NAV: NavSection[] = [
     mkChild("discipline", "nav.discipline"),
   ]),
   mk("profile", "nav.personalCenter", User, [
-    mkChild("audit-log", "nav.auditLog"),
     mkChild("account-settings", "nav.accountSettings"),
   ]),
 ];
@@ -147,7 +143,6 @@ export const STUDENT_AFFAIRS_NAV: NavSection[] = [
     mkChild("grade-import", "nav.gradeImport"),
   ]),
   mk("profile", "nav.personalCenter", User, [
-    mkChild("audit-log", "nav.auditLog"),
     mkChild("account-settings", "nav.accountSettings"),
   ]),
 ];

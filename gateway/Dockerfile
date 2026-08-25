@@ -22,12 +22,8 @@ COPY gateway/go.mod gateway/go.sum ./
 RUN go mod download
 
 # 生成 gRPC stub（在镜像内完成，部署免手动 make go）
-COPY proto/common/ /app/proto/common/
-COPY proto/user/ /app/proto/user/
-COPY proto/crawler/ /app/proto/crawler/
-COPY proto/data_source/ /app/proto/data_source/
-COPY proto/ai/ /app/proto/ai/
-COPY proto/occupation/ /app/proto/occupation/
+COPY ./proto/ /app/proto/
+
 COPY gateway/ ./
 RUN mkdir -p /app/gateway/pb \
     && protoc \

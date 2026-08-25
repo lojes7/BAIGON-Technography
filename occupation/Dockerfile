@@ -10,11 +10,7 @@ RUN mvn dependency:go-offline -B
 
 COPY occupation/src/ ./src/
 
-COPY proto/data_source/ ./proto/data_source/
-COPY proto/occupation/ ./proto/occupation/
-COPY proto/user/ ./proto/user/
-COPY proto/crawler/ ./proto/crawler/
-COPY proto/ai/ ./proto/ai/
+COPY ./proto/ ./proto/
 
 RUN mvn package -DskipTests -Dproto.root=proto -B -ntp
 

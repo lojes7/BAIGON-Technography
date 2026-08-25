@@ -157,12 +157,12 @@ function UserProfilePage() {
   }, []);
 
   useEffect(() => {
-    if (!user?.id) return;
+    // 审计日志仅 ADMIN 可见，普通用户个人页不得发起日志请求。
+    if (!user?.id || user.role !== "admin") return;
     pagedSearchAuditLogs("occupation", {
       page: 0,
       pageSize: 8,
-      // ADMIN 查看个人页时只取自己的 occupation 操作，普通用户由后端强制限定为本人。
-      targetUserId: user.role === "admin" ? user.id : undefined,
+      targetUserId: user.id,
     }).then((response) => setRecentLogs(response.data.items)).catch(() => setRecentLogs([]));
   }, [user?.id, user?.role]);
 
@@ -224,9 +224,9 @@ function UserProfilePage() {
       </Card>
 
       {/* ── 下半区：7:3 左右分栏 ── */}
-      <div className="grid gap-5" style={{ gridTemplateColumns: "7fr 3fr" }}>
+      <div className="grid gap-5" style={{ gridTemplateColumns: role === "admin" ? "7fr 3fr" : "1fr" }}>
         {/* 左：最近操作记录 */}
-        <Card title="最近操作记录">
+        {role === "admin" && <Card title="最近操作记录">
           <div className="divide-y" style={{ borderColor: T.cloud, maxHeight: 360, overflowY: "auto" }}>
             {recentLogs.length > 0 ? recentLogs.map((entry) => {
               const col = entry.level === "ERROR" ? T.risk : entry.level === "WARNING" ? T.pending : T.stable;
@@ -248,7 +248,7 @@ function UserProfilePage() {
           <div className="px-4 py-2" style={{ borderTop: `1px solid ${T.cloud}` }}>
             <button className="text-[12px]" style={{ color: T.teal }} onClick={() => navigate("/audit-log")}>查看完整审计日志 →</button>
           </div>
-        </Card>
+        </Card>}
 
         {/* 右：权限 + 账户 堆叠 */}
         <div className="flex flex-col gap-4">

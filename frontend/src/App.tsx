@@ -86,6 +86,13 @@ function ProtectedRoute() {
   return <AppLayout />;
 }
 
+function AdminAuditLogRoute() {
+  const { user } = useAuth();
+  // 页面级纵深校验：普通用户即使手工输入地址也不能进入审计页面。
+  if (user?.role !== "admin") return <Navigate to="/" replace />;
+  return <AuditLogPage />;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -122,7 +129,7 @@ export default function App() {
             <Route path="export-history" element={<ExportHistoryPage />} />
             <Route path="params" element={<ParamsPage />} />
             <Route path="users" element={<UsersPage />} />
-            <Route path="audit-log" element={<AuditLogPage />} />
+            <Route path="audit-log" element={<AdminAuditLogRoute />} />
             <Route path="taxonomy" element={<TaxonomyPage />} />
             <Route path="discipline" element={<DisciplineCategoriesPage />} />
             <Route path="profile" element={<UserProfilePage />} />
