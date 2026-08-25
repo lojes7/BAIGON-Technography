@@ -567,7 +567,7 @@ export default function RawRecordsPage() {
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
                 {editing ? (
                   /* ── 编辑态：替换详情展示，保存后以修改后内容通过复核 ── */
-                  <div className="space-y-3">
+                  <div className="flex min-h-full flex-col space-y-3">
                     <div className="text-[12px] font-medium" style={{ color: T.info }}>{t("page.rawRecords.editFields")}</div>
                     <div className="text-[11px]" style={{ color: T.info }}>{t("page.rawRecords.editHint")}</div>
                     <div className="grid grid-cols-2 gap-3">
@@ -587,13 +587,13 @@ export default function RawRecordsPage() {
                         </div>
                       ))}
                     </div>
-                    <div>
+                    <div className="flex flex-1 flex-col">
                       <label className="text-[11px] block mb-1" style={{ color: T.info }}>{t("page.rawRecords.jobDesc")}</label>
-                      <textarea className="w-full px-2.5 py-1.5 rounded text-[13px] outline-none resize-none"
-                        rows={3} style={{ background: "white", border: `1px solid ${T.border}`, color: T.ink }}
+                      <textarea className="w-full flex-1 min-h-[240px] px-2.5 py-2 rounded text-[13px] leading-relaxed outline-none resize-none"
+                        style={{ background: "white", border: `1px solid ${T.border}`, color: T.ink }}
                         value={editForm.jobDescription} onChange={e => setEditField("jobDescription", e.target.value)} />
                     </div>
-                    <div className="flex justify-end gap-2">
+                    <div className="flex shrink-0 justify-end gap-2">
                       <Btn variant="secondary" size="sm" onClick={cancelEdit}>{t("page.rawRecords.cancelEdit")}</Btn>
                       <Btn size="sm" onClick={submitEdit} disabled={savingEdit}>{savingEdit ? t("page.rawRecords.saving") : t("page.rawRecords.saveEdit")}</Btn>
                     </div>
@@ -624,7 +624,8 @@ export default function RawRecordsPage() {
                     {cleanedDetail?.job_description && (
                       <div>
                         <div className="text-[12px] font-medium mb-2" style={{ color: T.ink }}>{t("page.rawRecords.jobDesc")}</div>
-                        <div className="rounded-md p-3 text-[13px] leading-relaxed whitespace-pre-wrap" style={{ background: T.cloud, color: T.ink }}>
+                        <div className="rounded-md p-4 text-[14px] leading-relaxed whitespace-pre-wrap max-h-80 overflow-y-auto"
+                          style={{ background: T.cloud, color: T.ink, border: `1px solid ${T.border}` }}>
                           {cleanedDetail.job_description}
                         </div>
                       </div>

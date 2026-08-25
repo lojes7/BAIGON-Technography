@@ -38,10 +38,8 @@ function candidateReviewAction(value: string): ReviewAction {
 export default function JobAnalysisPage() {
   const { t } = useTranslation();
   const [items, setItems] = useState<JobAnalysisTaskSummary[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [filterStatus, setFilterStatus] = useState("");
+  const [taskStatusFilter, setTaskStatusFilter] = useState<"processing" | "success" | "failed">("processing");
   const [openingId, setOpeningId] = useState("");
 
   const [detail, setDetail] = useState<JobAnalysisTaskDetail | null>(null);
@@ -52,16 +50,15 @@ export default function JobAnalysisPage() {
   const [occupationName, setOccupationName] = useState("");
   const [skillReviews, setSkillReviews] = useState<Record<string, JobAnalysisSkillReviewInput>>({});
 
+  // 后端仅支持 reviewStatus 筛选，不支持 taskStatus 筛选，因此拉取全量后本地按 tab 分组。
   const fetchList = async () => {
     setLoading(true);
     try {
       const response = await listJobAnalysisTasks({
-        page: page - 1,
-        pageSize: 20,
-        reviewStatus: filterStatus || undefined,
+        page: 0,
+        pageSize: 1000,
       });
       setItems(response.data.items ?? []);
-      setTotal(response.data.total ?? 0);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "岗位分析任务加载失败");
     } finally {
@@ -69,7 +66,14 @@ export default function JobAnalysisPage() {
     }
   };
 
-  useEffect(() => { void fetchList(); }, [page, filterStatus]);
+  useEffect(() => { void fetchList(); }, []);
+
+  const visibleItems = items.filter((item) => {
+    if (taskStatusFilter === "processing") {
+      return item.taskStatus === "PENDING" || item.taskStatus === "RUNNING";
+    }
+    return item.taskStatus === (taskStatusFilter === "success" ? "SUCCESS" : "FAILED");
+  });
 
   const initializeDetail = (nextDetail: JobAnalysisTaskDetail) => {
     setDetail(nextDetail);
@@ -207,18 +211,22 @@ export default function JobAnalysisPage() {
       />
 
       <div className="flex items-center gap-2">
-        {["", "PENDING", "PASSED", "REJECTED"].map((status) => (
+        {([
+          { key: "processing", label: "处理中", count: items.filter((i) => i.taskStatus === "PENDING" || i.taskStatus === "RUNNING").length },
+          { key: "success", label: "成功", count: items.filter((i) => i.taskStatus === "SUCCESS").length },
+          { key: "failed", label: "失败", count: items.filter((i) => i.taskStatus === "FAILED").length },
+        ] as const).map((tab) => (
           <button
-            key={status}
-            className="rounded-md px-3 py-1.5 text-[13px] transition-colors"
+            key={tab.key}
+            className="rounded-md px-4 py-2 text-[13px] font-medium transition-colors"
             style={{
-              border: `1px solid ${filterStatus === status ? T.teal : T.border}`,
-              color: filterStatus === status ? "white" : T.ink,
-              background: filterStatus === status ? T.teal : "white",
+              border: `1px solid ${taskStatusFilter === tab.key ? T.teal : T.border}`,
+              color: taskStatusFilter === tab.key ? "white" : T.ink,
+              background: taskStatusFilter === tab.key ? T.teal : "white",
             }}
-            onClick={() => { setFilterStatus(status); setPage(1); }}
+            onClick={() => setTaskStatusFilter(tab.key)}
           >
-            {status === "" ? "全部" : REVIEW_STATUS_LABEL[status]}
+            {tab.label}（{tab.count}）
           </button>
         ))}
       </div>
@@ -226,7 +234,7 @@ export default function JobAnalysisPage() {
       <Card>
         {loading ? (
           <div className="px-4 py-12 text-center text-[13px]" style={{ color: T.info }}>{t("common.loading")}</div>
-        ) : items.length === 0 ? (
+        ) : visibleItems.length === 0 ? (
           <div className="px-4 py-12 text-center text-[13px]" style={{ color: T.info }}>暂无岗位分析任务</div>
         ) : (
           <div className="overflow-x-auto">
@@ -241,7 +249,7 @@ export default function JobAnalysisPage() {
                 </tr>
               </thead>
               <tbody>
-                {items.map((item) => (
+                {visibleItems.map((item) => (
                   <tr key={item.id} className="transition-colors hover:bg-gray-50" style={{ borderTop: `1px solid ${T.cloud}` }}>
                     <td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{item.id}</td>
                     <td className="px-4 py-3 font-medium" style={{ color: T.ink }}>{item.jobName || "—"}</td>
@@ -279,24 +287,6 @@ export default function JobAnalysisPage() {
         )}
       </Card>
 
-      {total > 20 && (
-        <div className="flex items-center justify-center gap-2 text-[13px]">
-          <button
-            className="rounded-md px-3 py-1.5 disabled:opacity-30"
-            style={{ border: `1px solid ${T.border}`, color: T.ink }}
-            disabled={page <= 1}
-            onClick={() => setPage((current) => current - 1)}
-          >上一页</button>
-          <span style={{ color: T.info }}>{page} / {Math.max(1, Math.ceil(total / 20))}</span>
-          <button
-            className="rounded-md px-3 py-1.5 disabled:opacity-30"
-            style={{ border: `1px solid ${T.border}`, color: T.ink }}
-            disabled={page >= Math.ceil(total / 20)}
-            onClick={() => setPage((current) => current + 1)}
-          >下一页</button>
-        </div>
-      )}
-
       {detail && (
         <div className="fixed inset-0 z-50 flex" style={{ background: "rgba(25,50,77,0.3)" }} onClick={closeDetail}>
           <div
@@ -309,7 +299,7 @@ export default function JobAnalysisPage() {
                   {detail.task.jobName || `任务 #${detail.task.id}`}
                 </h3>
                 <div className="mt-0.5 text-[12px]" style={{ color: T.info }}>
-                  任务 {TASK_STATUS_LABEL[detail.task.taskStatus] || detail.task.taskStatus} · 模型 {detail.task.modelName || "—"}
+                  专业 {detail.task.jobMajor || "—"} · 任务 {TASK_STATUS_LABEL[detail.task.taskStatus] || detail.task.taskStatus} · 模型 {detail.task.modelName || "—"}
                 </div>
               </div>
               <button onClick={closeDetail} style={{ color: T.info }}><X size={18} /></button>
