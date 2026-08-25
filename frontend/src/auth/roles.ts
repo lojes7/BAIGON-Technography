@@ -19,7 +19,7 @@ type PermissionKey = string;
 
 export const PAGE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
   admin: [
-    "dashboard", "data-sources", "import-batches", "auto-import", "raw-records",
+    "dashboard", "import-batches", "auto-import", "raw-records",
     "job-dict", "skill-dict",
     "graph-browser", "graph-snapshots", "relation-evidence",
     "evolution-trends", "evolution-events", "skill-combos",

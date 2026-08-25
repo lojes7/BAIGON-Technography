@@ -1,12 +1,12 @@
 import { useTranslation } from "react-i18next";
 import { useState, useEffect } from "react";
-import { X, ShieldCheck, CheckCircle, XCircle, Loader2, ArrowLeft, FileText, Pencil } from "lucide-react";
+import { X, ShieldCheck, CheckCircle, XCircle, Loader2, ArrowLeft, FileText, Pencil, Eye } from "lucide-react";
 import { toast } from "sonner";
 import T from "../constants/tokens";
 import { useAuth } from "../auth/AuthContext";
 import { getDataSourceList, reviewDataSource, getCrawlerStatus, getSourceRecord, getDataSourceDetail, editAndApproveReview } from "../services/engineer";
 import type { DataSourceItem, DataSourceDetail, SourceJobDetail } from "../types/api";
-import { PageHeader, Btn, Card, StatusBadge } from "../components/ui";
+import { PageHeader, Btn, Card, StatusBadge, MetricCard } from "../components/ui";
 import DiffViewer, { type DiffRow } from "../components/diff/DiffViewer";
 
 type ReviewPhase = "idle" | "confirm" | "progress" | "result";
@@ -21,6 +21,7 @@ export default function RawRecordsPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [filterStatus, setFilterStatus] = useState("");
   const [detail, setDetail] = useState<DataSourceItem | null>(null);
   // 双栏 diff 需要：原始记录 + 清洗后详情
   const [sourceDetail, setSourceDetail] = useState<SourceJobDetail | null>(null);
@@ -41,13 +42,13 @@ export default function RawRecordsPage() {
 
   const fetchRecords = (silent = false) => {
     if (!silent) setLoading(true);
-    getDataSourceList({ page: page - 1, pageSize: 20 }) // 后端 page 从 0 开始
+    getDataSourceList({ page: page - 1, pageSize: 20, reviewStatus: filterStatus || undefined })
       .then((res) => { setRecords(res.data.items ?? []); setTotal(res.data.total ?? 0); })
       .catch(() => {})
       .finally(() => { if (!silent) setLoading(false); });
   };
 
-  useEffect(() => { fetchRecords(); }, [page]);
+  useEffect(() => { fetchRecords(); }, [page, filterStatus]);
 
   // 仅在爬虫运行时轮询，停止后自动取消
   useEffect(() => {
@@ -72,7 +73,7 @@ export default function RawRecordsPage() {
     pollRef = setInterval(check, 5000);
 
     return () => { if (pollRef) clearInterval(pollRef); };
-  }, [page]);
+  }, [page, filterStatus]);
 
   // 打开详情：并行拉取原始记录 + 清洗后详情，用于双栏 diff
   const openDetail = (r: DataSourceItem) => {
@@ -262,6 +263,28 @@ export default function RawRecordsPage() {
         description={t("page.rawRecords.desc")}
       />
 
+      {/* 统计框：岗位总数 / 来源平台数 / 待审核 */}
+      <div className="grid grid-cols-3 gap-4">
+        <MetricCard title="岗位总数" value={loading ? "—" : String(total)} />
+        <MetricCard title="来源平台数" value={loading ? "—" : String(new Set(records.map(s => s.source_platform)).size)} />
+        <MetricCard title="待审核" value={loading ? "—" : String(records.filter(s => s.review_status === "PENDING").length)} />
+      </div>
+
+      {/* 筛选：全部 / 未审核 / 已通过 / 已拒绝 */}
+      <div className="flex items-center gap-2">
+        {["", "PENDING", "PASSED", "REJECTED"].map(s => (
+          <button key={s}
+            className="px-3 py-1.5 rounded-md text-[13px] transition-colors"
+            style={{
+              border: `1px solid ${filterStatus === s ? T.teal : T.border}`,
+              color: filterStatus === s ? "white" : T.ink,
+              background: filterStatus === s ? T.teal : "white",
+            }}
+            onClick={() => { setFilterStatus(s); setPage(1); }}
+          >{s === "" ? "全部" : s === "PENDING" ? "未审核" : s === "PASSED" ? "已通过" : "已拒绝"}</button>
+        ))}
+      </div>
+
       {crawlerRunning && (
         <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-[13px]"
           style={{ background: `${T.emerging}12`, color: T.emerging, border: `1px solid ${T.emerging}30` }}>
@@ -317,16 +340,16 @@ export default function RawRecordsPage() {
                   </th>
                 )}
                 {[
-                  ["colSource","w-[10%]"],
-                  ["colJobName","w-[22%]"],
-                  ["colCompany","w-[20%]"],
-                  ["colPublishDate","w-[12%]"],
-                  ["colBatch","w-[12%]"],
-                  ["colReviewStatus","w-[14%]"],
-                  ["colActions","w-[10%]"],
-                ].map(([k, w]) => (
-                  <th key={k} className={`${w} px-2 py-2.5 text-left font-medium text-[12px] whitespace-nowrap`} style={{ color: T.info }}>
-                    {t(`page.rawRecords.${k}`)}
+                  { key: "colSource", width: "w-[12%]", align: "left" },
+                  { key: "colJobName", width: "w-[22%]", align: "left" },
+                  { key: "colCompany", width: "w-[18%]", align: "left" },
+                  { key: "colPublishDate", width: "w-[12%]", align: "center" },
+                  { key: "colBatch", width: "w-[12%]", align: "center" },
+                  { key: "colReviewStatus", width: "w-[12%]", align: "center" },
+                  { key: "colActions", width: "w-[12%]", align: "center" },
+                ].map((col) => (
+                  <th key={col.key} className={`${col.width} px-2 py-2.5 ${col.align === "center" ? "text-center" : "text-left"} font-medium text-[12px] whitespace-nowrap`} style={{ color: T.info }}>
+                    {t(`page.rawRecords.${col.key}`)}
                   </th>
                 ))}
               </tr>
@@ -345,11 +368,13 @@ export default function RawRecordsPage() {
                     <td className="px-2 py-2.5 text-[12px] truncate" style={{ color: T.info }} title={r.source_platform}>{r.source_platform}</td>
                     <td className="px-2 py-2.5 font-medium truncate" style={{ color: T.ink }} title={r.job_name || undefined}>{r.job_name || "-"}</td>
                     <td className="px-2 py-2.5 truncate" style={{ color: T.ink }} title={r.company_name || undefined}>{r.company_name || "-"}</td>
-                    <td className="px-2 py-2.5 font-mono text-[12px]" style={{ color: T.info }}>{r.publish_date?.slice(0, 10) || "-"}</td>
-                    <td className="px-2 py-2.5 font-mono text-[12px]" style={{ color: T.info }}>{r.created_at?.slice(0, 10) || "-"}</td>
-                    <td className="px-2 py-2.5"><StatusBadge status={r.review_status} /></td>
-                    <td className="px-2 py-2.5">
-                      <button className="text-[12px] font-medium" style={{ color: T.teal }} onClick={() => openDetail(r)}>{t("common.view")}</button>
+                    <td className="px-2 py-2.5 font-mono text-[12px] text-center" style={{ color: T.info }}>{r.publish_date?.slice(0, 10) || "-"}</td>
+                    <td className="px-2 py-2.5 font-mono text-[12px] text-center" style={{ color: T.info }}>{r.created_at?.slice(0, 10) || "-"}</td>
+                    <td className="px-2 py-2.5 text-center"><StatusBadge status={r.review_status} /></td>
+                    <td className="px-2 py-2.5 text-center">
+                      <button className="inline-flex items-center justify-center gap-1 text-[12px] font-medium" style={{ color: T.teal }} onClick={() => openDetail(r)}>
+                        <Eye size={13} />{t("common.view")}
+                      </button>
                     </td>
                   </tr>
                 );

@@ -50,10 +50,9 @@
     "brandSub": "BAIGON Technography",
     "dashboard": "Dashboard",
     "dataCenter": "Data Centre",
-    "dataSources": "Data Sources",
     "importBatches": "Data Import",
     "autoImport": "Auto Import",
-    "rawRecords": "Data Review",
+    "rawRecords": "Data Sources",
     "aiProcessing": "AI Processing",
     "extractionTasks": "Extraction Tasks",
     "reviewQueue": "Skill Resolution Review",
@@ -269,27 +268,6 @@
       "trainingOverview": "Training Response Overview",
       "viewGap": "View Gap Analysis"
     },
-    "dataSources": {
-      "title": "Data Source Management",
-      "desc": "Manage all connected data sources, track import batches and raw data quality",
-      "registerSource": "Register Source",
-      "totalSources": "Total Sources",
-      "importBatches": "Import Batches",
-      "rawRecords": "Raw Records",
-      "connected": "Connected",
-      "total": "Total",
-      "deduped": "Deduplicated",
-      "view": "View",
-      "colId": "Source ID",
-      "colName": "Name",
-      "colType": "Data Type",
-      "colRegion": "Region",
-      "colBatches": "Batches",
-      "colRecords": "Records",
-      "colLastImport": "Last Import",
-      "colStatus": "Status",
-      "colActions": "Actions"
-    },
     "autoImport": {
       "title": "Auto Import",
       "desc": "One-click data crawling with filters for data type, region and industry scope. Results are automatically saved to raw records.",
@@ -332,7 +310,7 @@
       "noLogs": "No logs"
     },
     "rawRecords": {
-      "title": "Data Review",
+      "title": "Data Sources",
       "desc": "Manually review cleaned job data and trace the original record",
       "colId": "Record ID",
       "colSource": "Data Source",

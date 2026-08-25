@@ -12,7 +12,6 @@ const mk = (id: string, labelKey: string, icon: any, children?: ReturnType<typeo
 export const ADMIN_NAV: NavSection[] = [
   mk("dashboard", "nav.dashboard", Home, undefined),
   mk("data-center", "nav.dataCenter", Database, [
-    mkChild("data-sources", "nav.dataSources"),
     mkChild("import-batches", "nav.importBatches"),
     mkChild("auto-import", "nav.autoImport"),
     mkChild("raw-records", "nav.rawRecords"),
