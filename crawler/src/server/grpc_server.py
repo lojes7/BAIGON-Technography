@@ -172,20 +172,8 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
     # 后台爬取 worker
     # ============================================================
     # 公共处理流程：AI+落库 与清洗并行 → 状态更新 → Kafka 异步发送
-    # 爬虫（_crawl_worker）与模拟注入（IngestData）共用
+    # 爬虫（_crawl_worker）与模拟注入（_ingest_worker）共用
     # ============================================================
-    def _process_records(self, records: list, log_ctx: dict) -> list:
-        """同步等待一批记录完成，供 IngestData 复用异步流水线。
-
-        返回清洗后的记录列表。
-        """
-        result = self._pipeline.process_sync(
-            records,
-            log_ctx,
-            kafka_timeout_seconds=pipeline_config.kafka_delivery_timeout_seconds,
-        )
-        return result.cleaned
-
     def _crawl_worker(self, trace_id: int, log_ctx: dict, categories: list[str] | None,
                       max_documents: int, stop_event: threading.Event) -> None:
         """后台线程：爬取 → 公共处理流程"""
@@ -221,11 +209,7 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
             inserted_count = sum(result.inserted for result in results)
 
             # 3) 在任务结束前统一确认 Kafka ACK；这不会阻塞爬取下一页。
-            for result in results:
-                if result.kafka_delivery is not None:
-                    result.kafka_delivery.result(
-                        timeout=pipeline_config.kafka_delivery_timeout_seconds
-                    )
+            self._confirm_kafka_deliveries(results)
 
             # 4) 更新状态
             with self._lock:
@@ -256,14 +240,83 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
                 **log_ctx,
             )
 
+    def _ingest_worker(
+        self,
+        trace_id: int,
+        records: list[JobRecord],
+        log_ctx: dict,
+        stop_event: threading.Event,
+    ) -> None:
+        """后台分批处理模拟注入，避免大请求受同步 gRPC deadline 限制。"""
+        batch_futures: list[Future] = []
+        batch_size = ai_config.embedding_batch_size
+        total_batches = (len(records) + batch_size - 1) // batch_size
+        try:
+            for start in range(0, len(records), batch_size):
+                if stop_event.is_set():
+                    logger.info("收到停止信号，取消尚未提交的注入批次")
+                    break
+                batch = records[start : start + batch_size]
+                try:
+                    batch_futures.append(
+                        self._pipeline.submit(batch, log_ctx, stop_event)
+                    )
+                except BatchSubmissionCancelled:
+                    logger.info("停止后取消未开始的注入批次（%d 条）", len(batch))
+                    break
+
+            results = self._wait_for_batches(
+                batch_futures,
+                total_batches=total_batches,
+            )
+            self._confirm_kafka_deliveries(results)
+            inserted_count = sum(result.inserted for result in results)
+            cleaned_count = sum(len(result.cleaned) for result in results)
+
+            with self._lock:
+                if stop_event.is_set():
+                    self._status.update(
+                        status="stopped",
+                        message="stopped by user",
+                        current_category="",
+                    )
+                else:
+                    self._status.update(
+                        status="success",
+                        message="",
+                        current_category="",
+                        progress=100,
+                    )
+            logger.info(
+                "模拟注入完成: 入库 %d 条（trace_id=%d）",
+                inserted_count,
+                trace_id,
+            )
+            self._log.info(
+                detail=f"ingest success: {inserted_count} records, cleaned {cleaned_count}",
+                **log_ctx,
+            )
+        except Exception as exception:
+            logger.exception("模拟注入失败")
+            with self._lock:
+                self._status["status"] = "failed"
+                self._status["message"] = str(exception)
+                self._status["current_category"] = ""
+            self._log.error(
+                error_msg=str(exception)[:2000],
+                detail="ingest failed",
+                **log_ctx,
+            )
+
     def _wait_for_batches(
         self,
         batch_futures: list[Future],
+        total_batches: int | None = None,
     ) -> list[BatchProcessingResult]:
         """等待全部已接收批次，并在收齐结果后统一抛出首个错误。"""
         results: list[BatchProcessingResult] = []
         first_error: Exception | None = None
-        for future in batch_futures:
+        for completed_batches, future in enumerate(batch_futures, start=1):
             try:
                 result: BatchProcessingResult = future.result()
                 results.append(result)
@@ -275,9 +328,25 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
             except Exception as exc:
                 if first_error is None:
                     first_error = exc
+            finally:
+                if total_batches:
+                    with self._lock:
+                        self._status["progress"] = min(
+                            100,
+                            completed_batches * 100 // total_batches,
+                        )
         if first_error is not None:
             raise first_error
         return results
+
+    @staticmethod
+    def _confirm_kafka_deliveries(results: list[BatchProcessingResult]) -> None:
+        """在任务结束前统一确认已发送批次的 Kafka ACK。"""
+        for result in results:
+            if result.kafka_delivery is not None:
+                result.kafka_delivery.result(
+                    timeout=pipeline_config.kafka_delivery_timeout_seconds
+                )
 
     # ============================================================
     # 查询状态
@@ -394,7 +463,7 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
     # 模拟采集：注入配置数据走完整链路（不真爬）
     # ============================================================
     def IngestData(self, request, context):
-        """注入配置好的岗位数据，走与爬虫相同的落库/清洗/Kafka 流程"""
+        """接收配置岗位并立即返回，由后台小批次执行完整处理流程。"""
         # 1) 参数校验：jobs 非空，且不超过服务内部任务上限。
         jobs = list(request.jobs)
         if not jobs:
@@ -416,47 +485,61 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
             "request_url": request.request_url,
         }
 
-        try:
-            # 3) 每条注入数据 → JobRecord（trace_id 各赋雪花 ID，publish_date 解析失败置 None）
-            records = [
-                JobRecord(
-                    publish_date=_parse_publish_date(j.publish_date),
-                    source_platform=j.source_platform or "手动注入",
-                    source_url=j.source_url or None,
-                    city=j.city or None,
-                    tags=j.tags or None,
-                    major=j.major or None,
-                    nature=j.nature or None,
-                    salary=j.salary or None,
-                    job_name=j.job_name,
-                    company_name=j.company_name or None,
-                    company_size=j.company_size or None,
-                    province=j.province or None,
-                    education=j.education or None,
-                    experience=j.experience or None,
-                    job_description=j.job_description or None,
-                    trace_id=snowflake.next_id(),
+        # 3) 每条注入数据 → JobRecord（trace_id 各赋雪花 ID，publish_date 解析失败置 None）
+        records = [
+            JobRecord(
+                publish_date=_parse_publish_date(job.publish_date),
+                source_platform=job.source_platform or "手动注入",
+                source_url=job.source_url or None,
+                city=job.city or None,
+                tags=job.tags or None,
+                major=job.major or None,
+                nature=job.nature or None,
+                salary=job.salary or None,
+                job_name=job.job_name,
+                company_name=job.company_name or None,
+                company_size=job.company_size or None,
+                province=job.province or None,
+                education=job.education or None,
+                experience=job.experience or None,
+                job_description=job.job_description or None,
+                trace_id=snowflake.next_id(),
+            )
+            for job in jobs
+        ]
+
+        # 4) 与真实采集共用状态机，同一时间只允许一个采集或注入任务。
+        with self._lock:
+            if self._status["status"] in ("running", "stopping"):
+                context.abort(
+                    grpc.StatusCode.FAILED_PRECONDITION,
+                    "a crawl or ingest task is already running",
                 )
-                for j in jobs
-            ]
+            self._status = {
+                "status": "running",
+                "count": "0",
+                "message": "",
+                "current_category": "",
+                "progress": 0,
+                "total_cleaned": 0,
+            }
+            self._stop_event = threading.Event()
+            stop_event = self._stop_event
 
-            # 4) 复用公共处理流程：落库 → 清洗 → 标记 SUCCESS → Kafka
-            cleaned = self._process_records(records, log_ctx)
-
-            # 5) 写业务日志
-            self._log.info(
-                detail=f"ingest success: {len(records)} records, cleaned {len(cleaned)}",
-                **log_ctx,
-            )
-            return crawler_pb2.IngestDataResponse(
-                count=str(len(cleaned)), trace_id=str(trace_id), status="success",
-            )
-        except Exception as e:
-            logger.exception("模拟注入失败")
-            # 写业务日志
-            self._log.error(
-                error_msg=str(e)[:2000],
-                detail="ingest failed",
-                **log_ctx,
-            )
-            context.abort(grpc.StatusCode.INTERNAL, str(e))
+        # 5) 后台按 embedding_batch_size 分批，立即向 gateway 返回 running。
+        self._worker = threading.Thread(
+            target=self._ingest_worker,
+            args=(trace_id, records, log_ctx, stop_event),
+            daemon=True,
+        )
+        self._worker.start()
+        logger.info("模拟注入已启动: trace_id=%d, count=%d", trace_id, len(records))
+        self._log.info(
+            detail=f"ingest started: {len(records)} records",
+            **log_ctx,
+        )
+        return crawler_pb2.IngestDataResponse(
+            count="0",
+            trace_id=str(trace_id),
+            status="running",
+        )

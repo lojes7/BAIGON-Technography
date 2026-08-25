@@ -58,7 +58,10 @@ ai:
   service-name: ${AI_SERVICE_NAME:ai-service}
   dimensions: ${AI_EMBEDDING_DIMENSIONS:1024}
   batch-size: ${AI_EMBEDDING_BATCH_SIZE:20}
-  timeout-seconds: ${AI_GRPC_TIMEOUT_SECONDS:30}
+  # 单批嵌入允许供应商处理 120 秒，并预留 30 秒 gRPC 开销。
+  timeout-seconds: ${AI_GRPC_TIMEOUT_SECONDS:150}
+  # 长 JD 分析允许供应商处理 150 秒，外层再预留 30 秒。
+  job-description-timeout-seconds: ${AI_JOB_DESCRIPTION_GRPC_TIMEOUT_SECONDS:180}
   # 简历抽取是单次同步 LLM 调用，使用独立超时且不自动重试。
   resume-timeout-seconds: 120
   # 用户技能识别与人岗匹配均为单次同步 LLM 调用，不自动重试。

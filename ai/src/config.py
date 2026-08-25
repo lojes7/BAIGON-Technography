@@ -22,8 +22,12 @@ class ModelConfig:
     embedding_max_batch_size: int = 1000
     # 当前要求模型供应商调用只执行一次，关闭 OpenAI SDK 内置重试。
     provider_max_retries: int = 0
-    # 默认值必须短于 JD/普通生成的 30 秒上游 deadline。
+    # 普通生成仍使用短 deadline；长 JD 由下方独立参数控制。
     provider_default_timeout_seconds: float = 25.0
+    # Qwen 岗位文本批量调用需要更长时间，不能沿用普通生成的 25 秒。
+    provider_embedding_timeout_seconds: float = 120.0
+    # 长 JD 的结构化技能抽取可能超过两分钟，使用独立超时避免影响普通生成。
+    provider_job_analysis_timeout_seconds: float = 150.0
     # 简历及用户分析允许更长推理，但仍短于对应的 120 秒上游 deadline。
     provider_long_timeout_seconds: float = 110.0
 

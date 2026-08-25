@@ -27,6 +27,10 @@ AI 服务已接入以下内部模型适配器，供后续 gRPC Handler 调用：
 - `dimensions=0` 时使用服务默认值 `1024`；允许范围为 `1` 至 `4096`。
 - `chunk_size=0` 时批量请求使用默认值 `20`；允许范围为 `1` 至 `100`。
 - 单次 `BatchEmbedText` 最多接收 `1000` 条非空文本。
+- Qwen 单个供应商批次的 HTTP 超时为 `120` 秒；当前 crawler 与 occupation
+  每个 gRPC 请求最多提交 `20` 条，并使用 `150` 秒外层 deadline。
+- `AnalyzeJobDescription` 的星火 HTTP 超时为 `150` 秒，occupation 使用
+  `180` 秒外层 deadline，避免长 JD 沿用普通问答的 `25` 秒限制。
 - `AnalyzeUserSkills`、`AnalyzeJobMatch` 和两个嵌入请求均可携带
   `trace_id / user_id / user_name / user_ip / request_method / request_url`，
   供调用链审计使用。这些字段不会进入模型提示词。

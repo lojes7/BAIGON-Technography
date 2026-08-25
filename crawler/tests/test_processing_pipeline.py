@@ -213,6 +213,7 @@ class EmbeddingStatusTest(unittest.TestCase):
 class EmbeddingRetryConfigTest(unittest.TestCase):
     def test_reserved_retry_parameters_are_kept(self):
         """重试功能停用期间仍保留用户指定的参数。"""
+        self.assertEqual(ai_config.grpc_timeout_seconds, 150)
         self.assertEqual(ai_config.embedding_retry_interval_seconds, 300)
         self.assertEqual(ai_config.embedding_retry_base_seconds, 300)
         self.assertEqual(ai_config.embedding_retry_max_seconds, 1800)

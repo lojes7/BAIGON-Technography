@@ -43,7 +43,8 @@ public class AIGrpcClient {
     private final String serviceName;
     private final int dimensions;
     private final int configuredBatchSize;
-    private final long timeoutSeconds;
+    private final long embeddingTimeoutSeconds;
+    private final long jobDescriptionTimeoutSeconds;
     private final long resumeTimeoutSeconds;
     private final long userAnalysisTimeoutSeconds;
 
@@ -55,7 +56,9 @@ public class AIGrpcClient {
                         @Value("${ai.service-name:ai-service}") String serviceName,
                         @Value("${ai.dimensions:1024}") int dimensions,
                         @Value("${ai.batch-size:20}") int configuredBatchSize,
-                        @Value("${ai.timeout-seconds:30}") long timeoutSeconds,
+                        @Value("${ai.timeout-seconds:150}") long embeddingTimeoutSeconds,
+                        @Value("${ai.job-description-timeout-seconds:180}")
+                        long jobDescriptionTimeoutSeconds,
                         @Value("${ai.resume-timeout-seconds:120}") long resumeTimeoutSeconds,
                         @Value("${ai.user-analysis-timeout-seconds:120}") long userAnalysisTimeoutSeconds) {
         if (dimensions != 1024) {
@@ -64,8 +67,11 @@ public class AIGrpcClient {
         if (configuredBatchSize < 1 || configuredBatchSize > 100) {
             throw new IllegalArgumentException("ai.batch-size must be between 1 and 100");
         }
-        if (timeoutSeconds <= 0) {
+        if (embeddingTimeoutSeconds <= 0) {
             throw new IllegalArgumentException("ai.timeout-seconds must be > 0");
+        }
+        if (jobDescriptionTimeoutSeconds <= 0) {
+            throw new IllegalArgumentException("ai.job-description-timeout-seconds must be > 0");
         }
         if (resumeTimeoutSeconds <= 0) {
             throw new IllegalArgumentException("ai.resume-timeout-seconds must be > 0");
@@ -77,7 +83,8 @@ public class AIGrpcClient {
         this.serviceName = serviceName;
         this.dimensions = dimensions;
         this.configuredBatchSize = configuredBatchSize;
-        this.timeoutSeconds = timeoutSeconds;
+        this.embeddingTimeoutSeconds = embeddingTimeoutSeconds;
+        this.jobDescriptionTimeoutSeconds = jobDescriptionTimeoutSeconds;
         this.resumeTimeoutSeconds = resumeTimeoutSeconds;
         this.userAnalysisTimeoutSeconds = userAnalysisTimeoutSeconds;
     }
@@ -106,7 +113,7 @@ public class AIGrpcClient {
                 .build();
 
         ListenableFuture<BatchEmbedTextResponse> future = AIServiceGrpc.newFutureStub(activeChannel)
-                .withDeadlineAfter(timeoutSeconds, TimeUnit.SECONDS)
+                .withDeadlineAfter(embeddingTimeoutSeconds, TimeUnit.SECONDS)
                 .batchEmbedText(request);
         return new EmbeddingCall(future, texts.size(), dimensions);
     }
@@ -123,7 +130,7 @@ public class AIGrpcClient {
                 .build();
         ListenableFuture<AnalyzeJobDescriptionResponse> future =
                 AIServiceGrpc.newFutureStub(activeChannel)
-                        .withDeadlineAfter(timeoutSeconds, TimeUnit.SECONDS)
+                        .withDeadlineAfter(jobDescriptionTimeoutSeconds, TimeUnit.SECONDS)
                         .analyzeJobDescription(request);
         return new JobDescriptionAnalysisCall(future);
     }

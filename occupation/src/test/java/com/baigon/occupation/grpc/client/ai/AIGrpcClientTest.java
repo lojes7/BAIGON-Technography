@@ -45,7 +45,7 @@ class AIGrpcClientTest {
         DiscoveryClient discovery = mock(DiscoveryClient.class);
         when(discovery.getInstances("ai-service")).thenReturn(List.of(instance));
         client = new AIGrpcClient(
-                discovery, "ai-service", 1024, 20, 30, 120, 120);
+                discovery, "ai-service", 1024, 20, 150, 180, 120, 120);
     }
 
     @AfterEach

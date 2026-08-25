@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from src.config import model_config
 from src.llm.exceptions import ModelResponseError
 from src.llm.spark_model import SparkModel
 from src.service.analysis_result import LLMAnalysisResult
@@ -105,6 +106,8 @@ def analyze_job_description(
         temperature=0.1,
         max_tokens=4096,
         response_function=JOB_ANALYSIS_RESPONSE_FUNCTION,
+        # 长 JD 的结构化分析使用独立期限，不能沿用普通问答的 25 秒。
+        timeout_seconds=model_config.provider_job_analysis_timeout_seconds,
     )
     # 供应商输出不可信：失败时仍保留原始响应供任务审查。
     try:

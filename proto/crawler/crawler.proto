@@ -62,9 +62,9 @@ message IngestDataRequest {
 }
 
 message IngestDataResponse {
-  string count = 1; // 注入并清洗的条数
+  string count = 1; // 已处理条数；异步任务刚启动时为 0
   string trace_id = 2;
-  string status = 3; // success
+  string status = 3; // 异步任务状态：running
 }
 
 message CrawlRequest {

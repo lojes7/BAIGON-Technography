@@ -207,18 +207,18 @@ type ingestDataRequest struct {
 	Jobs []ingestedJob `json:"jobs"` // 注入的岗位数据
 }
 
-// IngestDataHandler 模拟采集：注入配置数据走完整链路
+// IngestDataHandler 模拟采集：后台注入配置数据并走完整链路
 // @Summary      模拟采集（注入数据）
-// @Description  由 ADMIN 提交配置好的岗位数据，走与爬虫相同的落库/清洗/Kafka 流程（不真爬）
+// @Description  由 ADMIN 提交配置好的岗位数据，后台分批执行落库/清洗/Kafka 流程（不真爬），进度通过 GET /crawl 查询
 // @Tags         数据获取
 // @Accept       json
 // @Produce      json
 // @Security     Bearer
 // @Param        request body ingestDataRequest true "注入的岗位数据"
-// @Success      200  {object}  response.SuccessBody  "注入完成，data 内含 count/trace_id/status"
+// @Success      200  {object}  response.SuccessBody  "任务已启动，data 内含 count/trace_id/status"
 // @Failure      400  {object}  response.ErrorBody    "请求体格式错误、jobs 为空或超过 1000 条"
 // @Failure      401  {object}  response.ErrorBody    "未认证"
-// @Failure      403  {object}  response.ErrorBody    "非 ADMIN"
+// @Failure      403  {object}  response.ErrorBody    "非 ADMIN；已有采集或注入任务运行"
 // @Failure      503  {object}  response.ErrorBody    "crawler 服务不可用"
 // @Router       /api/auth/crawl/ingest [post]
 func IngestDataHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
@@ -240,7 +240,8 @@ func IngestDataHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		// crawler 只负责接收任务并立即返回，10 秒足以覆盖发现与启动开销。
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 		defer cancel()
 
 		// 组装 gRPC 请求（透传审计字段）
@@ -279,7 +280,7 @@ func IngestDataHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			return
 		}
 
-		// 统一响应格式: {"code": 200, "data": {...}}
+		// 统一响应格式；后台任务通过 GET /crawl 查询进度。
 		response.Success(c, gin.H{
 			"count":    resp.GetCount(),
 			"trace_id": resp.GetTraceId(),

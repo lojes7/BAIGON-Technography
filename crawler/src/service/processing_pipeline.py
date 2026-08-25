@@ -92,18 +92,6 @@ class RecordProcessingPipeline:
         future.add_done_callback(lambda _: self._slots.release())
         return future
 
-    def process_sync(
-        self,
-        records: list[JobRecord],
-        log_ctx: dict,
-        kafka_timeout_seconds: float,
-    ) -> BatchProcessingResult:
-        """模拟注入使用：复用并行流水线，但等待本批 Kafka 确认后返回。"""
-        result: BatchProcessingResult = self.submit(records, log_ctx).result()
-        if result.kafka_delivery is not None:
-            result.kafka_delivery.result(timeout=kafka_timeout_seconds)
-        return result
-
     def close(self) -> None:
         """等待已进入流水线的小批次结束并释放线程池。"""
         self._coordinator_pool.shutdown(wait=True, cancel_futures=False)

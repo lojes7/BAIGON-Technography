@@ -3,6 +3,7 @@
 import json
 import unittest
 
+from src.config import model_config
 from src.llm.exceptions import ModelResponseError
 from src.llm.spark_model import LLMResponse
 from src.service.job_analysis import analyze_job_description
@@ -51,6 +52,10 @@ class JobAnalysisTest(unittest.TestCase):
         self.assertEqual(result.skills[0].proficiency, "ADVANCED")
         self.assertEqual(model.call[1], "招聘 Java 工程师")
         self.assertEqual(model.call[2]["temperature"], 0.1)
+        self.assertEqual(
+            model.call[2]["timeout_seconds"],
+            model_config.provider_job_analysis_timeout_seconds,
+        )
         self.assertEqual(
             model.call[2]["response_function"]["name"],
             "submit_job_description_analysis",

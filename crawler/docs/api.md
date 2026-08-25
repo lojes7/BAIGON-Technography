@@ -61,10 +61,10 @@
 | 字段 | 说明 |
 |------|------|
 | `status` | idle / running / **stopping** / success / failed / stopped |
-| `count` | 最近一次采集数量 |
+| `count` | 最近一次采集或注入已入库数量 |
 | `message` | 附加信息（如失败原因） |
 | `current_category` | 正在爬取的分类 |
-| `progress` | 当前分类已完成页数 |
+| `progress` | 真实采集的当前页进度，或模拟注入的批次完成百分比 |
 | `total_cleaned` | 累计清洗条数 |
 
 ### StopCrawl — 停止采集（立即生效）
@@ -74,7 +74,7 @@
 | **Full Method** | `/baigon.crawler.CrawlerService/StopCrawl` |
 | **对应 REST** | `DELETE /api/auth/crawl` |
 
-设置停止信号后接口立即返回 `stopping`：爬虫停止接收新批次，尚未进入流水线的批次取消；已经进入 AI/数据库事务的小批次会安全完成或回滚，随后状态置 `stopped`。流水线有界并发默认为 2，因此停止时不会积压无限批次。
+设置停止信号后接口立即返回 `stopping`：真实爬虫或模拟注入停止接收新批次，尚未进入流水线的批次取消；已经进入 AI/数据库事务的小批次会安全完成或回滚，随后状态置 `stopped`。流水线有界并发默认为 2，因此停止时不会积压无限批次。
 
 ### IngestData — 模拟采集（注入配置数据）
 
@@ -83,7 +83,7 @@
 | **Full Method** | `/baigon.crawler.CrawlerService/IngestData` |
 | **对应 REST** | `POST /api/auth/crawl/ingest`（仅 ADMIN） |
 
-不真爬,由 ADMIN 提交配置好的岗位数据,**走与爬虫完全相同的流程**:Qwen 向量与清洗并行 → 写 job_sources → Kafka → data-source 落库。
+不真爬，由 ADMIN 提交配置好的岗位数据。接口校验并接收任务后立即返回 `running`，后台按 20 条小批次执行 **Qwen 向量与清洗并行 → 写 job_sources → Kafka → data-source 落库**。进度复用 `GetCrawlStatus` 查询，停止复用 `StopCrawl`。
 
 **请求 — IngestDataRequest**
 
@@ -93,9 +93,9 @@
 
 `IngestedJob` 接收以下岗位内容字段:publish_date(ISO,可空)/ source_platform / source_url / city / tags / major / nature / salary / job_name / company_name / company_size / province / education / experience / job_description。`job_number` 由真实爬虫从来源平台获取，模拟注入记录默认留空。
 
-**响应**:`count`(注入并清洗条数)/ `trace_id` / `status`(success)。
+**启动响应**：`count=0` / `trace_id` / `status=running`。最终处理数量与状态通过 `GetCrawlStatus` 查询。
 
-**约束**:jobs 非空、≤ 1000 条;仅 ADMIN 可访问。
+**约束**：jobs 非空、≤ 1000 条；仅 ADMIN 可访问；同一时间只能运行一个真实采集或模拟注入任务。
 
 ## 爬虫机制
 

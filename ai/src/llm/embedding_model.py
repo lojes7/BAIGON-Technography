@@ -81,6 +81,8 @@ class TextEmbedding:
             input=texts,
             dimensions=dimensions,
             encoding_format=encoding_format,
+            # 必须早于调用方的 150 秒 gRPC deadline 主动释放同步 worker。
+            timeout=model_config.provider_embedding_timeout_seconds,
         )
         data = response.model_dump()["data"]
         sorted_data = sorted(data, key=lambda item: item["index"])

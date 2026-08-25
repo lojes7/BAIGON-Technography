@@ -51,7 +51,11 @@ class FakeFunctionCompletions:
 class FakeEmbeddings:
     """模拟乱序返回，用于验证适配器会按 index 排序。"""
 
+    def __init__(self):
+        self.request = None
+
     def create(self, **kwargs):
+        self.request = kwargs
         return SimpleNamespace(
             model_dump=lambda: {
                 "data": [
@@ -90,12 +94,17 @@ class ModelAdapterTest(unittest.TestCase):
         )
 
     def test_embedding_batch_restores_input_order(self):
-        client = SimpleNamespace(embeddings=FakeEmbeddings())
+        embeddings = FakeEmbeddings()
+        client = SimpleNamespace(embeddings=embeddings)
         model = TextEmbedding(api_key="test", client=client)
 
         vectors = model.embedding_batch(["第一条", "第二条"], dimensions=2)
 
         np.testing.assert_array_equal(vectors, np.array([[1.0, 0.0], [0.0, 1.0]]))
+        self.assertEqual(
+            embeddings.request["timeout"],
+            model_config.provider_embedding_timeout_seconds,
+        )
 
     def test_spark_model_forces_function_and_returns_arguments(self):
         completions = FakeFunctionCompletions('{"education":"Master","skills":[]}')

@@ -9,7 +9,8 @@ class AIConfig:
     重试参数暂时保留作后续设计使用，当前运行链路不会读取或执行重试。
     """
 
-    grpc_timeout_seconds: float = 30.0
+    # 单批 Qwen 调用允许 120 秒，外层额外预留 30 秒用于排队和序列化。
+    grpc_timeout_seconds: float = 150.0
     embedding_dimensions: int = 1024
     embedding_batch_size: int = 20
 
