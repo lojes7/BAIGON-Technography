@@ -473,6 +473,11 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
                 grpc.StatusCode.INVALID_ARGUMENT,
                 f"jobs count must be <= {self._max_documents}",
             )
+        if any(not job.job_name.strip() for job in jobs):
+            context.abort(
+                grpc.StatusCode.INVALID_ARGUMENT,
+                "job_name must not be empty",
+            )
 
         # 2) trace_id + 日志上下文（gateway 透传）
         trace_id = int(request.trace_id) if request.trace_id else snowflake.next_id()
@@ -489,14 +494,14 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
         records = [
             JobRecord(
                 publish_date=_parse_publish_date(job.publish_date),
-                source_platform=job.source_platform or "手动注入",
+                source_platform=job.source_platform.strip() or "手动注入",
                 source_url=job.source_url or None,
                 city=job.city or None,
                 tags=job.tags or None,
                 major=job.major or None,
                 nature=job.nature or None,
                 salary=job.salary or None,
-                job_name=job.job_name,
+                job_name=job.job_name.strip(),
                 company_name=job.company_name or None,
                 company_size=job.company_size or None,
                 province=job.province or None,

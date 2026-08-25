@@ -2,22 +2,41 @@ import type { IngestJob } from "../../types/api";
 
 export const MAX_CSV_FILE_BYTES = 10 * 1024 * 1024;
 export const MAX_INGEST_ROWS = 1000;
+export const CSV_TEMPLATE_URL = "/templates/job-ingest-template.csv";
+export const CSV_TEMPLATE_FILENAME = "岗位数据导入模板.csv";
 
-export const REQUIRED_CSV_HEADERS = [
-  "职位",
-  "薪资",
-  "公司",
-  "城市",
-  "区域",
-  "经验",
-  "学历",
-  "领域",
-  "规模",
-  "性质",
-  "work_desc",
-  "job_url",
-  "crawl_time",
-] as const;
+export interface IngestCsvColumn {
+  header: string;
+  nullable: boolean;
+  maxLength?: number;
+  rule: string;
+  aliases: readonly string[];
+}
+
+// CSV 表头、空值和长度约束统一维护，页面说明与解析校验共用同一份契约。
+export const INGEST_CSV_COLUMNS: readonly IngestCsvColumn[] = [
+  { header: "职位", nullable: false, maxLength: 64, rule: "岗位名称，最多 64 个字符", aliases: [] },
+  { header: "薪资", nullable: true, maxLength: 64, rule: "薪资范围，最多 64 个字符", aliases: [] },
+  { header: "公司", nullable: true, maxLength: 64, rule: "公司名称，最多 64 个字符", aliases: [] },
+  { header: "城市", nullable: true, maxLength: 64, rule: "工作城市，最多 64 个字符", aliases: [] },
+  { header: "区域", nullable: true, maxLength: 64, rule: "省份或地区，最多 64 个字符", aliases: [] },
+  { header: "经验", nullable: true, rule: "工作经验要求", aliases: [] },
+  { header: "学历", nullable: true, maxLength: 64, rule: "学历要求，最多 64 个字符", aliases: [] },
+  { header: "领域", nullable: true, maxLength: 64, rule: "专业或行业领域，最多 64 个字符", aliases: [] },
+  { header: "规模", nullable: true, maxLength: 64, rule: "公司规模，最多 64 个字符", aliases: [] },
+  { header: "性质", nullable: true, maxLength: 64, rule: "公司或岗位性质，最多 64 个字符", aliases: [] },
+  { header: "岗位描述", nullable: true, rule: "岗位职责与任职要求", aliases: ["work_desc"] },
+  { header: "岗位链接", nullable: true, maxLength: 512, rule: "非空时须为 HTTP(S) 地址，最多 512 个字符", aliases: ["job_url"] },
+  {
+    header: "发布日期",
+    nullable: true,
+    rule: "YYYY-MM-DD、YYYY-MM-DD HH:mm:ss 或 YYYY-MM-DDTHH:mm:ss",
+    aliases: ["crawl_time"],
+  },
+];
+
+// 所有模板列都必须存在；nullable 只表示该列的数据单元格可以留空。
+export const REQUIRED_CSV_HEADERS = INGEST_CSV_COLUMNS.map((column) => column.header);
 
 export interface ParsedIngestCsv {
   jobs: IngestJob[];
@@ -28,6 +47,15 @@ export class CsvValidationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "CsvValidationError";
+  }
+}
+
+export function decodeUtf8Csv(bytes: ArrayBuffer | Uint8Array): string {
+  try {
+    // fatal=true 能区分非法 UTF-8 字节与文件中真实存在的“�”字符。
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new CsvValidationError("CSV 不是有效的 UTF-8 编码，请另存为 UTF-8 后重试");
   }
 }
 
@@ -127,7 +155,7 @@ function isValidHttpUrl(value: string): boolean {
 }
 
 // 与 crawler 当前支持的三种时间格式保持一致，不在浏览器端做时区转换。
-function isValidCrawlTime(value: string): boolean {
+function isValidPublishDate(value: string): boolean {
   const match = /^(\d{4})-(\d{2})-(\d{2})(?:([ T])(\d{2}):(\d{2}):(\d{2}))?$/.exec(value);
   if (!match) return false;
 
@@ -152,9 +180,6 @@ export function parseIngestCsv(source: string): ParsedIngestCsv {
   if (!source.trim()) {
     throw new CsvValidationError("CSV 文件为空");
   }
-  if (source.includes("\uFFFD")) {
-    throw new CsvValidationError("CSV 不是有效的 UTF-8 编码，请另存为 UTF-8 后重试");
-  }
 
   const rows = parseCsvRows(source).filter((row) => !isBlankRow(row));
   if (rows.length < 2) {
@@ -171,9 +196,20 @@ export function parseIngestCsv(source: string): ParsedIngestCsv {
     throw new CsvValidationError(`CSV 存在重复表头：${duplicateHeaders.join("、")}`);
   }
 
-  const missingHeaders = REQUIRED_CSV_HEADERS.filter((header) => !headers.includes(header));
-  if (missingHeaders.length > 0) {
-    throw new CsvValidationError(`CSV 缺少必需列：${missingHeaders.join("、")}`);
+  const missingColumns = INGEST_CSV_COLUMNS.filter(
+    (column) => ![column.header, ...column.aliases].some((header) => headers.includes(header)),
+  );
+  if (missingColumns.length > 0) {
+    throw new CsvValidationError(`CSV 缺少必需列：${missingColumns.map((column) => column.header).join("、")}`);
+  }
+
+  const ambiguousColumns = INGEST_CSV_COLUMNS.filter(
+    (column) => [column.header, ...column.aliases].filter((header) => headers.includes(header)).length > 1,
+  );
+  if (ambiguousColumns.length > 0) {
+    throw new CsvValidationError(
+      `CSV 同一字段不能同时使用新旧列名：${ambiguousColumns.map((column) => column.header).join("、")}`,
+    );
   }
 
   const dataRows = rows.slice(1);
@@ -182,8 +218,12 @@ export function parseIngestCsv(source: string): ParsedIngestCsv {
   }
 
   const headerIndexes = new Map(headers.map((header, index) => [header, index]));
-  const valueAt = (row: string[], header: typeof REQUIRED_CSV_HEADERS[number]) =>
-    (row[headerIndexes.get(header) ?? -1] ?? "").trim();
+  const valueAt = (row: string[], canonicalHeader: string) => {
+    const column = INGEST_CSV_COLUMNS.find((item) => item.header === canonicalHeader);
+    const matchedHeader = [canonicalHeader, ...(column?.aliases ?? [])]
+      .find((header) => headerIndexes.has(header));
+    return (row[headerIndexes.get(matchedHeader ?? "") ?? -1] ?? "").trim();
+  };
 
   const jobs = dataRows.map((row, index): IngestJob => {
     const rowNumber = index + 2;
@@ -191,20 +231,28 @@ export function parseIngestCsv(source: string): ParsedIngestCsv {
       throw new CsvValidationError(`第 ${rowNumber} 行共有 ${row.length} 列，应为 ${headers.length} 列`);
     }
 
+    for (const column of INGEST_CSV_COLUMNS) {
+      const value = valueAt(row, column.header);
+      if (!column.nullable && !value) {
+        throw new CsvValidationError(`第 ${rowNumber} 行的“${column.header}”不能为空`);
+      }
+      if (column.maxLength && [...value].length > column.maxLength) {
+        throw new CsvValidationError(
+          `第 ${rowNumber} 行的“${column.header}”最多允许 ${column.maxLength} 个字符`,
+        );
+      }
+    }
+
     const jobName = valueAt(row, "职位");
-    if (!jobName) {
-      throw new CsvValidationError(`第 ${rowNumber} 行的“职位”不能为空`);
-    }
-
-    const sourceUrl = valueAt(row, "job_url");
+    const sourceUrl = valueAt(row, "岗位链接");
     if (sourceUrl && !isValidHttpUrl(sourceUrl)) {
-      throw new CsvValidationError(`第 ${rowNumber} 行的“job_url”必须是有效的 HTTP(S) 地址`);
+      throw new CsvValidationError(`第 ${rowNumber} 行的“岗位链接”必须是有效的 HTTP(S) 地址`);
     }
 
-    const publishDate = valueAt(row, "crawl_time");
-    if (publishDate && !isValidCrawlTime(publishDate)) {
+    const publishDate = valueAt(row, "发布日期");
+    if (publishDate && !isValidPublishDate(publishDate)) {
       throw new CsvValidationError(
-        `第 ${rowNumber} 行的“crawl_time”格式无效，应为 YYYY-MM-DD 或 YYYY-MM-DD HH:mm:ss`,
+        `第 ${rowNumber} 行的“发布日期”格式无效，应为 YYYY-MM-DD、YYYY-MM-DD HH:mm:ss 或 YYYY-MM-DDTHH:mm:ss`,
       );
     }
 
@@ -219,7 +267,7 @@ export function parseIngestCsv(source: string): ParsedIngestCsv {
       major: valueAt(row, "领域"),
       company_size: valueAt(row, "规模"),
       nature: valueAt(row, "性质"),
-      job_description: valueAt(row, "work_desc"),
+      job_description: valueAt(row, "岗位描述"),
       source_url: sourceUrl,
       publish_date: publishDate,
       source_platform: "CSV注入",
@@ -229,7 +277,9 @@ export function parseIngestCsv(source: string): ParsedIngestCsv {
   return {
     jobs,
     ignoredHeaders: headers.filter(
-      (header) => header && !REQUIRED_CSV_HEADERS.includes(header as typeof REQUIRED_CSV_HEADERS[number]),
+      (header) => header && !INGEST_CSV_COLUMNS.some(
+        (column) => column.header === header || column.aliases.includes(header),
+      ),
     ),
   };
 }

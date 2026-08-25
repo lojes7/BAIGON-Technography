@@ -6,6 +6,7 @@ import {
   Check,
   CheckCircle,
   Copy,
+  Download,
   FileText,
   Trash2,
   Upload,
@@ -13,8 +14,11 @@ import {
 import { toast } from "sonner";
 import T from "../../constants/tokens";
 import {
+  CSV_TEMPLATE_FILENAME,
+  CSV_TEMPLATE_URL,
+  INGEST_CSV_COLUMNS,
   MAX_INGEST_ROWS,
-  REQUIRED_CSV_HEADERS,
+  decodeUtf8Csv,
   parseIngestCsv,
   validateCsvFileMetadata,
 } from "../../features/ingest/csv";
@@ -23,7 +27,7 @@ import type { IngestJob } from "../../types/api";
 import { Btn } from "../ui";
 
 interface SubmitOk {
-  count: string;
+  count: number;
   trace_id: string;
 }
 
@@ -72,7 +76,7 @@ export default function IngestFormModal() {
 
     try {
       validateCsvFileMetadata(file);
-      const parsed = parseIngestCsv(await file.text());
+      const parsed = parseIngestCsv(decodeUtf8Csv(await file.arrayBuffer()));
       setParsedJobs(parsed.jobs);
       setIgnoredHeaders(parsed.ignoredHeaders);
       toast.success(`已解析 ${parsed.jobs.length} 条岗位数据`);
@@ -90,8 +94,12 @@ export default function IngestFormModal() {
     setSubmitting(true);
     setSubmitError("");
     try {
+      const submittedCount = parsedJobs.length;
       const response = await ingestData(parsedJobs);
-      setSuccess({ count: response.data.count, trace_id: response.data.trace_id });
+      setSuccess({
+        count: submittedCount,
+        trace_id: response.data.trace_id,
+      });
       clearFile();
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "注入请求失败");
@@ -134,10 +142,10 @@ export default function IngestFormModal() {
           </div>
           <div className="text-center">
             <div className="text-[16px] font-medium mb-1" style={{ color: T.ink }}>
-              注入成功，共 {success.count} 条数据
+              注入任务已启动，共 {success.count} 条待处理数据
             </div>
             <div className="text-[13px]" style={{ color: T.info }}>
-              数据已进入落库、清洗和 Kafka 流程，可前往数据复核查看
+              后台正在执行落库、清洗和 Kafka 流程，可通过采集状态查看进度
             </div>
           </div>
           <div
@@ -163,15 +171,53 @@ export default function IngestFormModal() {
               className="rounded-lg p-5"
               style={{ background: T.cloud, border: `1px solid ${T.border}` }}
             >
-              <div className="text-[13px] font-medium mb-2" style={{ color: T.ink }}>CSV 文件要求</div>
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div className="text-[13px] font-medium" style={{ color: T.ink }}>CSV 文件要求</div>
+                <a
+                  href={CSV_TEMPLATE_URL}
+                  download={CSV_TEMPLATE_FILENAME}
+                  className="inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[12px] font-medium bg-white hover:opacity-85"
+                  style={{ color: T.ink, border: `1px solid ${T.border}` }}
+                >
+                  <Download size={13} />
+                  下载 CSV 模板
+                </a>
+              </div>
               <ul className="text-[12px] leading-5 list-disc pl-5" style={{ color: T.info }}>
                 <li>仅支持 UTF-8 编码的 .csv 文件，文件必须小于 10 MiB</li>
-                <li>最多 {MAX_INGEST_ROWS} 行数据；“职位”每行必填</li>
-                <li>job_url 非空时必须是 HTTP(S) 地址</li>
-                <li>crawl_time 可为空，或使用 YYYY-MM-DD / YYYY-MM-DD HH:mm:ss</li>
+                <li>必须包含模板中的全部列头和至少 1 行数据，最多 {MAX_INGEST_ROWS} 行；列顺序不限</li>
+                <li>“非空”列每行必须填写；“可空”列头仍须保留，单元格可以留空</li>
+                <li>来源平台由系统统一填写为“CSV注入”；“获取日期”等额外列不会提交</li>
               </ul>
-              <div className="text-[12px] mt-2" style={{ color: T.ink }}>
-                必需列：{REQUIRED_CSV_HEADERS.join("、")}
+              <div className="rounded-md overflow-x-auto mt-3 bg-white" style={{ border: `1px solid ${T.border}` }}>
+                <table className="w-full min-w-[620px] text-[12px]">
+                  <thead>
+                    <tr style={{ background: `${T.teal}08` }}>
+                      <th className="px-3 py-2 text-left font-medium" style={{ color: T.ink }}>列名</th>
+                      <th className="px-3 py-2 text-left font-medium" style={{ color: T.ink }}>空值规则</th>
+                      <th className="px-3 py-2 text-left font-medium" style={{ color: T.ink }}>内容与格式</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {INGEST_CSV_COLUMNS.map((column) => (
+                      <tr key={column.header} style={{ borderTop: `1px solid ${T.cloud}` }}>
+                        <td className="px-3 py-2 whitespace-nowrap font-medium" style={{ color: T.ink }}>{column.header}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <span
+                            className="inline-flex rounded px-1.5 py-0.5"
+                            style={{
+                              color: column.nullable ? T.info : T.risk,
+                              background: column.nullable ? T.cloud : `${T.risk}10`,
+                            }}
+                          >
+                            {column.nullable ? "可空" : "非空"}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2" style={{ color: T.info }}>{column.rule}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
 
@@ -246,7 +292,7 @@ export default function IngestFormModal() {
                   <table className="w-full min-w-[700px] text-[12px]">
                     <thead>
                       <tr style={{ background: T.cloud }}>
-                        {["职位", "公司", "城市", "薪资", "crawl_time"].map((header) => (
+                        {["职位", "公司", "城市", "薪资", "发布日期"].map((header) => (
                           <th key={header} className="px-3 py-2 text-left font-medium" style={{ color: T.info }}>{header}</th>
                         ))}
                       </tr>

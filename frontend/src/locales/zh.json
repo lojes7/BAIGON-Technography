@@ -513,7 +513,7 @@
       "sourceDesc": "来源说明"
     },
     "dataImport": {
-      "desc": "手动填写或上传 Excel 注入岗位数据，走完整落库与清洗流程",
+      "desc": "上传符合模板要求的 CSV 岗位数据，走完整落库与清洗流程",
       "ingestTitle": "模拟采集（注入数据）",
       "ingestDesc": "提交配置好的岗位数据，走与爬虫相同的落库、清洗、Kafka 流程（不真爬）",
       "ingestBtn": "模拟采集（注入数据）"

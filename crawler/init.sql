@@ -81,7 +81,7 @@ CREATE TABLE "job_sources" (
     -- 薪资范围
     "salary" varchar(64),
     -- 岗位名称
-    "job_name" varchar(64),
+    "job_name" varchar(64) NOT NULL,
     -- 公司名称
     "company_name" varchar(64),
     -- 公司规模

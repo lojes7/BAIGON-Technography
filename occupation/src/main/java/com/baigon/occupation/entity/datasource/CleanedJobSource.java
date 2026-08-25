@@ -61,7 +61,7 @@ public class CleanedJobSource extends BaseEntity {
     private String salary;
 
     /** 岗位名称 */
-    @Column(name = "job_name")
+    @Column(name = "job_name", nullable = false, length = 64)
     private String jobName;
 
     /** 公司名称 */

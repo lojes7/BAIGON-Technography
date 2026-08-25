@@ -6,7 +6,10 @@ package handler
 import (
 	"context"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"baigon-technography/gateway/internal/grpcpool"
 	"baigon-technography/gateway/internal/response"
@@ -185,21 +188,93 @@ func StopCrawlHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 
 // ingestedJob 单条注入数据（字段与爬虫产出的 JobRecord 完全一致）
 type ingestedJob struct {
-	PublishDate    string `json:"publishDate" example:"2025-01-01T00:00:00+08:00"` // 发布日期 ISO8601，可空
-	SourcePlatform string `json:"sourcePlatform" example:"手动注入"`                   // 来源平台
-	SourceURL      string `json:"sourceUrl"`                                       // 来源 URL
-	City           string `json:"city"`                                            // 城市
-	Tags           string `json:"tags"`                                            // 技能标签
-	Major          string `json:"major"`                                           // 专业方向
-	Nature         string `json:"nature"`                                          // 工作性质
-	Salary         string `json:"salary"`                                          // 薪资
-	JobName        string `json:"jobName"`                                         // 岗位名称
-	CompanyName    string `json:"companyName"`                                     // 公司名称
-	CompanySize    string `json:"companySize"`                                     // 公司规模
-	Province       string `json:"province"`                                        // 省份
-	Education      string `json:"education"`                                       // 学历要求
-	Experience     string `json:"experience"`                                      // 经验要求
-	JobDescription string `json:"jobDescription"`                                  // 岗位描述
+	PublishDate    string `json:"publishDate" example:"2025-01-01 00:00:00"` // 发布日期，可空；支持日期或秒级时间
+	SourcePlatform string `json:"sourcePlatform" example:"CSV注入"`            // 来源平台，可空；后端为空时补“手动注入”
+	SourceURL      string `json:"sourceUrl"`                                 // 来源 URL，可空；非空时必须为 HTTP(S)
+	City           string `json:"city"`                                      // 城市，可空
+	Tags           string `json:"tags"`                                      // 技能标签，可空
+	Major          string `json:"major"`                                     // 专业方向，可空
+	Nature         string `json:"nature"`                                    // 工作性质，可空
+	Salary         string `json:"salary"`                                    // 薪资，可空
+	JobName        string `json:"jobName"`                                   // 岗位名称，非空
+	CompanyName    string `json:"companyName"`                               // 公司名称，可空
+	CompanySize    string `json:"companySize"`                               // 公司规模，可空
+	Province       string `json:"province"`                                  // 省份，可空
+	Education      string `json:"education"`                                 // 学历要求，可空
+	Experience     string `json:"experience"`                                // 经验要求，可空
+	JobDescription string `json:"jobDescription"`                            // 岗位描述，可空
+}
+
+var ingestPublishDateLayouts = []string{
+	"2006-01-02",
+	"2006-01-02 15:04:05",
+	"2006-01-02T15:04:05",
+}
+
+// normalizeIngestedJob 在网关信任边界统一清理空白并校验公开导入契约。
+func normalizeIngestedJob(job ingestedJob) (ingestedJob, bool) {
+	job.PublishDate = strings.TrimSpace(job.PublishDate)
+	job.SourcePlatform = strings.TrimSpace(job.SourcePlatform)
+	job.SourceURL = strings.TrimSpace(job.SourceURL)
+	job.City = strings.TrimSpace(job.City)
+	job.Tags = strings.TrimSpace(job.Tags)
+	job.Major = strings.TrimSpace(job.Major)
+	job.Nature = strings.TrimSpace(job.Nature)
+	job.Salary = strings.TrimSpace(job.Salary)
+	job.JobName = strings.TrimSpace(job.JobName)
+	job.CompanyName = strings.TrimSpace(job.CompanyName)
+	job.CompanySize = strings.TrimSpace(job.CompanySize)
+	job.Province = strings.TrimSpace(job.Province)
+	job.Education = strings.TrimSpace(job.Education)
+	job.Experience = strings.TrimSpace(job.Experience)
+	job.JobDescription = strings.TrimSpace(job.JobDescription)
+
+	// varchar 字段在进入异步链路前校验，避免后台落库时才暴露坏数据。
+	lengthLimits := []struct {
+		value string
+		max   int
+	}{
+		{job.SourcePlatform, 32},
+		{job.SourceURL, 512},
+		{job.City, 64},
+		{job.Major, 64},
+		{job.Nature, 64},
+		{job.Salary, 64},
+		{job.JobName, 64},
+		{job.CompanyName, 64},
+		{job.CompanySize, 64},
+		{job.Province, 64},
+		{job.Education, 64},
+	}
+	if job.JobName == "" {
+		return job, false
+	}
+	for _, limit := range lengthLimits {
+		if utf8.RuneCountInString(limit.value) > limit.max {
+			return job, false
+		}
+	}
+
+	if job.SourceURL != "" {
+		parsedURL, err := url.ParseRequestURI(job.SourceURL)
+		if err != nil || parsedURL.Host == "" || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
+			return job, false
+		}
+	}
+	if job.PublishDate != "" {
+		validDate := false
+		for _, layout := range ingestPublishDateLayouts {
+			if _, err := time.Parse(layout, job.PublishDate); err == nil {
+				validDate = true
+				break
+			}
+		}
+		if !validDate {
+			return job, false
+		}
+	}
+
+	return job, true
 }
 
 // ingestDataRequest 模拟采集请求体
@@ -216,7 +291,7 @@ type ingestDataRequest struct {
 // @Security     Bearer
 // @Param        request body ingestDataRequest true "注入的岗位数据"
 // @Success      200  {object}  response.SuccessBody  "任务已启动，data 内含 count/trace_id/status"
-// @Failure      400  {object}  response.ErrorBody    "请求体格式错误、jobs 为空或超过 1000 条"
+// @Failure      400  {object}  response.ErrorBody    "请求体格式错误、jobs 为空/超过 1000 条或岗位字段不符合约束"
 // @Failure      401  {object}  response.ErrorBody    "未认证"
 // @Failure      403  {object}  response.ErrorBody    "非 ADMIN；已有采集或注入任务运行"
 // @Failure      503  {object}  response.ErrorBody    "crawler 服务不可用"
@@ -232,6 +307,14 @@ func IngestDataHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 		if len(req.Jobs) == 0 || len(req.Jobs) > 1000 {
 			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
 			return
+		}
+		for index, job := range req.Jobs {
+			normalized, valid := normalizeIngestedJob(job)
+			if !valid {
+				response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+				return
+			}
+			req.Jobs[index] = normalized
 		}
 
 		conn, err := pool.GetConn("crawler-service")

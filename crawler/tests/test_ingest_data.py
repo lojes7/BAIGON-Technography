@@ -149,6 +149,16 @@ class IngestDataTest(unittest.TestCase):
 
         self.assertEqual(raised.exception.code, grpc.StatusCode.FAILED_PRECONDITION)
 
+    def test_rejects_blank_job_name(self):
+        servicer, _, _ = make_servicer()
+        request = make_request(1)
+        request.jobs[0].job_name = "   "
+
+        with self.assertRaises(AbortError) as raised:
+            servicer.IngestData(request, FakeContext())
+
+        self.assertEqual(raised.exception.code, grpc.StatusCode.INVALID_ARGUMENT)
+
 
 if __name__ == "__main__":
     unittest.main()

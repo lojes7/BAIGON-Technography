@@ -13,8 +13,8 @@ import java.time.OffsetDateTime;
 @Table(name = "jobs")
 public class Job extends BaseEntity {
 
-    /** 原始数据可能缺失岗位名；jobs 仍必须创建，后续任务交由人工处理。 */
-    @Column(length = 64)
+    /** 岗位名称不能为空，数据库沿用既有的 name 列。 */
+    @Column(name = "name", nullable = false, length = 64)
     private String name;
     @Column(name = "occupation_id")
     private Long occupationId;

@@ -513,7 +513,7 @@
       "sourceDesc": "Description"
     },
     "dataImport": {
-      "desc": "Manually fill in or upload Excel to inject job data through the full ingest and clean pipeline",
+      "desc": "Upload template-compatible CSV job data through the full ingest and clean pipeline",
       "ingestTitle": "Mock Ingest (Inject Data)",
       "ingestDesc": "Submit configured job data through the same persist / clean / Kafka pipeline (no real crawling)",
       "ingestBtn": "Mock Ingest (Inject Data)"

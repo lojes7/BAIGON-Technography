@@ -42,7 +42,7 @@ class JobSource(Base):
     major: Mapped[str | None] = mapped_column(String(64))
     nature: Mapped[str | None] = mapped_column(String(64))
     salary: Mapped[str | None] = mapped_column(String(64))
-    job_name: Mapped[str | None] = mapped_column(String(64))
+    job_name: Mapped[str] = mapped_column(String(64), nullable=False)
     company_name: Mapped[str | None] = mapped_column(String(64))
     company_size: Mapped[str | None] = mapped_column(String(64))
     province: Mapped[str | None] = mapped_column(String(64))

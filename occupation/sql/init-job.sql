@@ -5,7 +5,7 @@ CREATE TABLE "jobs" (
     "updated_at" timestamp with time zone NOT NULL DEFAULT now(),
     "deleted_at" timestamp with time zone,
     "id" bigint PRIMARY KEY,
-    "name" varchar(64),
+    "name" varchar(64) NOT NULL,
     "trace_id" bigint NOT NULL UNIQUE,
     "job_number" varchar(128),
     "publish_date" timestamp with time zone,
