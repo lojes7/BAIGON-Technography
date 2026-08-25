@@ -153,9 +153,6 @@ export async function editAndApproveReview(id: string, edits: {
   });
 }
 
-// ═══════════════════ 向后兼容（旧页面使用的导出） ═══════════════════
-
-// 旧版统一的审核接口 → 新版拆分后的映射
 export async function reviewDataSource(dsId: string, reviewStatus: string) {
   if (reviewStatus === "REVIEW_PASSED" || reviewStatus === "PASSED") {
     return approveReview(dsId);
@@ -163,8 +160,3 @@ export async function reviewDataSource(dsId: string, reviewStatus: string) {
   return rejectReview(dsId);
 }
 
-// 旧版批量清洗接口 → 新版不再支持，返回提示
-export async function cleanDataSources(ids: string[]) {
-  console.warn("批量清洗接口在新版后端中已移除，ids:", ids);
-  throw new Error("批量清洗功能在新版中暂不可用");
-}

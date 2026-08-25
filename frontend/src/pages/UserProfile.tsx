@@ -108,7 +108,6 @@ const PROFILE: Record<RoleKey, {
 // ── 权限页面名映射 ──
 const PAGE_LABELS: Record<string, string> = {
   "dashboard": "工作台",
-  "data-sources": "数据中心",
   "import-batches": "导入批次",
   "raw-records": "原始记录",
   "extraction-tasks": "抽取任务",

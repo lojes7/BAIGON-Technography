@@ -18,7 +18,6 @@ import ResponseLagPage from "./pages/ResponseLag";
 import RecommendationsPage from "./pages/Recommendations";
 import DataExportPage from "./pages/DataExport";
 import ImportWizardPage from "./pages/ImportWizard";
-import DataSourcesPage from "./pages/DataSources";
 import RawRecordsPage from "./pages/RawRecords";
 import AutoImportPage from "./pages/AutoImport";
 import MyStudentsPage from "./pages/MyStudents";
@@ -112,7 +111,6 @@ export default function App() {
             <Route path="recommendations" element={<RecommendationsPage />} />
             <Route path="export-tasks" element={<DataExportPage />} />
             <Route path="import-batches" element={<ImportWizardPage />} />
-            <Route path="data-sources" element={<DataSourcesPage />} />
             <Route path="raw-records" element={<RawRecordsPage />} />
             <Route path="auto-import" element={<AutoImportPage />} />
             <Route path="processing-errors" element={<ProcessingErrorsPage />} />
