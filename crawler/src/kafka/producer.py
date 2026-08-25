@@ -7,7 +7,7 @@ import json
 import logging
 import uuid
 from concurrent.futures import Future
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from kafka import KafkaProducer
 
@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 
 # topic 与事件名一致（已确认决策）
 TOPIC_DOCUMENT_INGESTED = "baigon.crawler.document.ingested"
+
+# 智联返回的发布时间不带时区，业务语义是中国标准时间。
+_SOURCE_TIMEZONE = timezone(timedelta(hours=8))
 
 # cleaned_job_sources 表的业务列（不含 id / 审核列，id 由 data-source 生成，
 # review_status 等审核列由 data-source 管理，默认 PENDING）。
@@ -28,12 +31,20 @@ _PAYLOAD_FIELDS = [
 ]
 
 
+def _datetime_to_iso(value: datetime) -> str:
+    """将时间序列化为带时区偏移的 ISO8601 字符串。"""
+    if value.tzinfo is None or value.utcoffset() is None:
+        value = value.replace(tzinfo=_SOURCE_TIMEZONE)
+    return value.isoformat()
+
+
 def _record_to_dict(r: JobRecord) -> dict:
-    """JobRecord → JSON 可序列化 dict（datetime 转 ISO 字符串）"""
-    return {
-        f: getattr(r, f).isoformat() if isinstance(getattr(r, f), datetime) else getattr(r, f)
-        for f in _PAYLOAD_FIELDS
-    }
+    """JobRecord → JSON 可序列化 dict（datetime 转带时区的 ISO 字符串）"""
+    payload = {}
+    for field in _PAYLOAD_FIELDS:
+        value = getattr(r, field)
+        payload[field] = _datetime_to_iso(value) if isinstance(value, datetime) else value
+    return payload
 
 
 class KafkaProducerClient:

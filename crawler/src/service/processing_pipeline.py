@@ -165,22 +165,22 @@ class RecordProcessingPipeline:
         embeddings: dict[int, list[float]] = {}
         embedding_error: str | None = None
 
-        if described_records:
-            try:
-                vectors = self._ai_client.embed_texts(
-                    [str(record.job_description) for record in described_records],
-                    log_ctx,
-                )
-                embeddings = {
-                    int(record.trace_id): vector
-                    for record, vector in zip(described_records, vectors, strict=True)
-                    if record.trace_id is not None
-                }
-            except Exception as exc:
-                # AI 失败只记录 FAILED 与业务日志，不阻塞原始岗位入库，也不自动重试。
-                embedding_error = str(exc)
-                logger.exception("AI 嵌入失败，本批岗位将以 FAILED 状态入库")
-                self._write_embedding_error(log_ctx, embedding_error)
+        # if described_records:
+        #     try:
+        #         vectors = self._ai_client.embed_texts(
+        #             [str(record.job_description) for record in described_records],
+        #             log_ctx,
+        #         )
+        #         embeddings = {
+        #             int(record.trace_id): vector
+        #             for record, vector in zip(described_records, vectors, strict=True)
+        #             if record.trace_id is not None
+        #         }
+        #     except Exception as exc:
+        #         # AI 失败只记录 FAILED 与业务日志，不阻塞原始岗位入库，也不自动重试。
+        #         embedding_error = str(exc)
+        #         logger.exception("AI 嵌入失败，本批岗位将以 FAILED 状态入库")
+        #         self._write_embedding_error(log_ctx, embedding_error)
 
         try:
             inserted = self._repository.insert_job_sources(
