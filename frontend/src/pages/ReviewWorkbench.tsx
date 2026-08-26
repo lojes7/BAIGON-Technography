@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { CheckCircle, Eye, Loader2, Plus, Search, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Btn, Card, PageHeader, Pagination, VerticalFilter } from "../components/ui";
+import { Btn, Card, PageHeader, Pagination, UnderlineTabs } from "../components/ui";
 import CanonicalSkillMultiSelect from "../components/skill/CanonicalSkillMultiSelect";
 import T from "../constants/tokens";
 import { isHttpErrorStatus } from "../services/http-error";
@@ -46,10 +46,9 @@ const ACTION_LABEL: Record<string, string> = {
 function ReviewWorkbenchPage() {
   const { t } = useTranslation();
   const [items, setItems] = useState<JobSkillResolutionTaskSummary[]>([]);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [taskStatus, setTaskStatus] = useState("");
-  const [reviewStatus, setReviewStatus] = useState("");
+  const [taskStatusFilter, setTaskStatusFilter] = useState<"success" | "failed" | "processing">("success");
+  const [reviewFilter, setReviewFilter] = useState<"all" | "pending" | "reviewed">("all");
   const [loading, setLoading] = useState(true);
   const [openingId, setOpeningId] = useState("");
 
@@ -69,17 +68,19 @@ function ReviewWorkbenchPage() {
   const [searching, setSearching] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // 后端 task_status 是单值筛选（PENDING/RUNNING/SUCCESS/FAILED），无法表达「处理中=PENDING+RUNNING」，
+  // 因此与岗位分析页一致：拉全量后在本地按三分类 + 审核状态过滤。
   const fetchList = async () => {
     setLoading(true);
     try {
-      const response = await listSkillResolutionTasks({
-        page: page - 1,
-        pageSize: PAGE_SIZE,
-        taskStatus: taskStatus || undefined,
-        reviewStatus: reviewStatus || undefined,
-      });
-      setItems(response.data.items ?? []);
-      setTotal(response.data.total ?? 0);
+      const firstPage = await listSkillResolutionTasks({ page: 0, pageSize: MAX_PAGE_SIZE });
+      const allItems = [...(firstPage.data.items ?? [])];
+      const pageCount = Math.ceil((firstPage.data.total ?? 0) / MAX_PAGE_SIZE);
+      for (let p = 1; p < pageCount; p += 1) {
+        const response = await listSkillResolutionTasks({ page: p, pageSize: MAX_PAGE_SIZE });
+        allItems.push(...(response.data.items ?? []));
+      }
+      setItems(allItems);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "归一任务加载失败");
     } finally {
@@ -87,7 +88,20 @@ function ReviewWorkbenchPage() {
     }
   };
 
-  useEffect(() => { void fetchList(); }, [page, taskStatus, reviewStatus]);
+  useEffect(() => { void fetchList(); }, []);
+
+  const visibleItems = items.filter((item) => {
+    if (taskStatusFilter === "processing") {
+      if (item.taskStatus !== "PENDING" && item.taskStatus !== "RUNNING") return false;
+    } else if (item.taskStatus !== (taskStatusFilter === "success" ? "SUCCESS" : "FAILED")) {
+      return false;
+    }
+    if (reviewFilter === "pending") return item.reviewStatus === "PENDING";
+    if (reviewFilter === "reviewed") return item.reviewStatus === "PASSED";
+    return true;
+  });
+
+  const pagedItems = visibleItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const initializeDetail = (nextDetail: JobSkillResolutionTaskDetail) => {
     setDetail(nextDetail);
@@ -209,11 +223,7 @@ function ReviewWorkbenchPage() {
         ? "SELECT_CANDIDATE"
         : action;
       const body = effectiveAction === "CREATE_NEW"
-        ? {
-            resolutionAction: effectiveAction,
-            newSkillName: newSkillName.trim(),
-            parentSkillIds: newParentSkills.map((skill) => skill.id),
-          } as const
+        ? { resolutionAction: effectiveAction, newSkillName: newSkillName.trim() } as const
         : { resolutionAction: effectiveAction, skillId: selectedSkillId } as const;
       const response = await reviewSkillResolutionTask(detail.task.id, body);
       initializeDetail(response.data.resolution);
@@ -560,40 +570,20 @@ function ReviewWorkbenchPage() {
               )}
 
               {action === "CREATE_NEW" && (
-                <section className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="text-[12px] font-medium" style={{ color: T.info }}>新规范技能名称</div>
-                    {canReview ? (
-                      <input
-                        className="h-9 w-full rounded-md px-3 text-[13px] outline-none"
-                        style={{ border: `1px solid ${T.border}`, color: T.ink }}
-                        placeholder="请输入明确、去重后的规范技能名称"
-                        value={newSkillName}
-                        maxLength={100}
-                        onChange={(event) => setNewSkillName(event.target.value)}
-                      />
-                    ) : (
-                      <div className="rounded-md px-3 py-2 text-[13px]" style={{ background: T.cloud, color: T.ink }}>
-                        已通过本任务创建新规范技能
-                      </div>
-                    )}
-                  </div>
-
-                  {canReview && (
-                    <div className="space-y-2 border-t pt-4" style={{ borderColor: T.cloud }}>
-                      <div>
-                        <div className="text-[12px] font-medium" style={{ color: T.info }}>父技能（可选）</div>
-                        <div className="mt-1 text-[11px]" style={{ color: T.info }}>
-                          可为新技能选择多个父技能；不选择时仅创建独立规范技能。
-                        </div>
-                      </div>
-                      <CanonicalSkillMultiSelect
-                        value={newParentSkills}
-                        onChange={setNewParentSkills}
-                        maxSelected={20}
-                        disabled={submitting}
-                        placeholder="搜索新技能的父技能"
-                      />
+                <section className="space-y-2">
+                  <div className="text-[12px] font-medium" style={{ color: T.info }}>新规范技能名称</div>
+                  {canReview ? (
+                    <input
+                      className="h-9 w-full rounded-md px-3 text-[13px] outline-none"
+                      style={{ border: `1px solid ${T.border}`, color: T.ink }}
+                      placeholder="请输入明确、去重后的规范技能名称"
+                      value={newSkillName}
+                      maxLength={100}
+                      onChange={(event) => setNewSkillName(event.target.value)}
+                    />
+                  ) : (
+                    <div className="rounded-md px-3 py-2 text-[13px]" style={{ background: T.cloud, color: T.ink }}>
+                      已通过本任务创建新规范技能
                     </div>
                   )}
                 </section>
