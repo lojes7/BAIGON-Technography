@@ -31,6 +31,7 @@ type listCleanedJobsRequest struct {
 type editReviewRequest struct {
 	JobName        string `json:"jobName"`        // 岗位名称
 	CompanyName    string `json:"companyName"`    // 公司名称
+	MajorName      string `json:"majorName"`      // 专业要求
 	Salary         string `json:"salary"`         // 薪资
 	City           string `json:"city"`           // 城市
 	Education      string `json:"education"`      // 学历要求
@@ -278,6 +279,7 @@ func EditReviewHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			Edited: &datasourcepb.CleanedJobDetail{
 				JobName:        req.JobName,
 				CompanyName:    req.CompanyName,
+				Major:          req.MajorName,
 				Salary:         req.Salary,
 				City:           req.City,
 				Education:      req.Education,

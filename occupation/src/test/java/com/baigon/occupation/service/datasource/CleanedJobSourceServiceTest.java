@@ -172,6 +172,38 @@ class CleanedJobSourceServiceTest {
     }
 
     @Test
+    void approveWithEditShouldUseEditedMajorForSnapshotAndMajorLookup() {
+        CleanedJobSource source = pendingSource();
+        source.setMajor("原专业");
+        CleanedJobSource edited = new CleanedJobSource();
+        edited.setMajor("软件工程");
+        JobMajorAlias alias = new JobMajorAlias();
+        alias.setMajorId(77L);
+        when(cleanedRepository.findByIdForReview(source.getId())).thenReturn(Optional.of(source));
+        when(jobRepository.findByTraceIdAndDeletedAtIsNull(source.getTraceId()))
+                .thenReturn(Optional.empty());
+        when(majorAliasRepository.findByJobMajorAndDeletedAtIsNull("软件工程"))
+                .thenReturn(Optional.of(alias));
+
+        var result = service.review(
+                source.getId(), CleanedJobSourceService.ReviewAction.APPROVE_WITH_EDIT,
+                edited, audit()).orElseThrow();
+
+        // 原始清洗数据保持不变，编辑后的专业只进入审核快照和后续分析链路。
+        assertEquals("原专业", source.getMajor());
+        assertEquals("软件工程", result.approvedVersion().getMajor());
+        ArgumentCaptor<Job> jobCaptor = ArgumentCaptor.forClass(Job.class);
+        verify(jobRepository).save(jobCaptor.capture());
+        assertEquals("软件工程", jobCaptor.getValue().getMajor());
+        assertEquals(77L, jobCaptor.getValue().getMajorId());
+        ArgumentCaptor<JobAnalysisTask> taskCaptor = ArgumentCaptor.forClass(JobAnalysisTask.class);
+        verify(taskRepository).save(taskCaptor.capture());
+        assertEquals("软件工程", taskCaptor.getValue().getJobMajor());
+        assertEquals(77L, taskCaptor.getValue().getSelectedMajorId());
+        assertEquals(TaskStatus.SUCCESS, taskCaptor.getValue().getMajorAnalysisStatus());
+    }
+
+    @Test
     void majorAliasHitShouldWriteMajorIdAndSkipMajorEmbeddingBranch() {
         CleanedJobSource source = pendingSource();
         source.setMajor("计算机科学与技术");

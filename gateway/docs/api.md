@@ -305,7 +305,7 @@ Consul 健康探测端点，**不需要认证**。
 
 #### PUT /api/auth/data-source/{id}/review — 修改后通过复核
 
-请求体携带修改后的字段（jobName / companyName / salary / city / education / experience / jobDescription）。`cleaned_job_sources` 只更新审核参数，原业务字段保持不变；合并编辑后的版本写入 `reviewed_cleaned_job_sources`，并沿用来源记录的 `trace_id`。
+请求体携带修改后的字段（jobName / companyName / majorName / salary / city / education / experience / jobDescription），其中 `majorName` 对应岗位的专业要求。`cleaned_job_sources` 只更新审核参数，原业务字段保持不变；合并编辑后的版本写入 `reviewed_cleaned_job_sources`，并沿用来源记录的 `trace_id`。
 
 三个审核端点都使用数据库行级悲观锁。并发请求取得锁后如果发现状态已经不是 `PENDING`，返回 HTTP 403：
 

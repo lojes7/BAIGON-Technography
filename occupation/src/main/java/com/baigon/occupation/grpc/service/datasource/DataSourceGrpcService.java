@@ -290,6 +290,7 @@ public class DataSourceGrpcService extends DataSourceServiceGrpc.DataSourceServi
         CleanedJobSource job = new CleanedJobSource();
         job.setJobName(emptyToNull(detail.getJobName()));
         job.setCompanyName(emptyToNull(detail.getCompanyName()));
+        job.setMajor(emptyToNull(detail.getMajor()));
         job.setSalary(emptyToNull(detail.getSalary()));
         job.setCity(emptyToNull(detail.getCity()));
         job.setEducation(emptyToNull(detail.getEducation()));

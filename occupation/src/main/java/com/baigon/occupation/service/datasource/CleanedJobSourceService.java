@@ -325,6 +325,7 @@ public class CleanedJobSourceService {
         if (edited != null) {
             if (edited.getJobName() != null) target.setJobName(edited.getJobName());
             if (edited.getCompanyName() != null) target.setCompanyName(edited.getCompanyName());
+            if (edited.getMajor() != null) target.setMajor(edited.getMajor());
             if (edited.getSalary() != null) target.setSalary(edited.getSalary());
             if (edited.getCity() != null) target.setCity(edited.getCity());
             if (edited.getEducation() != null) target.setEducation(edited.getEducation());

@@ -2,11 +2,17 @@
 package com.baigon.occupation.grpc.service.datasource;
 
 import com.baigon.crawler.GetJobSourceByTraceIdResponse;
+import com.baigon.datasource.CleanedJobDetail;
 import com.baigon.datasource.GetSourceJobRequest;
 import com.baigon.datasource.GetSourceJobResponse;
+import com.baigon.datasource.ReviewAction;
+import com.baigon.datasource.ReviewJobRequest;
+import com.baigon.datasource.ReviewJobResponse;
 import com.baigon.occupation.entity.datasource.CleanedJobSource;
+import com.baigon.occupation.entity.datasource.ReviewedCleanedJobSource;
 import com.baigon.occupation.error.ApiException;
 import com.baigon.occupation.grpc.client.crawler.CrawlerGrpcClient;
+import com.baigon.occupation.service.AuditContext;
 import com.baigon.occupation.service.LogService;
 import com.baigon.occupation.service.datasource.CleanedJobSourceService;
 import io.grpc.Status;
@@ -86,6 +92,49 @@ class DataSourceGrpcServiceTest {
         verify(observer, never()).onCompleted();
         assertEquals(Status.Code.NOT_FOUND,
                 Status.fromThrowable(error.getValue()).getCode());
+    }
+
+    @Test
+    void approveWithEditShouldForwardAndReturnEditedMajor() {
+        CleanedJobSource source = new CleanedJobSource();
+        source.setId(1001L);
+        source.setTraceId(9003L);
+        source.setMajor("原专业");
+        ReviewedCleanedJobSource approved = new ReviewedCleanedJobSource();
+        approved.setMajor("软件工程");
+        when(cleanedJobSourceService.review(
+                eq(1001L),
+                eq(CleanedJobSourceService.ReviewAction.APPROVE_WITH_EDIT),
+                any(CleanedJobSource.class),
+                any(AuditContext.class)))
+                .thenReturn(Optional.of(new CleanedJobSourceService.ReviewResult(source, approved)));
+        @SuppressWarnings("unchecked")
+        StreamObserver<ReviewJobResponse> observer = mock(StreamObserver.class);
+
+        service.reviewJob(ReviewJobRequest.newBuilder()
+                .setId(1001L)
+                .setAction(ReviewAction.APPROVE_WITH_EDIT)
+                .setEdited(CleanedJobDetail.newBuilder().setMajor("软件工程"))
+                .setTraceId("8002")
+                .setUserId(7L)
+                .setUserName("reviewer")
+                .setUserIp("127.0.0.1")
+                .setRequestMethod("PUT")
+                .setRequestUrl("/api/auth/data-source/1001/review")
+                .build(), observer);
+
+        ArgumentCaptor<CleanedJobSource> edited = ArgumentCaptor.forClass(CleanedJobSource.class);
+        verify(cleanedJobSourceService).review(
+                eq(1001L),
+                eq(CleanedJobSourceService.ReviewAction.APPROVE_WITH_EDIT),
+                edited.capture(),
+                any(AuditContext.class));
+        assertEquals("软件工程", edited.getValue().getMajor());
+        ArgumentCaptor<ReviewJobResponse> response = ArgumentCaptor.forClass(ReviewJobResponse.class);
+        verify(observer).onNext(response.capture());
+        verify(observer).onCompleted();
+        verify(observer, never()).onError(any());
+        assertEquals("软件工程", response.getValue().getJob().getMajor());
     }
 
     private GetSourceJobRequest request(long id) {

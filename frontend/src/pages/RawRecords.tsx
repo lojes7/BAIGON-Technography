@@ -107,6 +107,7 @@ export default function RawRecordsPage() {
   interface EditForm {
     jobName: string;
     companyName: string;
+    majorName: string;
     salary: string;
     city: string;
     education: string;
@@ -119,7 +120,7 @@ export default function RawRecordsPage() {
   const [savingEdit, setSavingEdit] = useState(false);
 
   function emptyEditForm(): EditForm {
-    return { jobName: "", companyName: "", salary: "", city: "", education: "", experience: "", jobDescription: "" };
+    return { jobName: "", companyName: "", majorName: "", salary: "", city: "", education: "", experience: "", jobDescription: "" };
   }
 
   // 打开编辑：初始值优先取清洗后详情，为空回退列表摘要字段
@@ -128,6 +129,7 @@ export default function RawRecordsPage() {
     setEditForm({
       jobName: cleanedDetail?.job_name ?? detail.job_name ?? "",
       companyName: cleanedDetail?.company_name ?? detail.company_name ?? "",
+      majorName: cleanedDetail?.major ?? "",
       salary: cleanedDetail?.salary ?? "",
       city: cleanedDetail?.city ?? "",
       education: cleanedDetail?.education ?? "",
@@ -568,6 +570,7 @@ export default function RawRecordsPage() {
                       {([
                         ["jobName", t("page.rawRecords.jobName")],
                         ["companyName", t("page.rawRecords.companyName")],
+                        ["majorName", t("page.rawRecords.jobMajor")],
                         ["salary", t("page.rawRecords.jobSalary")],
                         ["city", t("page.rawRecords.jobCity")],
                         ["education", t("page.rawRecords.jobEdu")],

@@ -140,6 +140,7 @@ export async function rejectReview(id: string) {
 export async function editAndApproveReview(id: string, edits: {
   jobName?: string;
   companyName?: string;
+  majorName?: string;
   salary?: string;
   city?: string;
   education?: string;
@@ -159,4 +160,3 @@ export async function reviewDataSource(dsId: string, reviewStatus: string) {
   }
   return rejectReview(dsId);
 }
-
