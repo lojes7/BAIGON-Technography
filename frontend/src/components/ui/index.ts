@@ -8,3 +8,4 @@ export { default as Divider } from "./Divider";
 export { default as Pagination } from "./Pagination";
 export { default as Segmented } from "./Segmented";
 export { default as VerticalFilter } from "./VerticalFilter";
+export { default as UnderlineTabs } from "./UnderlineTabs";
