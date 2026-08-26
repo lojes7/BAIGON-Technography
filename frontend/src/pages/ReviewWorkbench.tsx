@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { CheckCircle, Eye, Loader2, Plus, Search, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Btn, Card, PageHeader, Pagination, VerticalFilter } from "../components/ui";
+import { Btn, Card, PageHeader, Pagination, UnderlineTabs } from "../components/ui";
 import T from "../constants/tokens";
 import { isHttpErrorStatus } from "../services/http-error";
 import {
@@ -23,6 +23,7 @@ import type {
 
 const PAGE_SIZE = 20;
 const SKILL_PAGE_SIZE = 50;
+const MAX_PAGE_SIZE = 1000;
 
 const TASK_STATUS_LABEL: Record<string, string> = {
   PENDING: "等待处理",
@@ -45,10 +46,9 @@ const ACTION_LABEL: Record<string, string> = {
 function ReviewWorkbenchPage() {
   const { t } = useTranslation();
   const [items, setItems] = useState<JobSkillResolutionTaskSummary[]>([]);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [taskStatus, setTaskStatus] = useState("");
-  const [reviewStatus, setReviewStatus] = useState("");
+  const [taskStatusFilter, setTaskStatusFilter] = useState<"success" | "failed" | "processing">("success");
+  const [reviewFilter, setReviewFilter] = useState<"all" | "pending" | "reviewed">("all");
   const [loading, setLoading] = useState(true);
   const [openingId, setOpeningId] = useState("");
 
@@ -67,17 +67,19 @@ function ReviewWorkbenchPage() {
   const [searching, setSearching] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // 后端 task_status 是单值筛选（PENDING/RUNNING/SUCCESS/FAILED），无法表达「处理中=PENDING+RUNNING」，
+  // 因此与岗位分析页一致：拉全量后在本地按三分类 + 审核状态过滤。
   const fetchList = async () => {
     setLoading(true);
     try {
-      const response = await listSkillResolutionTasks({
-        page: page - 1,
-        pageSize: PAGE_SIZE,
-        taskStatus: taskStatus || undefined,
-        reviewStatus: reviewStatus || undefined,
-      });
-      setItems(response.data.items ?? []);
-      setTotal(response.data.total ?? 0);
+      const firstPage = await listSkillResolutionTasks({ page: 0, pageSize: MAX_PAGE_SIZE });
+      const allItems = [...(firstPage.data.items ?? [])];
+      const pageCount = Math.ceil((firstPage.data.total ?? 0) / MAX_PAGE_SIZE);
+      for (let p = 1; p < pageCount; p += 1) {
+        const response = await listSkillResolutionTasks({ page: p, pageSize: MAX_PAGE_SIZE });
+        allItems.push(...(response.data.items ?? []));
+      }
+      setItems(allItems);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "归一任务加载失败");
     } finally {
@@ -85,7 +87,20 @@ function ReviewWorkbenchPage() {
     }
   };
 
-  useEffect(() => { void fetchList(); }, [page, taskStatus, reviewStatus]);
+  useEffect(() => { void fetchList(); }, []);
+
+  const visibleItems = items.filter((item) => {
+    if (taskStatusFilter === "processing") {
+      if (item.taskStatus !== "PENDING" && item.taskStatus !== "RUNNING") return false;
+    } else if (item.taskStatus !== (taskStatusFilter === "success" ? "SUCCESS" : "FAILED")) {
+      return false;
+    }
+    if (reviewFilter === "pending") return item.reviewStatus === "PENDING";
+    if (reviewFilter === "reviewed") return item.reviewStatus === "PASSED";
+    return true;
+  });
+
+  const pagedItems = visibleItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const initializeDetail = (nextDetail: JobSkillResolutionTaskDetail) => {
     setDetail(nextDetail);
@@ -235,7 +250,7 @@ function ReviewWorkbenchPage() {
   const canReview = detail?.task.reviewStatus === "PENDING"
     && (detail.task.taskStatus === "SUCCESS" || detail.task.taskStatus === "FAILED");
   const canSelectCandidate = detail?.task.taskStatus === "SUCCESS" && detail.candidates.length > 0;
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(visibleItems.length / PAGE_SIZE));
   const skillPageCount = Math.max(1, Math.ceil(skillTotal / SKILL_PAGE_SIZE));
 
   return (
@@ -244,47 +259,37 @@ function ReviewWorkbenchPage() {
         breadcrumbs={[t("nav.aiProcessing"), t("nav.reviewQueue")]}
         title="技能归一审核"
         description="将岗位分析产出的原始技能映射为规范技能，或创建新的规范技能"
-        actions={<span className="font-mono text-[13px]" style={{ color: T.info }}>共 {total} 项</span>}
+        actions={<span className="font-mono text-[13px]" style={{ color: T.info }}>共 {visibleItems.length} 项</span>}
       />
 
-      <div className="flex gap-4">
-        {/* 左侧竖排筛选面板 */}
-        <div className="w-44 flex-shrink-0">
-          <VerticalFilter
-            sections={[
-              {
-                title: "AI 任务状态",
-                value: taskStatus,
-                onChange: (value) => { setTaskStatus(value); setReviewStatus(""); setPage(1); },
-                options: [
-                  { value: "", label: "全部" },
-                  { value: "PENDING", label: "等待处理" },
-                  { value: "RUNNING", label: "AI 处理中" },
-                  { value: "SUCCESS", label: "候选已生成" },
-                  { value: "FAILED", label: "AI 处理失败" },
-                ],
-              },
+      <UnderlineTabs
+        sections={[
+          {
+            value: taskStatusFilter,
+            onChange: (value) => { setTaskStatusFilter(value as "success" | "failed" | "processing"); setReviewFilter("all"); setPage(1); },
+            options: [
+              { value: "success", label: `成功 ${items.filter((i) => i.taskStatus === "SUCCESS").length}` },
+              { value: "failed", label: `失败 ${items.filter((i) => i.taskStatus === "FAILED").length}` },
+              { value: "processing", label: `处理中 ${items.filter((i) => i.taskStatus === "PENDING" || i.taskStatus === "RUNNING").length}` },
+            ],
+          },
 
-              ...(taskStatus === "" || taskStatus === "SUCCESS" || taskStatus === "FAILED" ? [{
-                title: "审核状态",
-                value: reviewStatus,
-                onChange: (value: string) => { setReviewStatus(value); setPage(1); },
-                options: [
-                  { value: "", label: "全部" },
-                  { value: "PENDING", label: "待复核" },
-                  { value: "PASSED", label: "已复核" },
-                ],
-              }] : []),
-            ]}
-          />
-        </div>
+          ...(taskStatusFilter === "success" || taskStatusFilter === "failed" ? [{
+            value: reviewFilter,
+            onChange: (value: string) => setReviewFilter(value as "all" | "pending" | "reviewed"),
+            options: [
+              { value: "all", label: "全部" },
+              { value: "pending", label: "待复核" },
+              { value: "reviewed", label: "已复核" },
+            ],
+          }] : []),
+        ]}
+      />
 
-        {/* 右侧表格 */}
-        <div className="flex-1 min-w-0">
-          <Card>
+      <Card>
         {loading ? (
           <div className="px-4 py-12 text-center text-[13px]" style={{ color: T.info }}>加载中…</div>
-        ) : items.length === 0 ? (
+        ) : visibleItems.length === 0 ? (
           <div className="px-4 py-12 text-center text-[13px]" style={{ color: T.info }}>暂无符合条件的技能归一任务</div>
         ) : (
           <div className="overflow-x-auto">
@@ -297,7 +302,7 @@ function ReviewWorkbenchPage() {
                 </tr>
               </thead>
               <tbody>
-                {items.map((item) => (
+                {pagedItems.map((item) => (
                   <tr key={item.id} className="transition-colors hover:bg-gray-50" style={{ borderTop: `1px solid ${T.cloud}` }}>
                     <td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{item.id}</td>
                     <td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{item.jobId}</td>
@@ -328,11 +333,9 @@ function ReviewWorkbenchPage() {
         )}
       </Card>
 
-      {total > PAGE_SIZE && (
+      {visibleItems.length > PAGE_SIZE && (
         <Pagination page={page} totalPages={pageCount} onChange={setPage} />
       )}
-        </div>
-      </div>
 
       {detail && (
         <div className="fixed inset-0 z-50 flex" style={{ background: "rgba(25,50,77,0.3)" }} onClick={closeDetail}>
