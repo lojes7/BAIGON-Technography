@@ -343,8 +343,8 @@ Consul 健康探测端点，**不需要认证**。
 
 岗位分析审核允许 **ADMIN / DATA_REVIEWER**：
 
-- `GET /job-analysis`：分页查询任务，`reviewStatus` 可选。
-- `GET /job-analysis/{id}`：返回任务、专业/职业候选与 `job_analysis_results` 技能结果。
+- `GET /job-analysis`：分页查询任务，`reviewStatus` 可选；任务同时返回最终专业/职业 ID 及对应名称。
+- `GET /job-analysis/{id}`：返回任务、专业/职业候选与 `job_analysis_results` 技能结果；即使 alias 命中后没有候选，任务中的 `selected_major_name` / `selected_occupation_name` 仍可直接展示。
 - `PUT /job-analysis/{id}/review`：确认专业、职业并逐条审核全部技能结果；两者均可选择对应目录中的任意有效记录。
 
 审核请求示例：

@@ -184,7 +184,7 @@ public class CleanedJobSourceService {
 
         if (job.getOccupationId() == null && job.getName() != null && !job.getName().isBlank()) {
             Optional<JobOccupationAlias> alias =
-                    occupationAliasRepository.findByJobNameAndDeletedAtIsNull(job.getName());
+                    occupationAliasRepository.findActiveByNormalizedJobName(job.getName());
             if (alias.isPresent()) {
                 job.setOccupationId(alias.get().getOccupationId());
                 job.setUpdatedAt(now);
@@ -200,7 +200,7 @@ public class CleanedJobSourceService {
                 job.setUpdatedAt(now);
             } else {
                 Optional<JobMajorAlias> alias =
-                        majorAliasRepository.findByJobMajorAndDeletedAtIsNull(job.getMajor());
+                        majorAliasRepository.findActiveByNormalizedJobMajor(job.getMajor());
                 if (alias.isPresent()) {
                     job.setMajorId(alias.get().getMajorId());
                     job.setUpdatedAt(now);

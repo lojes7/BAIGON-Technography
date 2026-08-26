@@ -35,6 +35,8 @@ public interface OccupationRepository extends JpaRepository<Occupation, Long> {
 
     Optional<Occupation> findByIdAndDeletedAtIsNull(Long id);
 
+    List<Occupation> findByIdInAndDeletedAtIsNull(Collection<Long> ids);
+
     /** 使用 pgvector 余弦距离返回相似度最高的 Top N 职业。 */
     @Query(value = """
             SELECT id AS id,

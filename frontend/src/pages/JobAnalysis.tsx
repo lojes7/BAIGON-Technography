@@ -95,14 +95,16 @@ export default function JobAnalysisPage() {
     const selectedMajorId = nextDetail.task.selectedMajorId ?? nextDetail.majorCandidates[0]?.majorId ?? "";
     const selectedMajor = nextDetail.majorCandidates.find((item) => String(item.majorId) === String(selectedMajorId));
     setMajorId(selectedMajorId);
-    setMajorName(selectedMajor?.majorName ?? (selectedMajorId ? `专业 #${selectedMajorId}` : ""));
+    setMajorName(nextDetail.task.selectedMajorName || selectedMajor?.majorName || (
+      selectedMajorId ? `专业 #${selectedMajorId}` : ""
+    ));
 
     const selectedOccupationId = nextDetail.task.selectedOccupationId ?? nextDetail.candidates[0]?.occupationId ?? "";
     const selectedOccupation = nextDetail.candidates.find(
       (item) => String(item.occupationId) === String(selectedOccupationId),
     );
     setOccupationId(selectedOccupationId);
-    setOccupationName(selectedOccupation?.occupationName ?? (
+    setOccupationName(nextDetail.task.selectedOccupationName || selectedOccupation?.occupationName || (
       selectedOccupationId ? `职业 #${selectedOccupationId}` : ""
     ));
 
@@ -289,9 +291,9 @@ export default function JobAnalysisPage() {
                     <td className="px-4 py-3">
                       <ReviewStatus status={item.reviewStatus} />
                     </td>
-                    <td className="px-4 py-3 font-mono text-[11px] leading-5" style={{ color: T.info }}>
-                      <div>专业：{item.selectedMajorId || "—"}</div>
-                      <div>职业：{item.selectedOccupationId || "—"}</div>
+                    <td className="px-4 py-3 text-[12px] leading-5" style={{ color: T.info }}>
+                      <div>专业：{item.selectedMajorName || item.selectedMajorId || "—"}</div>
+                      <div>职业：{item.selectedOccupationName || item.selectedOccupationId || "—"}</div>
                     </td>
                     <td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>
                       {item.createdAt?.slice(0, 10) || "—"}

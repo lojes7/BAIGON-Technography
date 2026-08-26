@@ -224,6 +224,8 @@ message JobAnalysisTaskSummary {
   string job_major = 16;
   int64 selected_major_id = 17;
   string major_analysis_status = 18;
+  string selected_occupation_name = 19; // selected_occupation_id 对应的当前职业名称
+  string selected_major_name = 20; // selected_major_id 对应的当前专业名称
 }
 
 message JobAnalysisCandidate {

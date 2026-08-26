@@ -913,6 +913,7 @@ export interface JobAnalysisTaskSummary {
   taskStatus: string;
   reviewStatus: string;
   selectedOccupationId: string | number | null;
+  selectedOccupationName: string;
   modelName: string;
   errorMsg: string;
   attempts: number;
@@ -923,6 +924,7 @@ export interface JobAnalysisTaskSummary {
   jdAnalysisStatus: string;
   jobMajor: string;
   selectedMajorId: string | number | null;
+  selectedMajorName: string;
   majorAnalysisStatus: string;
 }
 

@@ -383,7 +383,7 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                 request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
                 request.getRequestMethod(), request.getRequestUrl());
         try {
-            Page<JobAnalysisTask> page = jobAnalysisQueryService.list(
+            Page<JobAnalysisQueryService.JobAnalysisTaskView> page = jobAnalysisQueryService.list(
                     request.getPage(), request.getPageSize(), request.getReviewStatus());
             respond(observer, ListJobAnalysisTasksResponse.newBuilder()
                     .addAllItems(page.getContent().stream().map(this::jobAnalysisSummary).toList())
@@ -847,7 +847,9 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                 .build();
     }
 
-    private JobAnalysisTaskSummary jobAnalysisSummary(JobAnalysisTask task) {
+    private JobAnalysisTaskSummary jobAnalysisSummary(
+            JobAnalysisQueryService.JobAnalysisTaskView summary) {
+        JobAnalysisTask task = summary.task();
         return JobAnalysisTaskSummary.newBuilder()
                 .setId(task.getId())
                 .setJobId(task.getJobId())
@@ -870,12 +872,14 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                 .setSelectedMajorId(task.getSelectedMajorId() == null ? 0 : task.getSelectedMajorId())
                 .setMajorAnalysisStatus(task.getMajorAnalysisStatus() == null
                         ? "" : task.getMajorAnalysisStatus().name())
+                .setSelectedOccupationName(orEmpty(summary.selectedOccupationName()))
+                .setSelectedMajorName(orEmpty(summary.selectedMajorName()))
                 .build();
     }
 
     private JobAnalysisTaskDetail jobAnalysisDetail(JobAnalysisQueryService.JobAnalysisDetail detail) {
         return JobAnalysisTaskDetail.newBuilder()
-                .setTask(jobAnalysisSummary(detail.task()))
+                .setTask(jobAnalysisSummary(detail.summary()))
                 .addAllCandidates(detail.candidates().stream().map(candidate ->
                         JobAnalysisCandidate.newBuilder()
                                 .setOccupationId(candidate.getOccupationId())

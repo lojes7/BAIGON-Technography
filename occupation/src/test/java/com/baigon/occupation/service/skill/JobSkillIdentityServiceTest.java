@@ -66,20 +66,21 @@ class JobSkillIdentityServiceTest {
     @Test
     void aliasHitShouldAssignSkillAndRelationsWithoutCreatingResolutionTask() {
         Job job = job();
-        JobSkill jobSkill = jobSkill("  Java  ");
+        JobSkill jobSkill = jobSkill("  JAVA  ");
         SkillAlias alias = new SkillAlias();
+        alias.setAliasName("java");
         alias.setSkillId(300L);
         Skill skill = new Skill();
         skill.setId(300L);
         skill.setName("Java");
-        when(aliasRepository.findActiveByNormalizedAliasName("Java"))
+        when(aliasRepository.findActiveByNormalizedAliasName("JAVA"))
                 .thenReturn(Optional.of(alias));
         when(skillRepository.findByIdAndDeletedAtIsNull(300L))
                 .thenReturn(Optional.of(skill));
 
         service.saveAndResolve(job, jobSkill, 9001L, audit(), OffsetDateTime.now());
 
-        assertEquals("Java", jobSkill.getSkillName());
+        assertEquals("JAVA", jobSkill.getSkillName());
         assertEquals(300L, jobSkill.getSkillId());
         verify(jobSkillRepository).save(jobSkill);
         verify(relationService).link(job, 300L);

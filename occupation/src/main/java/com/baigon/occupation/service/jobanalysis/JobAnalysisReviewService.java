@@ -261,7 +261,8 @@ public class JobAnalysisReviewService {
         if (job.getName() == null || job.getName().isBlank()) {
             return null;
         }
-        JobOccupationAlias alias = occupationAliasRepository.findByJobNameForUpdate(job.getName())
+        JobOccupationAlias alias = occupationAliasRepository
+                .findActiveByNormalizedJobNameForUpdate(job.getName())
                 .orElseGet(() -> newOccupationAlias(job, task, audit, now));
         // 已存在映射时以本次人工审核结论更新，并记录本次关键 trace_id。
         alias.setTraceId(task.getTraceId());
@@ -298,7 +299,8 @@ public class JobAnalysisReviewService {
         if (JobMajorPolicy.shouldUseOther(job.getMajor())) {
             return null;
         }
-        JobMajorAlias alias = majorAliasRepository.findByJobMajorForUpdate(job.getMajor())
+        JobMajorAlias alias = majorAliasRepository
+                .findActiveByNormalizedJobMajorForUpdate(job.getMajor())
                 .orElseGet(() -> newMajorAlias(job, task, audit, now));
         alias.setTraceId(task.getTraceId());
         alias.setMajorId(major.getId());

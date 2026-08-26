@@ -27,6 +27,7 @@ interface RawTaskSummary {
   task_status?: string;
   review_status?: string;
   selected_occupation_id?: JsonId;
+  selected_occupation_name?: string;
   model_name?: string;
   error_msg?: string;
   attempts?: number;
@@ -37,6 +38,7 @@ interface RawTaskSummary {
   jd_analysis_status?: string;
   job_major?: string;
   selected_major_id?: JsonId;
+  selected_major_name?: string;
   major_analysis_status?: string;
 }
 
@@ -110,6 +112,7 @@ function normalizeTask(raw: RawTaskSummary = {}): JobAnalysisTaskSummary {
     taskStatus: raw.task_status ?? "",
     reviewStatus: raw.review_status ?? "",
     selectedOccupationId: nullableId(raw.selected_occupation_id),
+    selectedOccupationName: raw.selected_occupation_name ?? "",
     modelName: raw.model_name ?? "",
     errorMsg: raw.error_msg ?? "",
     attempts: raw.attempts ?? 0,
@@ -120,6 +123,7 @@ function normalizeTask(raw: RawTaskSummary = {}): JobAnalysisTaskSummary {
     jdAnalysisStatus: raw.jd_analysis_status ?? "",
     jobMajor: raw.job_major ?? "",
     selectedMajorId: nullableId(raw.selected_major_id),
+    selectedMajorName: raw.selected_major_name ?? "",
     majorAnalysisStatus: raw.major_analysis_status ?? "",
   };
 }
