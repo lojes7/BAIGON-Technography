@@ -45,6 +45,12 @@ ALTER DATABASE "${OCCUPATION_DB_NAME}" SET timezone TO 'Asia/Shanghai';
 CREATE EXTENSION IF NOT EXISTS vector;
 GRANT ALL ON SCHEMA public TO "${OCCUPATION_DB_USER}";
 
+-- 后续由 postgres 新建的表和序列自动授权，避免已有数据库扩表后服务账号无权限。
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+GRANT ALL PRIVILEGES ON TABLES TO "${OCCUPATION_DB_USER}";
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+GRANT ALL PRIVILEGES ON SEQUENCES TO "${OCCUPATION_DB_USER}";
+
 \i ./service-init/occupation/init.sql
 \i ./service-init/occupation/data.sql
 

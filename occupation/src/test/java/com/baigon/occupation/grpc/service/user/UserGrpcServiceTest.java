@@ -3,6 +3,7 @@ package com.baigon.occupation.grpc.service.user;
 
 import com.baigon.occupation.entity.user.User;
 import com.baigon.occupation.entity.user.resume.ResumeSource;
+import com.baigon.occupation.error.ApiException;
 import com.baigon.occupation.service.LogService;
 import com.baigon.occupation.service.user.AuthService;
 import com.baigon.occupation.service.user.UserService;
@@ -472,6 +473,29 @@ class UserGrpcServiceTest {
         assertEquals("Kubernetes", response.getValue().getSkillsToLearn(0).getSkillName());
         assertEquals("补充项目量化结果", response.getValue().getActionSuggestions(0));
         assertEquals(createdAt.toString(), response.getValue().getCreatedAt());
+    }
+
+    @Test
+    void getLatestMyJobMatchNotFoundShouldRemain404WithoutErrorLog() {
+        when(userAnalysisService.getLatestMyJobMatch(8L, 201L)).thenThrow(
+                new ApiException(ApiException.ErrorCode.NOT_FOUND, "job match not found"));
+        @SuppressWarnings("unchecked")
+        StreamObserver<MatchMyResumeToJobResponse> observer = mock(StreamObserver.class);
+
+        service.getLatestMyJobMatch(GetLatestMyJobMatchRequest.newBuilder()
+                .setJobId(201L)
+                .setUserId(8L)
+                .setRequestMethod("GET")
+                .setRequestUrl("/api/jobs/201/match")
+                .build(), observer);
+
+        ArgumentCaptor<Throwable> error = ArgumentCaptor.forClass(Throwable.class);
+        verify(observer).onError(error.capture());
+        verify(observer, never()).onCompleted();
+        assertEquals(Status.Code.NOT_FOUND, Status.fromThrowable(error.getValue()).getCode());
+        verify(logService).info(any(),
+                eq("get latest my job match: no saved result, job_id=201"));
+        verify(logService, never()).error(any(), any(), any());
     }
 
     @Test

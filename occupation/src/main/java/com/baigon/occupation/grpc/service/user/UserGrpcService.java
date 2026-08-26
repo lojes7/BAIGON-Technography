@@ -398,6 +398,17 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
             respond(observer, jobMatchResponse(result));
             logService.info(audit, "get latest my job match: job_id=" + result.jobId()
                     + ", result_id=" + result.id());
+        } catch (ApiException exception) {
+            if (exception.getErrorCode() == ApiException.ErrorCode.NOT_FOUND) {
+                // 页面首次打开时没有历史匹配结果是正常状态，仍返回 404，但不记录为系统错误。
+                logger.info("get latest my job match: no saved result, user_id={}, job_id={}",
+                        request.getUserId(), request.getJobId());
+                logService.info(audit,
+                        "get latest my job match: no saved result, job_id=" + request.getJobId());
+                observer.onError(exception.asGrpcException());
+                return;
+            }
+            fail(observer, audit, exception, "get latest my job match failed");
         } catch (Exception exception) {
             fail(observer, audit, exception, "get latest my job match failed");
         }
