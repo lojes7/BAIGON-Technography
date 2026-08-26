@@ -4,7 +4,7 @@ import { Eye, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import DirectoryPicker from "../components/job-analysis/DirectoryPicker";
-import { Btn, Card, PageHeader, VerticalFilter } from "../components/ui";
+import { Btn, Card, PageHeader, UnderlineTabs } from "../components/ui";
 import T from "../constants/tokens";
 import { isHttpErrorStatus } from "../services/http-error";
 import { getJobAnalysisTask, listJobAnalysisTasks, reviewJobAnalysisTask } from "../services/job-analysis";
@@ -224,42 +224,34 @@ export default function JobAnalysisPage() {
         description="确认岗位对应的专业、职业，并逐条审核 JD 技能分析结果"
       />
 
-      <div className="flex gap-4">
-        {/* 左侧竖排筛选面板 */}
-        <div className="w-44 flex-shrink-0">
-          <VerticalFilter
-            sections={[
-              {
-                title: "任务状态",
-                value: taskStatusFilter,
-                onChange: (value) => {
-                  setTaskStatusFilter(value as "success" | "failed" | "processing");
-                  setReviewFilter("all");
-                },
-                options: [
-                  { value: "success", label: `成功 ${items.filter((i) => i.taskStatus === "SUCCESS").length}` },
-                  { value: "failed", label: `失败 ${items.filter((i) => i.taskStatus === "FAILED").length}` },
-                  { value: "processing", label: `处理中 ${items.filter((i) => i.taskStatus === "PENDING" || i.taskStatus === "RUNNING").length}` },
-                ],
-              },
-              // 审核状态只在「成功」tab 有意义：处理中/失败的任务尚未进入复核，不存在已复核。
-              ...(taskStatusFilter === "success" ? [{
-                title: "审核状态",
-                value: reviewFilter,
-                onChange: (value: string) => setReviewFilter(value as "all" | "pending" | "reviewed"),
-                options: [
-                  { value: "all", label: "全部" },
-                  { value: "pending", label: "待复核" },
-                  { value: "reviewed", label: "已复核" },
-                ],
-              }] : []),
-            ]}
-          />
-        </div>
+      <UnderlineTabs
+        sections={[
+          {
+            value: taskStatusFilter,
+            onChange: (value) => {
+              setTaskStatusFilter(value as "success" | "failed" | "processing");
+              setReviewFilter("all");
+            },
+            options: [
+              { value: "success", label: `成功 ${items.filter((i) => i.taskStatus === "SUCCESS").length}` },
+              { value: "failed", label: `失败 ${items.filter((i) => i.taskStatus === "FAILED").length}` },
+              { value: "processing", label: `处理中 ${items.filter((i) => i.taskStatus === "PENDING" || i.taskStatus === "RUNNING").length}` },
+            ],
+          },
+          // 审核状态只在「成功」tab 有意义：处理中/失败的任务尚未进入复核，不存在已复核。
+          ...(taskStatusFilter === "success" ? [{
+            value: reviewFilter,
+            onChange: (value: string) => setReviewFilter(value as "all" | "pending" | "reviewed"),
+            options: [
+              { value: "all", label: "全部" },
+              { value: "pending", label: "待复核" },
+              { value: "reviewed", label: "已复核" },
+            ],
+          }] : []),
+        ]}
+      />
 
-        {/* 右侧表格 */}
-        <div className="flex-1 min-w-0">
-          <Card>
+      <Card>
         {loading ? (
           <div className="px-4 py-12 text-center text-[13px]" style={{ color: T.info }}>{t("common.loading")}</div>
         ) : visibleItems.length === 0 ? (
@@ -321,8 +313,6 @@ export default function JobAnalysisPage() {
           </div>
         )}
       </Card>
-        </div>
-      </div>
 
       {detail && (
         <div className="fixed inset-0 z-50 flex" style={{ background: "rgba(25,50,77,0.3)" }} onClick={closeDetail}>
