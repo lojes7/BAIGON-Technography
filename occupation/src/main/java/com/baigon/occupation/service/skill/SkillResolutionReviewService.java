@@ -23,7 +23,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
+import java.util.TreeSet;
 
 @Service
 public class SkillResolutionReviewService {
@@ -35,6 +37,7 @@ public class SkillResolutionReviewService {
     private final SkillRepository skillRepository;
     private final SkillAliasRepository aliasRepository;
     private final SkillRelationService relationService;
+    private final SkillHierarchyService hierarchyService;
     private final SkillEmbeddingService embeddingService;
     private final LogService logService;
     private final Snowflake snowflake;
@@ -47,6 +50,7 @@ public class SkillResolutionReviewService {
             SkillRepository skillRepository,
             SkillAliasRepository aliasRepository,
             SkillRelationService relationService,
+            SkillHierarchyService hierarchyService,
             SkillEmbeddingService embeddingService,
             LogService logService,
             Snowflake snowflake) {
@@ -57,6 +61,7 @@ public class SkillResolutionReviewService {
         this.skillRepository = skillRepository;
         this.aliasRepository = aliasRepository;
         this.relationService = relationService;
+        this.hierarchyService = hierarchyService;
         this.embeddingService = embeddingService;
         this.logService = logService;
         this.snowflake = snowflake;
@@ -68,6 +73,7 @@ public class SkillResolutionReviewService {
                                                     SkillResolutionAction action,
                                                     Long skillId,
                                                     String newSkillName,
+                                                    List<Long> parentSkillIds,
                                                     AuditContext audit) {
         Optional<JobSkillResolutionTask> optionalTask = taskRepository.findByIdForUpdate(taskId);
         if (optionalTask.isEmpty()) return Optional.empty();
@@ -77,6 +83,7 @@ public class SkillResolutionReviewService {
                     "skill resolution task already reviewed");
         }
         validateGenerationState(task, action);
+        List<Long> normalizedParentSkillIds = normalizedParentSkillIds(action, parentSkillIds);
 
         // 固定锁顺序：解析任务 → 岗位技能 → 目标规范技能。
         JobSkill jobSkill = jobSkillRepository.findByIdForUpdate(task.getJobSkillId())
@@ -91,6 +98,11 @@ public class SkillResolutionReviewService {
             case SELECT_EXISTING -> selectExisting(task, skillId, newSkillName);
             case CREATE_NEW -> createNewSkill(skillId, newSkillName);
         };
+
+        if (created) {
+            // 新技能与父技能边同属本次审核事务，任一父技能无效会回滚全部写入。
+            hierarchyService.addParents(selected.getId(), normalizedParentSkillIds);
+        }
 
         ensureAlias(selected.getName(), selected.getId(), task, audit, now);
         ensureAlias(task.getSkillName(), selected.getId(), task, audit, now);
@@ -120,6 +132,29 @@ public class SkillResolutionReviewService {
                 "skill resolution reviewed: task_id=" + taskId
                         + ", action=" + action + ", skill_id=" + selected.getId());
         return Optional.of(task);
+    }
+
+    private List<Long> normalizedParentSkillIds(SkillResolutionAction action,
+                                                 List<Long> parentSkillIds) {
+        TreeSet<Long> ids = new TreeSet<>();
+        if (parentSkillIds != null) {
+            for (Long parentSkillId : parentSkillIds) {
+                if (parentSkillId == null || parentSkillId <= 0) {
+                    throw new ApiException(ApiException.ErrorCode.BAD_REQUEST,
+                            "parent skill id must be > 0");
+                }
+                ids.add(parentSkillId);
+            }
+        }
+        if (action != SkillResolutionAction.CREATE_NEW && !ids.isEmpty()) {
+            throw new ApiException(ApiException.ErrorCode.BAD_REQUEST,
+                    "parent skill ids are only allowed for CREATE_NEW");
+        }
+        if (ids.size() > SkillHierarchyService.MAX_PARENT_SKILLS) {
+            throw new ApiException(ApiException.ErrorCode.BAD_REQUEST,
+                    "CREATE_NEW supports at most 20 parent skills");
+        }
+        return List.copyOf(ids);
     }
 
     private void validateGenerationState(JobSkillResolutionTask task,

@@ -20,6 +20,8 @@ import com.baigon.occupation.GetJobAnalysisTaskRequest;
 import com.baigon.occupation.GetJobAnalysisTaskResponse;
 import com.baigon.occupation.GetJobSkillResolutionTaskRequest;
 import com.baigon.occupation.GetJobSkillResolutionTaskResponse;
+import com.baigon.occupation.GetSkillRequest;
+import com.baigon.occupation.GetSkillResponse;
 import com.baigon.occupation.JobData;
 import com.baigon.occupation.JobAnalysisCandidate;
 import com.baigon.occupation.JobAnalysisMajorCandidate;
@@ -40,10 +42,16 @@ import com.baigon.occupation.ListJobsRequest;
 import com.baigon.occupation.ListJobsResponse;
 import com.baigon.occupation.ListSkillsRequest;
 import com.baigon.occupation.ListSkillsResponse;
+import com.baigon.occupation.LookupSkillsRequest;
+import com.baigon.occupation.LookupSkillsResponse;
 import com.baigon.occupation.OccupationServiceGrpc;
 import com.baigon.occupation.ReviewJobAnalysisTaskRequest;
 import com.baigon.occupation.ReviewJobSkillResolutionTaskRequest;
 import com.baigon.occupation.SkillData;
+import com.baigon.occupation.SkillDetailData;
+import com.baigon.occupation.SkillLookupData;
+import com.baigon.occupation.SkillRelationMutationRequest;
+import com.baigon.occupation.SkillRelationMutationResponse;
 import com.baigon.occupation.entity.TaskStatus;
 import com.baigon.occupation.entity.Log;
 import com.baigon.occupation.entity.job.Job;
@@ -71,6 +79,7 @@ import com.baigon.occupation.service.major.MajorCatalogService;
 import com.baigon.occupation.service.occupation.OccupationCatalogService;
 import com.baigon.occupation.service.skill.SkillResolutionQueryService;
 import com.baigon.occupation.service.skill.SkillResolutionReviewService;
+import com.baigon.occupation.service.skill.SkillHierarchyService;
 import io.grpc.stub.StreamObserver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -78,6 +87,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Locale;
 
 /** gateway REST 请求经 gRPC 进入本服务，所有成功与失败都写 occupation.logs。 */
@@ -93,6 +103,7 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
     private final JobAnalysisReviewService jobAnalysisReviewService;
     private final SkillResolutionQueryService skillResolutionQueryService;
     private final SkillResolutionReviewService skillResolutionReviewService;
+    private final SkillHierarchyService skillHierarchyService;
     private final JobQueryService jobQueryService;
     private final AuditLogQueryService auditLogQueryService;
     private final LogService logService;
@@ -104,6 +115,7 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                                  JobAnalysisReviewService jobAnalysisReviewService,
                                  SkillResolutionQueryService skillResolutionQueryService,
                                  SkillResolutionReviewService skillResolutionReviewService,
+                                 SkillHierarchyService skillHierarchyService,
                                  JobQueryService jobQueryService,
                                  AuditLogQueryService auditLogQueryService,
                                  LogService logService) {
@@ -114,6 +126,7 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
         this.jobAnalysisReviewService = jobAnalysisReviewService;
         this.skillResolutionQueryService = skillResolutionQueryService;
         this.skillResolutionReviewService = skillResolutionReviewService;
+        this.skillHierarchyService = skillHierarchyService;
         this.jobQueryService = jobQueryService;
         this.auditLogQueryService = auditLogQueryService;
         this.logService = logService;
@@ -470,6 +483,85 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
     }
 
     @Override
+    public void getSkill(GetSkillRequest request,
+                         StreamObserver<GetSkillResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            var detail = skillHierarchyService.getDetail(request.getId());
+            if (detail.isEmpty()) {
+                throw new ApiException(ApiException.ErrorCode.NOT_FOUND, "skill not found");
+            }
+            respond(observer, GetSkillResponse.newBuilder()
+                    .setSkill(skillDetailData(detail.get()))
+                    .build());
+            logService.info(audit, "get canonical skill: id=" + request.getId());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "get canonical skill failed");
+        }
+    }
+
+    @Override
+    public void lookupSkills(LookupSkillsRequest request,
+                             StreamObserver<LookupSkillsResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            List<Skill> skills = skillHierarchyService.lookupSkills(request.getSkillIdsList());
+            respond(observer, LookupSkillsResponse.newBuilder()
+                    .addAllItems(skills.stream().map(skill -> SkillLookupData.newBuilder()
+                            .setId(skill.getId())
+                            .setName(orEmpty(skill.getName()))
+                            .build()).toList())
+                    .build());
+            logService.info(audit, "lookup canonical skills: total=" + skills.size());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "lookup canonical skills failed");
+        }
+    }
+
+    @Override
+    public void addSkillRelation(SkillRelationMutationRequest request,
+                                 StreamObserver<SkillRelationMutationResponse> observer) {
+        mutateSkillRelation(request, observer, true);
+    }
+
+    @Override
+    public void deleteSkillRelation(SkillRelationMutationRequest request,
+                                    StreamObserver<SkillRelationMutationResponse> observer) {
+        mutateSkillRelation(request, observer, false);
+    }
+
+    private void mutateSkillRelation(SkillRelationMutationRequest request,
+                                     StreamObserver<SkillRelationMutationResponse> observer,
+                                     boolean add) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            if (add) {
+                skillHierarchyService.addRelation(
+                        request.getParentSkillId(), request.getChildSkillId());
+            } else {
+                skillHierarchyService.deleteRelation(
+                        request.getParentSkillId(), request.getChildSkillId());
+            }
+            respond(observer, SkillRelationMutationResponse.newBuilder()
+                    .setParentSkillId(request.getParentSkillId())
+                    .setChildSkillId(request.getChildSkillId())
+                    .build());
+            logService.info(audit, (add ? "add" : "delete")
+                    + " skill relation: parent_skill_id=" + request.getParentSkillId()
+                    + ", child_skill_id=" + request.getChildSkillId());
+        } catch (Exception exception) {
+            fail(observer, audit, exception,
+                    (add ? "add" : "delete") + " skill relation failed");
+        }
+    }
+
+    @Override
     public void listJobSkillResolutionTasks(
             ListJobSkillResolutionTasksRequest request,
             StreamObserver<ListJobSkillResolutionTasksResponse> observer) {
@@ -569,7 +661,8 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                     request.getResolutionAction().trim().toUpperCase(Locale.ROOT));
             Long skillId = request.getSkillId() > 0 ? request.getSkillId() : null;
             var reviewed = skillResolutionReviewService.review(
-                    request.getId(), action, skillId, request.getNewSkillName(), audit);
+                    request.getId(), action, skillId, request.getNewSkillName(),
+                    request.getParentSkillIdsList(), audit);
             if (reviewed.isEmpty()) {
                 observer.onError(ApiException.grpcException(ApiException.ErrorCode.NOT_FOUND,
                         "job skill resolution task not found"));
@@ -826,6 +919,14 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                 .build();
     }
 
+    private SkillDetailData skillDetailData(SkillHierarchyService.SkillDetail detail) {
+        return SkillDetailData.newBuilder()
+                .setSkill(skillData(detail.skill()))
+                .addAllParentSkillIds(detail.relations().parentSkillIds())
+                .addAllChildSkillIds(detail.relations().childSkillIds())
+                .build();
+    }
+
     private JobSkillResolutionTaskSummary skillResolutionSummary(
             JobSkillResolutionTask task,
             Long jobId) {
@@ -912,12 +1013,25 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
     }
 
     private JobSkillData jobSkillData(JobSkill skill) {
+        return jobSkillData(skill, List.of(), List.of());
+    }
+
+    private JobSkillData jobSkillData(JobQueryService.JobSkillDetail detail) {
+        return jobSkillData(
+                detail.skill(), detail.parentSkillIds(), detail.childSkillIds());
+    }
+
+    private JobSkillData jobSkillData(JobSkill skill,
+                                      List<Long> parentSkillIds,
+                                      List<Long> childSkillIds) {
         return JobSkillData.newBuilder()
                 .setId(skill.getId())
                 .setSkillId(skill.getSkillId() == null ? 0 : skill.getSkillId())
                 .setSkillName(orEmpty(skill.getSkillName()))
                 .setSkillProficiency(orEmpty(skill.getSkillProficiency()))
                 .setEvidence(orEmpty(skill.getEvidence()))
+                .addAllParentSkillIds(parentSkillIds)
+                .addAllChildSkillIds(childSkillIds)
                 .build();
     }
 

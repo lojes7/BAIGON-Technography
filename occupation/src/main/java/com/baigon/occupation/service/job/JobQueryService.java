@@ -9,6 +9,7 @@ import com.baigon.occupation.repository.job.JobRepository;
 import com.baigon.occupation.repository.job.JobSkillRepository;
 import com.baigon.occupation.repository.major.MajorRepository;
 import com.baigon.occupation.repository.occupation.OccupationRepository;
+import com.baigon.occupation.service.skill.SkillHierarchyService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -16,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /** jobs 的分页检索，以及岗位、专业、职业和正式技能关系的聚合查询。 */
@@ -30,15 +32,18 @@ public class JobQueryService {
     private final MajorRepository majorRepository;
     private final OccupationRepository occupationRepository;
     private final JobSkillRepository jobSkillRepository;
+    private final SkillHierarchyService skillHierarchyService;
 
     public JobQueryService(JobRepository jobRepository,
                            MajorRepository majorRepository,
                            OccupationRepository occupationRepository,
-                           JobSkillRepository jobSkillRepository) {
+                           JobSkillRepository jobSkillRepository,
+                           SkillHierarchyService skillHierarchyService) {
         this.jobRepository = jobRepository;
         this.majorRepository = majorRepository;
         this.occupationRepository = occupationRepository;
         this.jobSkillRepository = jobSkillRepository;
+        this.skillHierarchyService = skillHierarchyService;
     }
 
     public Page<Job> list(int page, int pageSize, JobSearchCriteria criteria) {
@@ -72,7 +77,23 @@ public class JobQueryService {
                     : occupationRepository.findByIdAndDeletedAtIsNull(job.getOccupationId()).orElse(null);
             List<JobSkill> skills =
                     jobSkillRepository.findByJobIdAndDeletedAtIsNullOrderByIdAsc(job.getId());
-            return new JobDetail(job, major, occupation, skills);
+            List<Long> canonicalSkillIds = skills.stream()
+                    .map(JobSkill::getSkillId)
+                    .filter(skillId -> skillId != null && skillId > 0)
+                    .toList();
+            // 一次批量查询覆盖全部岗位技能，未归一技能不触发关系查询。
+            Map<Long, SkillHierarchyService.DirectRelations> relations = canonicalSkillIds.isEmpty()
+                    ? Map.of()
+                    : skillHierarchyService.directRelations(canonicalSkillIds);
+            List<JobSkillDetail> skillDetails = skills.stream().map(skill -> {
+                SkillHierarchyService.DirectRelations direct = skill.getSkillId() == null
+                        ? SkillHierarchyService.DirectRelations.empty()
+                        : relations.getOrDefault(
+                                skill.getSkillId(), SkillHierarchyService.DirectRelations.empty());
+                return new JobSkillDetail(
+                        skill, direct.parentSkillIds(), direct.childSkillIds());
+            }).toList();
+            return new JobDetail(job, major, occupation, skillDetails);
         });
     }
 
@@ -125,6 +146,14 @@ public class JobQueryService {
         }
     }
 
-    public record JobDetail(Job job, Major major, Occupation occupation, List<JobSkill> jobSkills) {
+    public record JobSkillDetail(JobSkill skill,
+                                 List<Long> parentSkillIds,
+                                 List<Long> childSkillIds) {
+    }
+
+    public record JobDetail(Job job,
+                            Major major,
+                            Occupation occupation,
+                            List<JobSkillDetail> jobSkills) {
     }
 }

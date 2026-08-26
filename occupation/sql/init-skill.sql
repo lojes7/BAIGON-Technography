@@ -48,6 +48,25 @@ CREATE INDEX "idx_skill_aliases_skill"
 CREATE INDEX "idx_skill_aliases_trace"
     ON "skill_aliases" ("trace_id") WHERE "deleted_at" IS NULL;
 
+-- 规范技能之间的有向父子关系；同一技能可以有多个父技能，也可以有多个子技能。
+CREATE TABLE "skill_relations" (
+    "created_at" timestamp with time zone NOT NULL DEFAULT now(),
+    "updated_at" timestamp with time zone NOT NULL DEFAULT now(),
+    "deleted_at" timestamp with time zone,
+    "id" bigint PRIMARY KEY,
+    "parent_skill_id" bigint NOT NULL REFERENCES "skills" ("id"),
+    "child_skill_id" bigint NOT NULL REFERENCES "skills" ("id"),
+    CONSTRAINT "ck_skill_relations_not_self" CHECK ("parent_skill_id" <> "child_skill_id")
+);
+
+-- 软删除后的历史关系允许重新创建；活动关系中同一有向边只能存在一次。
+CREATE UNIQUE INDEX "idx_skill_relations_active_pair"
+    ON "skill_relations" ("parent_skill_id", "child_skill_id")
+    WHERE "deleted_at" IS NULL;
+CREATE INDEX "idx_skill_relations_active_child"
+    ON "skill_relations" ("child_skill_id", "parent_skill_id")
+    WHERE "deleted_at" IS NULL;
+
 CREATE TABLE "occupation_skills" (
     "created_at" timestamp with time zone NOT NULL DEFAULT now(),
     "updated_at" timestamp with time zone NOT NULL DEFAULT now(),

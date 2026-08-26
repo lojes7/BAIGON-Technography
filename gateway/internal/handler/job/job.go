@@ -223,7 +223,16 @@ func jobSkillData(skill *occupationpb.JobSkillData) gin.H {
 	return gin.H{
 		"id": skill.GetId(), "skillId": skillID, "skillName": skill.GetSkillName(),
 		"skillProficiency": skill.GetSkillProficiency(), "evidence": skill.GetEvidence(),
+		"parentSkillIds": nonNilSkillIDs(skill.GetParentSkillIds()),
+		"childSkillIds":  nonNilSkillIDs(skill.GetChildSkillIds()),
 	}
+}
+
+// nonNilSkillIDs 保证空关系在 JSON 中稳定编码为 []，而不是 null。
+func nonNilSkillIDs(ids []int64) []int64 {
+	result := make([]int64, len(ids))
+	copy(result, ids)
+	return result
 }
 
 // MatchMyResumeToJobHandler 使用当前用户最新简历与指定 jobs 记录进行匹配。

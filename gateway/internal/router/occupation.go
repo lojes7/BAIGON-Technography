@@ -4,6 +4,7 @@ package router
 import (
 	"baigon-technography/gateway/internal/grpcpool"
 	"baigon-technography/gateway/internal/handler"
+	skillhandler "baigon-technography/gateway/internal/handler/skill"
 	"baigon-technography/gateway/internal/middleware"
 
 	"github.com/gin-gonic/gin"
@@ -15,6 +16,8 @@ func RegisterOccupationRoutes(api *gin.RouterGroup, pool *grpcpool.GrpcClientPoo
 	auth.Use(middleware.Auth(jwtSecret))
 
 	occupation := auth.Group("/occupation")
+	// 岗位能力图谱面向所有登录角色，允许按已知 ID 批量解析规范技能名称。
+	occupation.POST("/skills/lookup", skillhandler.LookupSkillsHandler(pool))
 
 	// DATA_REVIEWER 需要浏览 occupations 全目录，最终选择不受 AI 候选限制。
 	catalog := occupation.Group("")
@@ -27,6 +30,7 @@ func RegisterOccupationRoutes(api *gin.RouterGroup, pool *grpcpool.GrpcClientPoo
 	catalog.GET("/occupation-categories", handler.ListOccupationCategoriesHandler(pool))
 	catalog.GET("/occupations", handler.ListOccupationsHandler(pool))
 	catalog.GET("/skills", handler.ListSkillsHandler(pool))
+	catalog.GET("/skills/:id", skillhandler.GetSkillHandler(pool))
 
 	analysis := occupation.Group("/job-analysis")
 	analysis.Use(middleware.RoleAuth("ADMIN", "DATA_REVIEWER"))
@@ -55,4 +59,6 @@ func RegisterOccupationRoutes(api *gin.RouterGroup, pool *grpcpool.GrpcClientPoo
 	admin.POST("/skills/embedding", handler.StartSkillEmbeddingHandler(pool))
 	admin.GET("/skills/embedding", handler.GetSkillEmbeddingStatusHandler(pool))
 	admin.DELETE("/skills/embedding", handler.StopSkillEmbeddingHandler(pool))
+	admin.POST("/skills/:id/relations/:direction", skillhandler.AddSkillRelationHandler(pool))
+	admin.DELETE("/skills/:id/relations/:direction/:relatedId", skillhandler.DeleteSkillRelationHandler(pool))
 }

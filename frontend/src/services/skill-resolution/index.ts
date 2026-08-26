@@ -1,12 +1,15 @@
 import type {
   ApiResponse,
+  CanonicalSkillDetail,
   CanonicalSkillItem,
+  CanonicalSkillLookupItem,
   JobSkillData,
   JobSkillResolutionCandidate,
   JobSkillResolutionTaskDetail,
   JobSkillResolutionTaskSummary,
   PaginatedData,
   ReviewJobSkillResolutionParams,
+  SkillRelationDirection,
 } from "../../types/api";
 import { HttpError } from "../http-error";
 import { parseJson, stringifyNumericIdBody } from "../lossless";
@@ -45,12 +48,26 @@ interface RawCandidate {
   similarity?: number;
 }
 
+interface RawCanonicalSkill {
+  id?: JsonId;
+  name?: string;
+  is_embed?: boolean;
+}
+
+interface RawCanonicalSkillDetail {
+  skill?: RawCanonicalSkill;
+  parentSkillIds?: JsonId[];
+  childSkillIds?: JsonId[];
+}
+
 interface RawJobSkill {
   id?: JsonId;
   skill_id?: JsonId;
   skill_name?: string;
   skill_proficiency?: string;
   evidence?: string;
+  parent_skill_ids?: JsonId[];
+  child_skill_ids?: JsonId[];
 }
 
 interface RawTaskDetail {
@@ -108,6 +125,15 @@ function normalizeCandidate(raw: RawCandidate): JobSkillResolutionCandidate {
   };
 }
 
+// 所有规范技能 ID 都在 service 边界转为字符串，避免调用方误用 JS Number。
+function normalizeCanonicalSkill(raw: RawCanonicalSkill = {}): CanonicalSkillItem {
+  return {
+    id: String(raw.id ?? ""),
+    name: raw.name ?? "",
+    is_embed: raw.is_embed ?? false,
+  };
+}
+
 function normalizeJobSkill(raw: RawJobSkill = {}): JobSkillData {
   return {
     id: String(raw.id ?? ""),
@@ -115,6 +141,8 @@ function normalizeJobSkill(raw: RawJobSkill = {}): JobSkillData {
     skillName: raw.skill_name ?? "",
     skillProficiency: raw.skill_proficiency ?? "",
     evidence: raw.evidence ?? "",
+    parentSkillIds: (raw.parent_skill_ids ?? []).map(String),
+    childSkillIds: (raw.child_skill_ids ?? []).map(String),
   };
 }
 
@@ -180,13 +208,18 @@ export async function listSkillResolutionSimilarSkills(id: string | number) {
 
 export async function reviewSkillResolutionTask(id: string | number, body: ReviewJobSkillResolutionParams) {
   const payload = body.resolutionAction === "CREATE_NEW"
-    ? { resolutionAction: body.resolutionAction, skillId: 0, newSkillName: body.newSkillName.trim() }
+    ? {
+        resolutionAction: body.resolutionAction,
+        skillId: 0,
+        newSkillName: body.newSkillName.trim(),
+        parentSkillIds: body.parentSkillIds ?? [],
+      }
     : { resolutionAction: body.resolutionAction, skillId: body.skillId, newSkillName: "" };
   const response = await request<{ resolution?: RawTaskDetail }>(`${BASE}/${id}/review`, {
     method: "PUT",
     headers: hdrs(true),
     // skillId 是 int64，保留字符串精度后再无损转成 JSON 数字字面量。
-    body: stringifyNumericIdBody(payload, ["skillId"]),
+    body: stringifyNumericIdBody(payload, ["skillId"], ["parentSkillIds"]),
   });
   return {
     ...response,
@@ -194,11 +227,89 @@ export async function reviewSkillResolutionTask(id: string | number, body: Revie
   } as ApiResponse<{ resolution: JobSkillResolutionTaskDetail }>;
 }
 
-export function searchCanonicalSkills(params?: { page?: number; pageSize?: number; keyword?: string }) {
+export async function searchCanonicalSkills(params?: { page?: number; pageSize?: number; keyword?: string }) {
   const query = new URLSearchParams({
     page: String(params?.page ?? 0),
     pageSize: String(params?.pageSize ?? 20),
   });
   if (params?.keyword?.trim()) query.set("keyword", params.keyword.trim());
-  return request<PaginatedData<CanonicalSkillItem>>(`${SKILLS_BASE}?${query}`, { headers: hdrs() });
+  const response = await request<PaginatedData<RawCanonicalSkill>>(
+    `${SKILLS_BASE}?${query}`,
+    { headers: hdrs() },
+  );
+  return {
+    ...response,
+    data: {
+      ...response.data,
+      items: (response.data.items ?? []).map(normalizeCanonicalSkill),
+      total: Number(response.data.total ?? 0),
+      page: Number(response.data.page ?? 0),
+      pageSize: Number(response.data.pageSize ?? 20),
+    },
+  } as ApiResponse<PaginatedData<CanonicalSkillItem>>;
+}
+
+export async function getCanonicalSkillDetail(id: string | number) {
+  const response = await request<RawCanonicalSkillDetail>(`${SKILLS_BASE}/${id}`, { headers: hdrs() });
+  return {
+    ...response,
+    data: {
+      skill: normalizeCanonicalSkill(response.data.skill),
+      parentSkillIds: (response.data.parentSkillIds ?? []).map(String),
+      childSkillIds: (response.data.childSkillIds ?? []).map(String),
+    },
+  } as ApiResponse<CanonicalSkillDetail>;
+}
+
+export async function lookupCanonicalSkills(skillIds: Array<string | number>) {
+  const uniqueIds = Array.from(new Map(skillIds.map((id) => [String(id), id])).values());
+  if (uniqueIds.length === 0) {
+    return { code: 200, data: { items: [] } } as ApiResponse<{ items: CanonicalSkillLookupItem[] }>;
+  }
+
+  // Gateway 单次最多接收 200 个 ID；超出时在客户端分批并合并结果。
+  const requests: Array<Promise<ApiResponse<{ items: RawCanonicalSkill[] }>>> = [];
+  for (let offset = 0; offset < uniqueIds.length; offset += 200) {
+    const batch = uniqueIds.slice(offset, offset + 200);
+    requests.push(request<{ items: RawCanonicalSkill[] }>(`${SKILLS_BASE}/lookup`, {
+      method: "POST",
+      headers: hdrs(true),
+      body: stringifyNumericIdBody({ skillIds: batch }, [], ["skillIds"]),
+    }));
+  }
+  const responses = await Promise.all(requests);
+  return {
+    code: 200,
+    data: {
+      items: responses
+        .flatMap((response) => response.data.items ?? [])
+        .map((skill) => {
+          const normalized = normalizeCanonicalSkill(skill);
+          return { id: normalized.id, name: normalized.name };
+        }),
+    },
+  } as ApiResponse<{ items: CanonicalSkillLookupItem[] }>;
+}
+
+export function addCanonicalSkillRelation(
+  skillId: string | number,
+  direction: SkillRelationDirection,
+  relatedSkillId: string | number,
+) {
+  return request<unknown>(`${SKILLS_BASE}/${skillId}/relations/${direction}`, {
+    method: "POST",
+    headers: hdrs(true),
+    body: stringifyNumericIdBody({ relatedSkillId }, ["relatedSkillId"]),
+  });
+}
+
+export function deleteCanonicalSkillRelation(
+  skillId: string | number,
+  direction: SkillRelationDirection,
+  relatedSkillId: string | number,
+) {
+  return request<unknown>(`${SKILLS_BASE}/${skillId}/relations/${direction}/${relatedSkillId}`, {
+    method: "DELETE",
+    headers: hdrs(),
+  });
 }

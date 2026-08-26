@@ -32,11 +32,19 @@ func embeddableCatalogItems(items []*occupationpb.EmbeddableCatalogItem) []gin.H
 func canonicalSkillItems(items []*occupationpb.SkillData) []gin.H {
 	result := make([]gin.H, 0, len(items))
 	for _, item := range items {
-		result = append(result, gin.H{
-			"id": item.GetId(), "name": item.GetName(), "is_embed": item.GetIsEmbed(),
-		})
+		result = append(result, CanonicalSkillData(item))
 	}
 	return result
+}
+
+// CanonicalSkillData 将单个规范技能映射为技能列表与详情共用的稳定字段。
+func CanonicalSkillData(item *occupationpb.SkillData) gin.H {
+	if item == nil {
+		return nil
+	}
+	return gin.H{
+		"id": item.GetId(), "name": item.GetName(), "is_embed": item.GetIsEmbed(),
+	}
 }
 
 // skillResolutionCandidateItems 将 Top 5 相似技能映射为稳定的前端字段。

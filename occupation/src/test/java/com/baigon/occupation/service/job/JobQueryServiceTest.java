@@ -9,6 +9,7 @@ import com.baigon.occupation.repository.job.JobRepository;
 import com.baigon.occupation.repository.job.JobSkillRepository;
 import com.baigon.occupation.repository.major.MajorRepository;
 import com.baigon.occupation.repository.occupation.OccupationRepository;
+import com.baigon.occupation.service.skill.SkillHierarchyService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.Page;
@@ -16,6 +17,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -34,6 +36,7 @@ class JobQueryServiceTest {
     private MajorRepository majorRepository;
     private OccupationRepository occupationRepository;
     private JobSkillRepository jobSkillRepository;
+    private SkillHierarchyService skillHierarchyService;
     private JobQueryService service;
 
     @BeforeEach
@@ -42,8 +45,10 @@ class JobQueryServiceTest {
         majorRepository = mock(MajorRepository.class);
         occupationRepository = mock(OccupationRepository.class);
         jobSkillRepository = mock(JobSkillRepository.class);
+        skillHierarchyService = mock(SkillHierarchyService.class);
         service = new JobQueryService(
-                jobRepository, majorRepository, occupationRepository, jobSkillRepository);
+                jobRepository, majorRepository, occupationRepository,
+                jobSkillRepository, skillHierarchyService);
     }
 
     @Test
@@ -80,18 +85,25 @@ class JobQueryServiceTest {
         occupation.setId(20L);
         JobSkill skill = new JobSkill();
         skill.setId(30L);
+        skill.setSkillId(300L);
 
         when(jobRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(job));
         when(majorRepository.findByIdAndDeletedAtIsNull(15L)).thenReturn(Optional.of(major));
         when(occupationRepository.findByIdAndDeletedAtIsNull(20L)).thenReturn(Optional.of(occupation));
         when(jobSkillRepository.findByJobIdAndDeletedAtIsNullOrderByIdAsc(10L))
                 .thenReturn(List.of(skill));
+        when(skillHierarchyService.directRelations(List.of(300L))).thenReturn(Map.of(
+                300L, new SkillHierarchyService.DirectRelations(
+                        List.of(100L, 200L), List.of(400L))));
 
         JobQueryService.JobDetail detail = service.detail(10L).orElseThrow();
 
         assertEquals(15L, detail.major().getId());
         assertEquals(20L, detail.occupation().getId());
-        assertEquals(30L, detail.jobSkills().get(0).getId());
+        assertEquals(30L, detail.jobSkills().get(0).skill().getId());
+        assertEquals(List.of(100L, 200L), detail.jobSkills().get(0).parentSkillIds());
+        assertEquals(List.of(400L), detail.jobSkills().get(0).childSkillIds());
+        verify(skillHierarchyService).directRelations(List.of(300L));
     }
 
     @Test

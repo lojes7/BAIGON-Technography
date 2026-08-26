@@ -992,6 +992,21 @@ export interface CanonicalSkillItem {
   is_embed: boolean;
 }
 
+// 规范技能名称批量查询项（POST /api/auth/occupation/skills/lookup）
+export interface CanonicalSkillLookupItem {
+  id: string;
+  name: string;
+}
+
+// 规范技能详情：父子关系只返回 ID，由前端批量查询名称。
+export interface CanonicalSkillDetail {
+  skill: CanonicalSkillItem;
+  parentSkillIds: string[];
+  childSkillIds: string[];
+}
+
+export type SkillRelationDirection = "parents" | "children";
+
 export type SkillResolutionAction = "SELECT_CANDIDATE" | "SELECT_EXISTING" | "CREATE_NEW";
 
 export interface JobSkillResolutionTaskSummary {
@@ -1033,6 +1048,7 @@ export type ReviewJobSkillResolutionParams =
   | {
       resolutionAction: "CREATE_NEW";
       newSkillName: string;
+      parentSkillIds?: Array<string | number>;
     };
 
 // ── 8.6 岗位查询（所有已登录角色）──
@@ -1085,6 +1101,8 @@ export interface JobSkillData {
   skillName: string;
   skillProficiency: string;
   evidence: string;
+  parentSkillIds: string[];
+  childSkillIds: string[];
 }
 
 // 岗位列表查询请求体

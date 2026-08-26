@@ -49,6 +49,10 @@ service OccupationService {
 
   // 全局规范技能搜索与岗位技能归一审核。
   rpc ListSkills (ListSkillsRequest) returns (ListSkillsResponse) {}
+  rpc GetSkill (GetSkillRequest) returns (GetSkillResponse) {}
+  rpc LookupSkills (LookupSkillsRequest) returns (LookupSkillsResponse) {}
+  rpc AddSkillRelation (SkillRelationMutationRequest) returns (SkillRelationMutationResponse) {}
+  rpc DeleteSkillRelation (SkillRelationMutationRequest) returns (SkillRelationMutationResponse) {}
   rpc ListJobSkillResolutionTasks (ListJobSkillResolutionTasksRequest) returns (ListJobSkillResolutionTasksResponse) {}
   rpc GetJobSkillResolutionTask (GetJobSkillResolutionTaskRequest) returns (GetJobSkillResolutionTaskResponse) {}
   rpc ListJobSkillResolutionSimilarSkills (GetJobSkillResolutionTaskRequest) returns (ListJobSkillResolutionSimilarSkillsResponse) {}
@@ -298,6 +302,66 @@ message ListSkillsResponse {
   int32 page_size = 4;
 }
 
+message GetSkillRequest {
+  int64 id = 1;
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+message SkillDetailData {
+  SkillData skill = 1;
+  // 仅返回一跳活动关系，ID 按升序排列；名称由 LookupSkills 批量解析。
+  repeated int64 parent_skill_ids = 2;
+  repeated int64 child_skill_ids = 3;
+}
+
+message GetSkillResponse {
+  SkillDetailData skill = 1;
+}
+
+message LookupSkillsRequest {
+  repeated int64 skill_ids = 1;
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+message SkillLookupData {
+  int64 id = 1;
+  string name = 2;
+}
+
+message LookupSkillsResponse {
+  // 仅返回仍活动的规范技能，并按 id 升序排列。
+  repeated SkillLookupData items = 1;
+}
+
+message SkillRelationMutationRequest {
+  int64 parent_skill_id = 1;
+  int64 child_skill_id = 2;
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+message SkillRelationMutationResponse {
+  int64 parent_skill_id = 1;
+  int64 child_skill_id = 2;
+}
+
 message ListJobSkillResolutionTasksRequest {
   int32 page = 1;
   int32 page_size = 2;
@@ -331,6 +395,8 @@ message ReviewJobSkillResolutionTaskRequest {
   int64 skill_id = 3;
   // CREATE_NEW 必填；其余动作必须为空。
   string new_skill_name = 4;
+  // 仅 CREATE_NEW 可选；去重后最多 20 个现有活动父技能。
+  repeated int64 parent_skill_ids = 5;
 
   string trace_id = 10;
   int64 user_id = 11;
@@ -468,6 +534,9 @@ message JobSkillData {
   string evidence = 4;
   // 0 表示技能身份仍在等待人工归一审核。
   int64 skill_id = 5;
+  // 仅返回规范技能的一跳活动关系；未归一技能均为空。
+  repeated int64 parent_skill_ids = 6;
+  repeated int64 child_skill_ids = 7;
 }
 
 message ListJobsResponse {

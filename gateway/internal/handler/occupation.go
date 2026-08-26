@@ -1125,14 +1125,15 @@ func ListJobSkillResolutionSimilarSkillsHandler(pool *grpcpool.GrpcClientPool) g
 }
 
 type reviewJobSkillResolutionRequest struct {
-	ResolutionAction string `json:"resolutionAction" binding:"required"`
-	SkillID          int64  `json:"skillId"`
-	NewSkillName     string `json:"newSkillName"`
+	ResolutionAction string  `json:"resolutionAction" binding:"required"`
+	SkillID          int64   `json:"skillId"`
+	NewSkillName     string  `json:"newSkillName"`
+	ParentSkillIDs   []int64 `json:"parentSkillIds"`
 }
 
 // ReviewJobSkillResolutionTaskHandler 通过三种互斥动作确认岗位技能身份。
 // @Summary      审核岗位技能归一任务
-// @Description  SELECT_CANDIDATE 选择当前候选；SELECT_EXISTING 选择候选外规范技能；CREATE_NEW 创建新规范技能
+// @Description  SELECT_CANDIDATE 选择当前候选；SELECT_EXISTING 选择候选外规范技能；CREATE_NEW 创建新规范技能并可选择最多 20 个直接父技能
 // @Tags         技能归一审核
 // @Accept       json
 // @Produce      json
@@ -1160,7 +1161,9 @@ func ReviewJobSkillResolutionTaskHandler(pool *grpcpool.GrpcClientPool) gin.Hand
 		}
 		action := strings.TrimSpace(request.ResolutionAction)
 		newSkillName := strings.TrimSpace(request.NewSkillName)
-		if !validJobSkillResolutionAction(action, request.SkillID, newSkillName) {
+		if !validJobSkillResolutionAction(
+			action, request.SkillID, newSkillName, request.ParentSkillIDs,
+		) {
 			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
 			return
 		}
@@ -1176,8 +1179,8 @@ func ReviewJobSkillResolutionTaskHandler(pool *grpcpool.GrpcClientPool) gin.Hand
 			ctx,
 			&occupationpb.ReviewJobSkillResolutionTaskRequest{
 				Id: id, ResolutionAction: action, SkillId: request.SkillID,
-				NewSkillName: newSkillName,
-				TraceId:      c.GetString("trace_id"), UserId: UserIDFromContext(c),
+				NewSkillName: newSkillName, ParentSkillIds: request.ParentSkillIDs,
+				TraceId: c.GetString("trace_id"), UserId: UserIDFromContext(c),
 				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
 				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
 			},
@@ -1192,12 +1195,28 @@ func ReviewJobSkillResolutionTaskHandler(pool *grpcpool.GrpcClientPool) gin.Hand
 	}
 }
 
-func validJobSkillResolutionAction(action string, skillID int64, newSkillName string) bool {
+func validJobSkillResolutionAction(
+	action string,
+	skillID int64,
+	newSkillName string,
+	parentSkillIDs []int64,
+) bool {
 	switch action {
 	case "SELECT_CANDIDATE", "SELECT_EXISTING":
-		return skillID > 0 && newSkillName == ""
+		return skillID > 0 && newSkillName == "" && len(parentSkillIDs) == 0
 	case "CREATE_NEW":
-		return skillID == 0 && newSkillName != ""
+		if skillID != 0 || newSkillName == "" {
+			return false
+		}
+		// 新建技能的父技能可不选；去重后最多 20 个，且必须全部是有效技能 ID。
+		seen := make(map[int64]struct{}, len(parentSkillIDs))
+		for _, parentSkillID := range parentSkillIDs {
+			if parentSkillID <= 0 {
+				return false
+			}
+			seen[parentSkillID] = struct{}{}
+		}
+		return len(seen) <= 20
 	default:
 		return false
 	}
