@@ -171,25 +171,14 @@ export default function IngestFormModal() {
               className="rounded-lg p-5"
               style={{ background: T.cloud, border: `1px solid ${T.border}` }}
             >
-              <div className="flex items-center justify-between gap-3 mb-3">
-                <div className="text-[13px] font-medium" style={{ color: T.ink }}>CSV 文件要求</div>
-                <a
-                  href={CSV_TEMPLATE_URL}
-                  download={CSV_TEMPLATE_FILENAME}
-                  className="inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[12px] font-medium bg-white hover:opacity-85"
-                  style={{ color: T.ink, border: `1px solid ${T.border}` }}
-                >
-                  <Download size={13} />
-                  下载 CSV 模板
-                </a>
-              </div>
+              <div className="text-[13px] font-medium mb-3" style={{ color: T.ink }}>CSV 文件要求</div>
               <ul className="text-[12px] leading-5 list-disc pl-5" style={{ color: T.info }}>
                 <li>仅支持 UTF-8 编码的 .csv 文件，文件必须小于 10 MiB</li>
                 <li>必须包含模板中的全部列头和至少 1 行数据，最多 {MAX_INGEST_ROWS} 行；列顺序不限</li>
                 <li>“非空”列每行必须填写；“可空”列头仍须保留，单元格可以留空</li>
                 <li>来源平台由系统统一填写为“CSV注入”；“获取日期”等额外列不会提交</li>
               </ul>
-              <div className="rounded-md overflow-x-auto mt-3 bg-white" style={{ border: `1px solid ${T.border}` }}>
+              <div className="rounded-md overflow-auto mt-3 bg-white max-h-[420px]" style={{ border: `1px solid ${T.border}` }}>
                 <table className="w-full min-w-[620px] text-[12px]">
                   <thead>
                     <tr style={{ background: `${T.teal}08` }}>
@@ -232,6 +221,18 @@ export default function IngestFormModal() {
                 if (file) void handleFile(file);
               }}
             />
+
+            <div className="flex items-center justify-end">
+              <a
+                href={CSV_TEMPLATE_URL}
+                download={CSV_TEMPLATE_FILENAME}
+                className="inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[12px] font-medium bg-white hover:opacity-85"
+                style={{ color: T.ink, border: `1px solid ${T.border}` }}
+              >
+                <Download size={13} />
+                下载 CSV 模板
+              </a>
+            </div>
 
             {fileName ? (
               <div className="rounded-lg px-4 py-3 flex items-center gap-3" style={{ border: `1px solid ${T.border}` }}>
