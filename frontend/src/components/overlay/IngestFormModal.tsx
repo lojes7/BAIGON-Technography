@@ -17,7 +17,6 @@ import {
   CSV_TEMPLATE_FILENAME,
   CSV_TEMPLATE_URL,
   INGEST_CSV_COLUMNS,
-  MAX_INGEST_ROWS,
   decodeUtf8Csv,
   parseIngestCsv,
   validateCsvFileMetadata,
@@ -133,6 +132,25 @@ export default function IngestFormModal() {
           <h3 className="text-[15px] font-medium" style={{ color: T.ink }}>注入数据</h3>
           <p className="text-[12px] mt-0.5" style={{ color: T.info }}>解析 CSV 后提交至完整采集与清洗链路</p>
         </div>
+        {!success && (
+          <div className="flex items-center gap-2">
+            <a
+              href={CSV_TEMPLATE_URL}
+              download={CSV_TEMPLATE_FILENAME}
+              className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 text-[12px] font-medium bg-white hover:opacity-85"
+              style={{ color: T.ink, border: `1px solid ${T.border}` }}
+            >
+              <Download size={12} />
+              下载模板
+            </a>
+            <Btn size="sm" variant="secondary" icon={FileText} onClick={() => fileInputRef.current?.click()}>
+              选择文件
+            </Btn>
+            <Btn size="sm" icon={Upload} onClick={submitCsv} disabled={submitting || parsedJobs.length === 0}>
+              {submitting ? "提交中…" : "提交注入"}
+            </Btn>
+          </div>
+        )}
       </div>
 
       {success ? (
@@ -167,48 +185,38 @@ export default function IngestFormModal() {
       ) : (
         <>
           <div className="px-5 py-4 space-y-4">
-            <div
-              className="rounded-lg p-5"
-              style={{ background: T.cloud, border: `1px solid ${T.border}` }}
-            >
-              <div className="text-[13px] font-medium mb-3" style={{ color: T.ink }}>CSV 文件要求</div>
-              <ul className="text-[12px] leading-5 list-disc pl-5" style={{ color: T.info }}>
-                <li>仅支持 UTF-8 编码的 .csv 文件，文件必须小于 10 MiB</li>
-                <li>必须包含模板中的全部列头和至少 1 行数据，最多 {MAX_INGEST_ROWS} 行；列顺序不限</li>
-                <li>“非空”列每行必须填写；“可空”列头仍须保留，单元格可以留空</li>
-                <li>来源平台由系统统一填写为“CSV注入”；“获取日期”等额外列不会提交</li>
-              </ul>
-              <div className="rounded-md overflow-auto mt-3 bg-white max-h-[420px]" style={{ border: `1px solid ${T.border}` }}>
-                <table className="w-full min-w-[620px] text-[12px]">
-                  <thead>
-                    <tr style={{ background: `${T.teal}08` }}>
-                      <th className="px-3 py-2 text-left font-medium" style={{ color: T.ink }}>列名</th>
-                      <th className="px-3 py-2 text-left font-medium" style={{ color: T.ink }}>空值规则</th>
-                      <th className="px-3 py-2 text-left font-medium" style={{ color: T.ink }}>内容与格式</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {INGEST_CSV_COLUMNS.map((column) => (
-                      <tr key={column.header} style={{ borderTop: `1px solid ${T.cloud}` }}>
-                        <td className="px-3 py-2 whitespace-nowrap font-medium" style={{ color: T.ink }}>{column.header}</td>
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          <span
-                            className="inline-flex rounded px-1.5 py-0.5"
-                            style={{
-                              color: column.nullable ? T.info : T.risk,
-                              background: column.nullable ? T.cloud : `${T.risk}10`,
-                            }}
-                          >
-                            {column.nullable ? "可空" : "非空"}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2" style={{ color: T.info }}>{column.rule}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            {parsedJobs.length === 0 && (
+              <div
+                className="rounded-lg p-5"
+                style={{ background: T.cloud, border: `1px solid ${T.border}` }}
+              >
+                <div className="grid grid-cols-2 gap-x-6 gap-y-0.5">
+                  {INGEST_CSV_COLUMNS.map((column) => (
+                    <div
+                      key={column.header}
+                      className="flex items-center gap-1.5 py-1 text-[12px]"
+                      style={{ borderBottom: `1px dashed ${T.border}` }}
+                    >
+                      <span className="flex-shrink-0 whitespace-nowrap font-medium" style={{ color: T.ink }}>
+                        {column.header}
+                      </span>
+                      <span
+                        className="flex-shrink-0 rounded px-1 text-[10px] leading-4"
+                        style={{
+                          color: column.nullable ? T.info : T.risk,
+                          background: column.nullable ? "rgba(74,94,138,0.08)" : `${T.risk}10`,
+                        }}
+                      >
+                        {column.nullable ? "可空" : "非空"}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate" style={{ color: T.info }} title={column.rule}>
+                        {column.rule}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             <input
               ref={fileInputRef}
@@ -221,18 +229,6 @@ export default function IngestFormModal() {
                 if (file) void handleFile(file);
               }}
             />
-
-            <div className="flex items-center justify-end">
-              <a
-                href={CSV_TEMPLATE_URL}
-                download={CSV_TEMPLATE_FILENAME}
-                className="inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[12px] font-medium bg-white hover:opacity-85"
-                style={{ color: T.ink, border: `1px solid ${T.border}` }}
-              >
-                <Download size={13} />
-                下载 CSV 模板
-              </a>
-            </div>
 
             {fileName ? (
               <div className="rounded-lg px-4 py-3 flex items-center gap-3" style={{ border: `1px solid ${T.border}` }}>
@@ -320,8 +316,8 @@ export default function IngestFormModal() {
             )}
           </div>
 
-          <div className="flex-shrink-0 px-5 py-4 space-y-2" style={{ borderTop: `1px solid ${T.cloud}` }}>
-            {submitError && (
+          {submitError && (
+            <div className="flex-shrink-0 px-5 py-3" style={{ borderTop: `1px solid ${T.cloud}` }}>
               <div
                 className="flex items-start gap-2 px-3 py-2 rounded-md text-[12px]"
                 style={{ background: `${T.risk}10`, color: T.risk, border: `1px solid ${T.risk}30` }}
@@ -329,13 +325,8 @@ export default function IngestFormModal() {
                 <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
                 <span>{submitError}</span>
               </div>
-            )}
-            <div className="flex justify-end gap-2">
-              <Btn icon={Upload} onClick={submitCsv} disabled={submitting || parsedJobs.length === 0}>
-                {submitting ? "提交中…" : `提交注入${parsedJobs.length > 0 ? `（${parsedJobs.length} 条）` : ""}`}
-              </Btn>
             </div>
-          </div>
+          )}
         </>
       )}
     </div>
