@@ -4,7 +4,7 @@ import T from "../constants/tokens";
 import { getTeacherStudents } from "../services/teacher";
 import { getDepartmentList } from "../services/admin";
 import type { TeacherStudentItem, DepartmentItem } from "../types/api";
-import { PageHeader, Card } from "../components/ui";
+import { PageHeader, Card, Pagination } from "../components/ui";
 
 export default function MyStudentsPage() {
   const { t } = useTranslation();
@@ -65,13 +65,7 @@ export default function MyStudentsPage() {
       </Card>
 
       {total > 20 && (
-        <div className="flex items-center justify-center gap-2 text-[13px]">
-          <button className="px-3 py-1.5 rounded-md disabled:opacity-30" style={{ border: `1px solid ${T.border}`, color: T.ink }}
-            disabled={page <= 1} onClick={() => setPage(p => p - 1)}>{t("page.myStudentsPage.prevPage")}</button>
-          <span style={{ color: T.info }}>{page} / {Math.ceil(total / 20)}</span>
-          <button className="px-3 py-1.5 rounded-md disabled:opacity-30" style={{ border: `1px solid ${T.border}`, color: T.ink }}
-            disabled={page >= Math.ceil(total / 20)} onClick={() => setPage(p => p + 1)}>{t("page.myStudentsPage.nextPage")}</button>
-        </div>
+        <Pagination page={page} totalPages={Math.ceil(total / 20)} onChange={setPage} />
       )}
     </div>
   );

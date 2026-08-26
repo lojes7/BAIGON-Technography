@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   AlertCircle,
-  ChevronLeft,
-  ChevronRight,
   RefreshCw,
   Search,
 } from "lucide-react";
-import { Btn, Card, PageHeader } from "../components/ui";
+import { Btn, Card, PageHeader, Pagination } from "../components/ui";
 import T from "../constants/tokens";
 import { pagedSearchAuditLogs } from "../services/audit";
 import { listUsers } from "../services/user";
@@ -361,23 +359,13 @@ export default function AuditLogPage() {
           )}
         </div>
         <div className="px-4 py-3 flex items-center justify-between text-[12px]" style={{ borderTop: `1px solid ${T.cloud}`, color: T.info }}>
-          <span>共 {result.total} 条 · 第 {result.page + 1} / {totalPages} 页</span>
-          <div className="flex items-center gap-2">
-            <Btn
-              variant="secondary"
-              size="sm"
-              icon={ChevronLeft}
-              disabled={loading || page <= 0}
-              onClick={() => setPage((value) => Math.max(0, value - 1))}
-            >上一页</Btn>
-            <Btn
-              variant="secondary"
-              size="sm"
-              icon={ChevronRight}
-              disabled={loading || page + 1 >= totalPages}
-              onClick={() => setPage((value) => value + 1)}
-            >下一页</Btn>
-          </div>
+          <span>共 {result.total} 条</span>
+          <Pagination
+            page={page + 1}
+            totalPages={totalPages}
+            disabled={loading}
+            onChange={(value) => setPage(value - 1)}
+          />
         </div>
       </Card>
     </div>

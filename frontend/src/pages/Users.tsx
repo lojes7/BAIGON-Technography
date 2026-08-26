@@ -5,7 +5,7 @@ import { Plus } from "lucide-react";
 import T from "../constants/tokens";
 import { listUsers, blockUser, unlockUser, getUniversities, getSchools, getDepartments } from "../services/user";
 import type { CurrentUser, OrganizationItem } from "../types/api";
-import { PageHeader, Btn, Card } from "../components/ui";
+import { PageHeader, Btn, Card, Pagination } from "../components/ui";
 
 const ROLE_OPTIONS = [
   { value: "", label: "全部角色" },
@@ -129,12 +129,8 @@ function UsersPage() {
         <tbody>{users.map(u => (<tr key={u.id} className="hover:bg-gray-50 transition-colors" style={{ borderTop: `1px solid ${T.cloud}` }}><td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{u.uid}</td><td className="px-4 py-3 font-medium" style={{ color: T.ink }}>{u.name || "—"}</td><td className="px-4 py-3 text-[12px]" style={{ color: T.info }}>{roleLabel(u.role)}</td><td className="px-4 py-3 text-[12px]" style={{ color: T.info }}>{u.school_name || "—"}</td><td className="px-4 py-3 text-[12px]" style={{ color: T.info }}>{u.department_name || "—"}</td><td className="px-4 py-3"><span className="text-[12px]" style={{ color: u.status === "NORMAL" ? T.emerging : T.risk }}>{u.status === "NORMAL" ? "正常" : "已封禁"}</span></td><td className="px-4 py-3"><button className="text-[12px] font-medium" style={{ color: T.pending }} onClick={() => handleToggleStatus(u)}>{u.status === "LOCKED" ? "解封" : "封禁"}</button></td></tr>))}</tbody></table>}
 
         {total > 20 && (
-          <div className="flex items-center justify-center gap-2 text-[13px] px-4 py-3">
-            <button className="px-3 py-1.5 rounded-md disabled:opacity-30" style={{ border: `1px solid ${T.border}`, color: T.ink }}
-              disabled={page <= 1} onClick={() => setPage(p => p - 1)}>上一页</button>
-            <span style={{ color: T.info }}>{page} / {Math.max(1, Math.ceil(total / 20))}</span>
-            <button className="px-3 py-1.5 rounded-md disabled:opacity-30" style={{ border: `1px solid ${T.border}`, color: T.ink }}
-              disabled={page >= Math.ceil(total / 20)} onClick={() => setPage(p => p + 1)}>下一页</button>
+          <div className="px-4 py-3">
+            <Pagination page={page} totalPages={Math.ceil(total / 20)} onChange={setPage} />
           </div>
         )}
       </Card>

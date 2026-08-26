@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { CheckCircle, Eye, Loader2, Plus, Search, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Btn, Card, PageHeader } from "../components/ui";
+import { Btn, Card, PageHeader, Pagination, VerticalFilter } from "../components/ui";
 import T from "../constants/tokens";
 import { isHttpErrorStatus } from "../services/http-error";
 import {
@@ -48,7 +48,7 @@ function ReviewWorkbenchPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [taskStatus, setTaskStatus] = useState("");
-  const [reviewStatus, setReviewStatus] = useState("PENDING");
+  const [reviewStatus, setReviewStatus] = useState("");
   const [loading, setLoading] = useState(true);
   const [openingId, setOpeningId] = useState("");
 
@@ -247,28 +247,41 @@ function ReviewWorkbenchPage() {
         actions={<span className="font-mono text-[13px]" style={{ color: T.info }}>共 {total} 项</span>}
       />
 
-      <div className="flex flex-wrap items-end gap-3">
-        <FilterSelect
-          label="AI 任务状态"
-          value={taskStatus}
-          options={[
-            ["", "全部"],
-            ["PENDING", "等待处理"],
-            ["RUNNING", "AI 处理中"],
-            ["SUCCESS", "候选已生成"],
-            ["FAILED", "AI 处理失败"],
-          ]}
-          onChange={(value) => { setTaskStatus(value); setPage(1); }}
-        />
-        <FilterSelect
-          label="审核状态"
-          value={reviewStatus}
-          options={[["", "全部"], ["PENDING", "待审核"], ["PASSED", "已归一"]]}
-          onChange={(value) => { setReviewStatus(value); setPage(1); }}
-        />
-      </div>
+      <div className="flex gap-4">
+        {/* 左侧竖排筛选面板 */}
+        <div className="w-44 flex-shrink-0">
+          <VerticalFilter
+            sections={[
+              {
+                title: "AI 任务状态",
+                value: taskStatus,
+                onChange: (value) => { setTaskStatus(value); setReviewStatus(""); setPage(1); },
+                options: [
+                  { value: "", label: "全部" },
+                  { value: "PENDING", label: "等待处理" },
+                  { value: "RUNNING", label: "AI 处理中" },
+                  { value: "SUCCESS", label: "候选已生成" },
+                  { value: "FAILED", label: "AI 处理失败" },
+                ],
+              },
 
-      <Card>
+              ...(taskStatus === "" || taskStatus === "SUCCESS" || taskStatus === "FAILED" ? [{
+                title: "审核状态",
+                value: reviewStatus,
+                onChange: (value: string) => { setReviewStatus(value); setPage(1); },
+                options: [
+                  { value: "", label: "全部" },
+                  { value: "PENDING", label: "待复核" },
+                  { value: "PASSED", label: "已复核" },
+                ],
+              }] : []),
+            ]}
+          />
+        </div>
+
+        {/* 右侧表格 */}
+        <div className="flex-1 min-w-0">
+          <Card>
         {loading ? (
           <div className="px-4 py-12 text-center text-[13px]" style={{ color: T.info }}>加载中…</div>
         ) : items.length === 0 ? (
@@ -316,12 +329,10 @@ function ReviewWorkbenchPage() {
       </Card>
 
       {total > PAGE_SIZE && (
-        <div className="flex items-center justify-center gap-2 text-[13px]">
-          <Btn variant="secondary" size="sm" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>上一页</Btn>
-          <span style={{ color: T.info }}>{page} / {pageCount}</span>
-          <Btn variant="secondary" size="sm" disabled={page >= pageCount} onClick={() => setPage((current) => current + 1)}>下一页</Btn>
-        </div>
+        <Pagination page={page} totalPages={pageCount} onChange={setPage} />
       )}
+        </div>
+      </div>
 
       {detail && (
         <div className="fixed inset-0 z-50 flex" style={{ background: "rgba(25,50,77,0.3)" }} onClick={closeDetail}>
@@ -533,10 +544,8 @@ function ReviewWorkbenchPage() {
                         ))}
                     </div>
                     {skillTotal > SKILL_PAGE_SIZE && (
-                      <div className="flex items-center justify-center gap-2 pt-1 text-[12px]">
-                        <Btn variant="secondary" size="sm" disabled={skillPage <= 1 || searching} onClick={() => changeSkillPage(skillPage - 1)}>上一页</Btn>
-                        <span style={{ color: T.info }}>{skillPage} / {skillPageCount}</span>
-                        <Btn variant="secondary" size="sm" disabled={skillPage >= skillPageCount || searching} onClick={() => changeSkillPage(skillPage + 1)}>下一页</Btn>
+                      <div className="pt-1">
+                        <Pagination page={skillPage} totalPages={skillPageCount} onChange={changeSkillPage} disabled={searching} />
                       </div>
                     )}
                   </div>
@@ -576,32 +585,6 @@ function ReviewWorkbenchPage() {
         </div>
       )}
     </div>
-  );
-}
-
-function FilterSelect({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: string[][];
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="space-y-1">
-      <span className="block text-[11px]" style={{ color: T.info }}>{label}</span>
-      <select
-        className="h-9 min-w-44 rounded-md bg-white px-3 text-[13px] outline-none"
-        style={{ border: `1px solid ${T.border}`, color: T.ink }}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        {options.map(([optionValue, optionLabel]) => <option key={optionValue} value={optionValue}>{optionLabel}</option>)}
-      </select>
-    </label>
   );
 }
 

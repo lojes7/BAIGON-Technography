@@ -6,7 +6,7 @@ import T from "../constants/tokens";
 import { useAuth } from "../auth/AuthContext";
 import { getEvolutionEvents, getEvolutionEventDetail } from "../services/analytics";
 import type { EvolutionEventItem, EvolutionEventDetail } from "../types/api";
-import { PageHeader, Btn, Card, StatusBadge, Divider } from "../components/ui";
+import { PageHeader, Btn, Card, StatusBadge, Divider, Pagination } from "../components/ui";
 import EvidenceDrawer from "../components/overlay/EvidenceDrawer";
 
 const DEFAULT_PERIOD = "2026H1";
@@ -254,27 +254,7 @@ function EvolutionEventsPage() {
 
       {/* 分页 */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 text-[13px]">
-          <button
-            className="px-3 py-1.5 rounded-md disabled:opacity-30"
-            style={{ border: `1px solid ${T.border}`, color: T.ink }}
-            disabled={page <= 1}
-            onClick={() => setPage((p) => p - 1)}
-          >
-            上一页
-          </button>
-          <span style={{ color: T.info }}>
-            {page} / {totalPages}
-          </span>
-          <button
-            className="px-3 py-1.5 rounded-md disabled:opacity-30"
-            style={{ border: `1px solid ${T.border}`, color: T.ink }}
-            disabled={page >= totalPages}
-            onClick={() => setPage((p) => p + 1)}
-          >
-            下一页
-          </button>
-        </div>
+        <Pagination page={page} totalPages={totalPages} onChange={setPage} />
       )}
 
       {/* 证据抽屉 */}

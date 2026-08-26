@@ -4,7 +4,7 @@ import { Eye, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import DirectoryPicker from "../components/job-analysis/DirectoryPicker";
-import { Btn, Card, PageHeader } from "../components/ui";
+import { Btn, Card, PageHeader, VerticalFilter } from "../components/ui";
 import T from "../constants/tokens";
 import { isHttpErrorStatus } from "../services/http-error";
 import { getJobAnalysisTask, listJobAnalysisTasks, reviewJobAnalysisTask } from "../services/job-analysis";
@@ -41,7 +41,8 @@ export default function JobAnalysisPage() {
   const { t } = useTranslation();
   const [items, setItems] = useState<JobAnalysisTaskSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [taskStatusFilter, setTaskStatusFilter] = useState<"processing" | "success" | "failed">("processing");
+  const [taskStatusFilter, setTaskStatusFilter] = useState<"success" | "failed" | "processing">("success");
+  const [reviewFilter, setReviewFilter] = useState<"all" | "pending" | "reviewed">("all");
   const [openingId, setOpeningId] = useState("");
 
   const [detail, setDetail] = useState<JobAnalysisTaskDetail | null>(null);
@@ -78,9 +79,14 @@ export default function JobAnalysisPage() {
 
   const visibleItems = items.filter((item) => {
     if (taskStatusFilter === "processing") {
-      return item.taskStatus === "PENDING" || item.taskStatus === "RUNNING";
+      if (item.taskStatus !== "PENDING" && item.taskStatus !== "RUNNING") return false;
+    } else if (item.taskStatus !== (taskStatusFilter === "success" ? "SUCCESS" : "FAILED")) {
+      return false;
     }
-    return item.taskStatus === (taskStatusFilter === "success" ? "SUCCESS" : "FAILED");
+
+    if (reviewFilter === "pending") return item.reviewStatus === "PENDING";
+    if (reviewFilter === "reviewed") return item.reviewStatus === "PASSED" || item.reviewStatus === "REJECTED";
+    return true;
   });
 
   const initializeDetail = (nextDetail: JobAnalysisTaskDetail) => {
@@ -218,28 +224,42 @@ export default function JobAnalysisPage() {
         description="确认岗位对应的专业、职业，并逐条审核 JD 技能分析结果"
       />
 
-      <div className="flex items-center gap-2">
-        {([
-          { key: "processing", label: "处理中", count: items.filter((i) => i.taskStatus === "PENDING" || i.taskStatus === "RUNNING").length },
-          { key: "success", label: "成功", count: items.filter((i) => i.taskStatus === "SUCCESS").length },
-          { key: "failed", label: "失败", count: items.filter((i) => i.taskStatus === "FAILED").length },
-        ] as const).map((tab) => (
-          <button
-            key={tab.key}
-            className="rounded-md px-4 py-2 text-[13px] font-medium transition-colors"
-            style={{
-              border: `1px solid ${taskStatusFilter === tab.key ? T.teal : T.border}`,
-              color: taskStatusFilter === tab.key ? "white" : T.ink,
-              background: taskStatusFilter === tab.key ? T.teal : "white",
-            }}
-            onClick={() => setTaskStatusFilter(tab.key)}
-          >
-            {tab.label}（{tab.count}）
-          </button>
-        ))}
-      </div>
+      <div className="flex gap-4">
+        {/* 左侧竖排筛选面板 */}
+        <div className="w-44 flex-shrink-0">
+          <VerticalFilter
+            sections={[
+              {
+                title: "任务状态",
+                value: taskStatusFilter,
+                onChange: (value) => {
+                  setTaskStatusFilter(value as "success" | "failed" | "processing");
+                  setReviewFilter("all");
+                },
+                options: [
+                  { value: "success", label: `成功 ${items.filter((i) => i.taskStatus === "SUCCESS").length}` },
+                  { value: "failed", label: `失败 ${items.filter((i) => i.taskStatus === "FAILED").length}` },
+                  { value: "processing", label: `处理中 ${items.filter((i) => i.taskStatus === "PENDING" || i.taskStatus === "RUNNING").length}` },
+                ],
+              },
+              // 审核状态只在「成功」tab 有意义：处理中/失败的任务尚未进入复核，不存在已复核。
+              ...(taskStatusFilter === "success" ? [{
+                title: "审核状态",
+                value: reviewFilter,
+                onChange: (value: string) => setReviewFilter(value as "all" | "pending" | "reviewed"),
+                options: [
+                  { value: "all", label: "全部" },
+                  { value: "pending", label: "待复核" },
+                  { value: "reviewed", label: "已复核" },
+                ],
+              }] : []),
+            ]}
+          />
+        </div>
 
-      <Card>
+        {/* 右侧表格 */}
+        <div className="flex-1 min-w-0">
+          <Card>
         {loading ? (
           <div className="px-4 py-12 text-center text-[13px]" style={{ color: T.info }}>{t("common.loading")}</div>
         ) : visibleItems.length === 0 ? (
@@ -249,11 +269,16 @@ export default function JobAnalysisPage() {
             <table className="w-full min-w-[980px] text-[13px]">
               <thead>
                 <tr style={{ background: T.cloud }}>
-                  {["ID", "岗位名称", "岗位原专业", "分析进度", "审核状态", "确认结果", "创建时间", "操作"].map((heading) => (
-                    <th key={heading} className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: T.info }}>
-                      {heading}
-                    </th>
-                  ))}
+                  <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: T.info }}>ID</th>
+                  <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: T.info }}>岗位名称</th>
+                  <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: T.info }}>岗位原专业</th>
+                  {taskStatusFilter === "processing" && (
+                    <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: T.info }}>分析进度</th>
+                  )}
+                  <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: T.info }}>审核状态</th>
+                  <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: T.info }}>确认结果</th>
+                  <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: T.info }}>创建时间</th>
+                  <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: T.info }}>操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -262,11 +287,13 @@ export default function JobAnalysisPage() {
                     <td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{item.id}</td>
                     <td className="px-4 py-3 font-medium" style={{ color: T.ink }}>{item.jobName || "—"}</td>
                     <td className="max-w-44 px-4 py-3 text-[12px]" style={{ color: T.info }}>{item.jobMajor || "—"}</td>
-                    <td className="px-4 py-3 text-[11px] leading-5" style={{ color: T.info }}>
-                      <div>专业：{TASK_STATUS_LABEL[item.majorAnalysisStatus] || item.majorAnalysisStatus || "—"}</div>
-                      <div>职业：{TASK_STATUS_LABEL[item.occupationAnalysisStatus] || item.occupationAnalysisStatus || "—"}</div>
-                      <div>JD：{TASK_STATUS_LABEL[item.jdAnalysisStatus] || item.jdAnalysisStatus || "—"}</div>
-                    </td>
+                    {taskStatusFilter === "processing" && (
+                      <td className="px-4 py-3 text-[11px] leading-5" style={{ color: T.info }}>
+                        <div>专业：{TASK_STATUS_LABEL[item.majorAnalysisStatus] || item.majorAnalysisStatus || "—"}</div>
+                        <div>职业：{TASK_STATUS_LABEL[item.occupationAnalysisStatus] || item.occupationAnalysisStatus || "—"}</div>
+                        <div>JD：{TASK_STATUS_LABEL[item.jdAnalysisStatus] || item.jdAnalysisStatus || "—"}</div>
+                      </td>
+                    )}
                     <td className="px-4 py-3">
                       <ReviewStatus status={item.reviewStatus} />
                     </td>
@@ -294,6 +321,8 @@ export default function JobAnalysisPage() {
           </div>
         )}
       </Card>
+        </div>
+      </div>
 
       {detail && (
         <div className="fixed inset-0 z-50 flex" style={{ background: "rgba(25,50,77,0.3)" }} onClick={closeDetail}>

@@ -4,7 +4,7 @@ import { Loader2, RefreshCw, Search } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import EmbeddingProgress from "../components/EmbeddingProgress";
-import { Btn, Card, PageHeader } from "../components/ui";
+import { Btn, Card, PageHeader, Pagination } from "../components/ui";
 import T from "../constants/tokens";
 import { searchCanonicalSkills } from "../services/skill-resolution";
 import type { CanonicalSkillItem } from "../types/api";
@@ -136,17 +136,7 @@ function SkillDictionaryPage() {
       </Card>
 
       {total > PAGE_SIZE && (
-        <div className="flex items-center justify-center gap-2 text-[13px]">
-          <Btn variant="secondary" size="sm" disabled={page <= 1} onClick={() => {
-            setLoading(true);
-            setPage((value) => value - 1);
-          }}>上一页</Btn>
-          <span style={{ color: T.info }}>{page} / {pageCount}</span>
-          <Btn variant="secondary" size="sm" disabled={page >= pageCount} onClick={() => {
-            setLoading(true);
-            setPage((value) => value + 1);
-          }}>下一页</Btn>
-        </div>
+        <Pagination page={page} totalPages={pageCount} onChange={setPage} />
       )}
     </div>
   );

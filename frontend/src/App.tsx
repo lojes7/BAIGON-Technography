@@ -65,7 +65,9 @@ function AppLayout() {
           notifOpen={notifOpen}
         />
         <main className="flex-1 overflow-y-auto px-6 py-5" style={{ scrollbarWidth: "thin" }}>
-          <Outlet />
+          <div className="mx-auto w-full min-h-full max-w-[1280px]">
+            <Outlet />
+          </div>
         </main>
       </div>
       {notifOpen && <NotificationPanel onClose={() => setNotifOpen(false)} />}

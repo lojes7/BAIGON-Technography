@@ -5,3 +5,6 @@ export { default as PageHeader } from "./PageHeader";
 export { default as Btn } from "./Btn";
 export { default as Card } from "./Card";
 export { default as Divider } from "./Divider";
+export { default as Pagination } from "./Pagination";
+export { default as Segmented } from "./Segmented";
+export { default as VerticalFilter } from "./VerticalFilter";

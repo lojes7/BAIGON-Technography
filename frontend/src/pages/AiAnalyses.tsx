@@ -5,7 +5,7 @@ import { getAiAnalyses } from "../services/reviewer";
 import { getJobList } from "../services/jobs";
 import { getMajorList } from "../services/dict";
 import type { AiAnalysisItem } from "../types/api";
-import { PageHeader, Card, StatusBadge } from "../components/ui";
+import { PageHeader, Card, StatusBadge, Pagination } from "../components/ui";
 
 const TASK_STATUS_LABEL: Record<string, string> = {
   SUCCESS: "清洗成功",
@@ -97,13 +97,7 @@ export default function AiAnalysesPage() {
       </Card>
 
       {total > 20 && (
-        <div className="flex items-center justify-center gap-2 text-[13px]">
-          <button className="px-3 py-1.5 rounded-md disabled:opacity-30" style={{ border: `1px solid ${T.border}`, color: T.ink }}
-            disabled={page <= 1} onClick={() => setPage(p => p - 1)}>上一页</button>
-          <span style={{ color: T.info }}>{page} / {Math.ceil(total / 20)}</span>
-          <button className="px-3 py-1.5 rounded-md disabled:opacity-30" style={{ border: `1px solid ${T.border}`, color: T.ink }}
-            disabled={page >= Math.ceil(total / 20)} onClick={() => setPage(p => p + 1)}>下一页</button>
-        </div>
+        <Pagination page={page} totalPages={Math.ceil(total / 20)} onChange={setPage} />
       )}
     </div>
   );

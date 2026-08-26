@@ -6,7 +6,7 @@ import T from "../constants/tokens";
 import { useAuth } from "../auth/AuthContext";
 import { getDataSourceList, reviewDataSource, getCrawlerStatus, getSourceRecord, getDataSourceDetail, editAndApproveReview } from "../services/engineer";
 import type { DataSourceItem, DataSourceDetail, SourceJobDetail } from "../types/api";
-import { PageHeader, Btn, Card, StatusBadge, MetricCard } from "../components/ui";
+import { PageHeader, Btn, Card, StatusBadge, MetricCard, Pagination } from "../components/ui";
 import DiffViewer, { type DiffRow } from "../components/diff/DiffViewer";
 
 type ReviewPhase = "idle" | "confirm" | "progress" | "result";
@@ -385,13 +385,7 @@ export default function RawRecordsPage() {
       </Card>
 
       {total > 20 && (
-        <div className="flex items-center justify-center gap-2 text-[13px]">
-          <button className="px-3 py-1.5 rounded-md disabled:opacity-30" style={{ border: `1px solid ${T.border}`, color: T.ink }}
-            disabled={page <= 1} onClick={() => setPage(p => p - 1)}>{t("page.rawRecords.prevPage")}</button>
-          <span style={{ color: T.info }}>{page} / {Math.ceil(total / 20)}</span>
-          <button className="px-3 py-1.5 rounded-md disabled:opacity-30" style={{ border: `1px solid ${T.border}`, color: T.ink }}
-            disabled={page >= Math.ceil(total / 20)} onClick={() => setPage(p => p + 1)}>{t("page.rawRecords.nextPage")}</button>
-        </div>
+        <Pagination page={page} totalPages={Math.ceil(total / 20)} onChange={setPage} />
       )}
 
       {/* ==================== 批量审核弹窗 ==================== */}

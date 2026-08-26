@@ -7,7 +7,7 @@ import T from "../constants/tokens";
 import { getJobDetail, getLatestMyJobMatch, listJobs, matchMyResumeToJob } from "../services/jobs";
 import { isHttpErrorStatus } from "../services/http-error";
 import type { JobData, JobDetail, JobMatchResult } from "../types/api";
-import { PageHeader, Card, Btn } from "../components/ui";
+import { PageHeader, Card, Btn, Pagination } from "../components/ui";
 import AbilityRadialGraph from "../components/AbilityRadialGraph";
 import DirectoryPicker from "../components/job-analysis/DirectoryPicker";
 
@@ -260,13 +260,7 @@ export default function JobsPage() {
       </Card>
 
       {total > 20 && (
-        <div className="flex items-center justify-center gap-2 text-[13px]">
-          <button className="px-3 py-1.5 rounded-md disabled:opacity-30" style={{ border: `1px solid ${T.border}`, color: T.ink }}
-            disabled={page <= 1} onClick={() => setPage(p => p - 1)}>上一页</button>
-          <span style={{ color: T.info }}>{page} / {Math.max(1, Math.ceil(total / 20))}</span>
-          <button className="px-3 py-1.5 rounded-md disabled:opacity-30" style={{ border: `1px solid ${T.border}`, color: T.ink }}
-            disabled={page >= Math.ceil(total / 20)} onClick={() => setPage(p => p + 1)}>下一页</button>
-        </div>
+        <Pagination page={page} totalPages={Math.ceil(total / 20)} onChange={setPage} />
       )}
 
       {/* 详情抽屉 */}
