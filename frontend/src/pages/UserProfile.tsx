@@ -117,7 +117,7 @@ const PAGE_LABELS: Record<string, string> = {
   "skill-dict": "能力词典",
   "taxonomy": "分类体系",
   "graph-browser": "图谱浏览",
-  "graph-snapshots": "图谱快照",
+  "graph-snapshots": "图谱对比",
   "relation-evidence": "关系证据",
   "evolution-trends": "趋势总览",
   "evolution-events": "演化事件",

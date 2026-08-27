@@ -73,13 +73,21 @@ CREATE TABLE "occupation_skills" (
     "deleted_at" timestamp with time zone,
     "id" bigint PRIMARY KEY,
     "occupation_id" bigint NOT NULL REFERENCES "occupations" ("id"),
-    "skill_id" bigint NOT NULL REFERENCES "skills" ("id")
+    "skill_id" bigint NOT NULL REFERENCES "skills" ("id"),
+    "job_id" bigint NOT NULL REFERENCES "jobs" ("id"),
+    -- 原样保存贡献岗位的发布时间；来源缺失时保持 NULL。
+    "publish_date" timestamp with time zone
 );
 
 CREATE UNIQUE INDEX "idx_occupation_skills_relation"
-    ON "occupation_skills" ("occupation_id", "skill_id") WHERE "deleted_at" IS NULL;
+    ON "occupation_skills" ("occupation_id", "skill_id", "job_id") WHERE "deleted_at" IS NULL;
 CREATE INDEX "idx_occupation_skills_skill"
     ON "occupation_skills" ("skill_id") WHERE "deleted_at" IS NULL;
+CREATE INDEX "idx_occupation_skills_timeline"
+    ON "occupation_skills" ("occupation_id", "publish_date", "skill_id")
+    WHERE "deleted_at" IS NULL;
+CREATE INDEX "idx_occupation_skills_job"
+    ON "occupation_skills" ("job_id") WHERE "deleted_at" IS NULL;
 
 CREATE TABLE "major_skills" (
     "created_at" timestamp with time zone NOT NULL DEFAULT now(),
@@ -87,10 +95,18 @@ CREATE TABLE "major_skills" (
     "deleted_at" timestamp with time zone,
     "id" bigint PRIMARY KEY,
     "major_id" bigint NOT NULL REFERENCES "majors" ("id"),
-    "skill_id" bigint NOT NULL REFERENCES "skills" ("id")
+    "skill_id" bigint NOT NULL REFERENCES "skills" ("id"),
+    "job_id" bigint NOT NULL REFERENCES "jobs" ("id"),
+    -- 原样保存贡献岗位的发布时间；来源缺失时保持 NULL。
+    "publish_date" timestamp with time zone
 );
 
 CREATE UNIQUE INDEX "idx_major_skills_relation"
-    ON "major_skills" ("major_id", "skill_id") WHERE "deleted_at" IS NULL;
+    ON "major_skills" ("major_id", "skill_id", "job_id") WHERE "deleted_at" IS NULL;
 CREATE INDEX "idx_major_skills_skill"
     ON "major_skills" ("skill_id") WHERE "deleted_at" IS NULL;
+CREATE INDEX "idx_major_skills_timeline"
+    ON "major_skills" ("major_id", "publish_date", "skill_id")
+    WHERE "deleted_at" IS NULL;
+CREATE INDEX "idx_major_skills_job"
+    ON "major_skills" ("job_id") WHERE "deleted_at" IS NULL;

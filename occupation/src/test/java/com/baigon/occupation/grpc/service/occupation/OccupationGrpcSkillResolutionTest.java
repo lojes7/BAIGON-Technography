@@ -35,6 +35,7 @@ import com.baigon.occupation.service.occupation.OccupationCatalogService;
 import com.baigon.occupation.service.skill.SkillResolutionQueryService;
 import com.baigon.occupation.service.skill.SkillResolutionReviewService;
 import com.baigon.occupation.service.skill.SkillHierarchyService;
+import com.baigon.occupation.service.skill.graph.SkillGraphQueryService;
 import com.baigon.occupation.repository.skill.SkillCandidateProjection;
 import io.grpc.stub.StreamObserver;
 import org.junit.jupiter.api.BeforeEach;
@@ -78,6 +79,7 @@ class OccupationGrpcSkillResolutionTest {
                 queryService,
                 reviewService,
                 hierarchyService,
+                mock(SkillGraphQueryService.class),
                 jobQueryService,
                 mock(AuditLogQueryService.class),
                 mock(LogService.class));

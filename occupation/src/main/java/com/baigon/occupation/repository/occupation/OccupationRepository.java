@@ -27,6 +27,15 @@ public interface OccupationRepository extends JpaRepository<Occupation, Long> {
                             @Param("keyword") String keyword,
                             Pageable pageable);
 
+    /** 图谱范围选择允许跨职业小类搜索全部职业。 */
+    @Query("""
+            SELECT item FROM Occupation item
+            WHERE item.deletedAt IS NULL
+              AND (:keyword = '' OR LOWER(item.name) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                   OR LOWER(item.code) LIKE LOWER(CONCAT('%', :keyword, '%')))
+            """)
+    Page<Occupation> searchAll(@Param("keyword") String keyword, Pageable pageable);
+
     List<Occupation> findByDeletedAtIsNullAndEmbeddingStatusNotOrderByIdAsc(TaskStatus status);
 
     long countByDeletedAtIsNull();

@@ -5,6 +5,7 @@ import (
 	"baigon-technography/gateway/internal/grpcpool"
 	"baigon-technography/gateway/internal/handler"
 	skillhandler "baigon-technography/gateway/internal/handler/skill"
+	skillgraphhandler "baigon-technography/gateway/internal/handler/skillgraph"
 	"baigon-technography/gateway/internal/middleware"
 
 	"github.com/gin-gonic/gin"
@@ -18,17 +19,20 @@ func RegisterOccupationRoutes(api *gin.RouterGroup, pool *grpcpool.GrpcClientPoo
 	occupation := auth.Group("/occupation")
 	// 岗位能力图谱面向所有登录角色，允许按已知 ID 批量解析规范技能名称。
 	occupation.POST("/skills/lookup", skillhandler.LookupSkillsHandler(pool))
+	// 图谱浏览面向全部登录角色；职业、专业选择也允许跨目录搜索。
+	occupation.GET("/majors", handler.ListMajorsHandler(pool))
+	occupation.GET("/occupations", handler.ListOccupationsHandler(pool))
+	occupation.GET("/majors/:id/skill-graph", skillgraphhandler.MajorSkillGraphHandler(pool))
+	occupation.GET("/occupations/:id/skill-graph", skillgraphhandler.OccupationSkillGraphHandler(pool))
 
 	// DATA_REVIEWER 需要浏览 occupations 全目录，最终选择不受 AI 候选限制。
 	catalog := occupation.Group("")
 	catalog.Use(middleware.RoleAuth("ADMIN", "DATA_REVIEWER"))
 	catalog.GET("/discipline-categories", handler.ListDisciplineCategoriesHandler(pool))
 	catalog.GET("/major-categories", handler.ListMajorCategoriesHandler(pool))
-	catalog.GET("/majors", handler.ListMajorsHandler(pool))
 	catalog.GET("/occupation-major-categories", handler.ListOccupationMajorCategoriesHandler(pool))
 	catalog.GET("/occupation-sub-categories", handler.ListOccupationSubCategoriesHandler(pool))
 	catalog.GET("/occupation-categories", handler.ListOccupationCategoriesHandler(pool))
-	catalog.GET("/occupations", handler.ListOccupationsHandler(pool))
 	catalog.GET("/skills", handler.ListSkillsHandler(pool))
 	catalog.GET("/skills/:id", skillhandler.GetSkillHandler(pool))
 

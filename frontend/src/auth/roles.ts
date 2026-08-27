@@ -42,7 +42,7 @@ export const PAGE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
   ],
   teacher: [
     "dashboard",
-    "graph-browser", "evolution-trends",
+    "graph-browser", "graph-snapshots", "evolution-trends",
     "programs", "course-evidence", "gap-analysis", "response-lag", "recommendations",
     "my-students", "account-settings",
     "jobs",
@@ -50,7 +50,7 @@ export const PAGE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
   student: [
     "dashboard",
     "my-resume", "my-skills", "account-settings",
-    "graph-browser", "evolution-trends",
+    "graph-browser", "graph-snapshots", "evolution-trends",
     "skill-analysis", "skill-compare", "gap-report", "learning-path",
     "jobs",
   ],

@@ -124,7 +124,7 @@ func ListMajorCategoriesHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 // @Tags         专业职业管理
 // @Produce      json
 // @Security     Bearer
-// @Param        majorCategoryId query int true "专业类 ID"
+// @Param        majorCategoryId query int false "专业类 ID；不传则跨专业类搜索"
 // @Param        page query int false "页码，从 0 开始"
 // @Param        pageSize query int false "每页条数"
 // @Param        keyword query string false "名称或编码关键词"
@@ -140,7 +140,7 @@ func ListMajorsHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
 			return
 		}
-		parentID, err := PositiveQueryID(c, "majorCategoryId")
+		parentID, err := OptionalPositiveQueryID(c, "majorCategoryId")
 		if err != nil {
 			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
 			return
@@ -334,7 +334,7 @@ func ListOccupationCategoriesHandler(pool *grpcpool.GrpcClientPool) gin.HandlerF
 // @Tags         专业职业管理
 // @Produce      json
 // @Security     Bearer
-// @Param        occupationCategoryId query int true "职业小类 ID"
+// @Param        occupationCategoryId query int false "职业小类 ID；不传则跨职业小类搜索"
 // @Param        page query int false "页码，从 0 开始"
 // @Param        pageSize query int false "每页条数"
 // @Param        keyword query string false "名称或编码关键词"
@@ -350,7 +350,7 @@ func ListOccupationsHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
 			return
 		}
-		parentID, err := PositiveQueryID(c, "occupationCategoryId")
+		parentID, err := OptionalPositiveQueryID(c, "occupationCategoryId")
 		if err != nil {
 			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
 			return

@@ -9,8 +9,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 class OccupationCatalogServiceTest {
 
@@ -31,8 +31,17 @@ class OccupationCatalogServiceTest {
     }
 
     @Test
-    void childQueryRequiresPositiveParentId() {
-        assertThrows(IllegalArgumentException.class,
-                () -> service.listOccupations(0, 0, 20, ""));
+    void occupationQueryWithoutParentShouldSearchAllForGraphSelection() {
+        OccupationRepository repository = mock(OccupationRepository.class);
+        service = new OccupationCatalogService(
+                mock(OccupationMajorCategoryRepository.class),
+                mock(OccupationSubCategoryRepository.class),
+                mock(OccupationCategoryRepository.class), repository);
+
+        service.listOccupations(0, 0, 20, "Java");
+
+        verify(repository).searchAll(
+                org.mockito.ArgumentMatchers.eq("Java"),
+                org.mockito.ArgumentMatchers.any());
     }
 }

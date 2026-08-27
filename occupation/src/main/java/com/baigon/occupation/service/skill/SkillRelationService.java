@@ -32,11 +32,15 @@ public class SkillRelationService {
 
     @Transactional
     public void link(Job job, long skillId) {
+        if (job.getId() == null) {
+            throw new IllegalStateException("job is not persisted");
+        }
         if (job.getOccupationId() == null) {
             throw new IllegalStateException("job occupation is not ascertained");
         }
         occupationSkillRepository.insertIfAbsent(
-                snowflake.nextId(), job.getOccupationId(), skillId);
+                snowflake.nextId(), job.getOccupationId(), skillId,
+                job.getId(), job.getPublishDate());
 
         if (job.getMajorId() == null) {
             throw new IllegalStateException("job major is not ascertained");
@@ -46,7 +50,8 @@ public class SkillRelationService {
         // “其他”(999999) 只是不形成专业技能聚合；职业技能关系始终写入。
         if (!JobMajorPolicy.OTHER_MAJOR_CODE.equals(major.getCode())) {
             majorSkillRepository.insertIfAbsent(
-                    snowflake.nextId(), major.getId(), skillId);
+                    snowflake.nextId(), major.getId(), skillId,
+                    job.getId(), job.getPublishDate());
         }
     }
 }

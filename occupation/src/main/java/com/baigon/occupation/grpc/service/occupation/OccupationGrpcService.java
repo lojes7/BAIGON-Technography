@@ -22,6 +22,8 @@ import com.baigon.occupation.GetJobSkillResolutionTaskRequest;
 import com.baigon.occupation.GetJobSkillResolutionTaskResponse;
 import com.baigon.occupation.GetSkillRequest;
 import com.baigon.occupation.GetSkillResponse;
+import com.baigon.occupation.GetSkillGraphRequest;
+import com.baigon.occupation.GetSkillGraphResponse;
 import com.baigon.occupation.JobData;
 import com.baigon.occupation.JobAnalysisCandidate;
 import com.baigon.occupation.JobAnalysisMajorCandidate;
@@ -49,6 +51,11 @@ import com.baigon.occupation.ReviewJobAnalysisTaskRequest;
 import com.baigon.occupation.ReviewJobSkillResolutionTaskRequest;
 import com.baigon.occupation.SkillData;
 import com.baigon.occupation.SkillDetailData;
+import com.baigon.occupation.SkillGraphEvidenceJob;
+import com.baigon.occupation.SkillGraphNode;
+import com.baigon.occupation.SkillGraphParent;
+import com.baigon.occupation.SkillGraphScope;
+import com.baigon.occupation.SkillGraphTimeline;
 import com.baigon.occupation.SkillLookupData;
 import com.baigon.occupation.SkillRelationMutationRequest;
 import com.baigon.occupation.SkillRelationMutationResponse;
@@ -80,6 +87,7 @@ import com.baigon.occupation.service.occupation.OccupationCatalogService;
 import com.baigon.occupation.service.skill.SkillResolutionQueryService;
 import com.baigon.occupation.service.skill.SkillResolutionReviewService;
 import com.baigon.occupation.service.skill.SkillHierarchyService;
+import com.baigon.occupation.service.skill.graph.SkillGraphQueryService;
 import io.grpc.stub.StreamObserver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -104,6 +112,7 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
     private final SkillResolutionQueryService skillResolutionQueryService;
     private final SkillResolutionReviewService skillResolutionReviewService;
     private final SkillHierarchyService skillHierarchyService;
+    private final SkillGraphQueryService skillGraphQueryService;
     private final JobQueryService jobQueryService;
     private final AuditLogQueryService auditLogQueryService;
     private final LogService logService;
@@ -116,6 +125,7 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                                  SkillResolutionQueryService skillResolutionQueryService,
                                  SkillResolutionReviewService skillResolutionReviewService,
                                  SkillHierarchyService skillHierarchyService,
+                                 SkillGraphQueryService skillGraphQueryService,
                                  JobQueryService jobQueryService,
                                  AuditLogQueryService auditLogQueryService,
                                  LogService logService) {
@@ -127,6 +137,7 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
         this.skillResolutionQueryService = skillResolutionQueryService;
         this.skillResolutionReviewService = skillResolutionReviewService;
         this.skillHierarchyService = skillHierarchyService;
+        this.skillGraphQueryService = skillGraphQueryService;
         this.jobQueryService = jobQueryService;
         this.auditLogQueryService = auditLogQueryService;
         this.logService = logService;
@@ -519,6 +530,26 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
             logService.info(audit, "lookup canonical skills: total=" + skills.size());
         } catch (Exception exception) {
             fail(observer, audit, exception, "lookup canonical skills failed");
+        }
+    }
+
+    @Override
+    public void getSkillGraph(GetSkillGraphRequest request,
+                              StreamObserver<GetSkillGraphResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            SkillGraphQueryService.SkillGraph graph = skillGraphQueryService.getGraph(
+                    request.getScopeType(), request.getScopeId(),
+                    request.getFromMonth(), request.getToMonth(), request.getEvidenceLimit());
+            respond(observer, skillGraphResponse(graph));
+            logService.info(audit,
+                    "get skill graph: scope_type=" + graph.scope().type()
+                            + ", scope_id=" + graph.scope().id()
+                            + ", skills=" + graph.skills().size());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "get skill graph failed");
         }
     }
 
@@ -928,6 +959,47 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                 .setSkill(skillData(detail.skill()))
                 .addAllParentSkillIds(detail.relations().parentSkillIds())
                 .addAllChildSkillIds(detail.relations().childSkillIds())
+                .build();
+    }
+
+    private GetSkillGraphResponse skillGraphResponse(
+            SkillGraphQueryService.SkillGraph graph) {
+        SkillGraphScope scope = SkillGraphScope.newBuilder()
+                .setType(graph.scope().type())
+                .setId(graph.scope().id())
+                .setCode(orEmpty(graph.scope().code()))
+                .setName(orEmpty(graph.scope().name()))
+                .build();
+        SkillGraphTimeline timeline = SkillGraphTimeline.newBuilder()
+                .setFromMonth(graph.timeline().fromMonth())
+                .setToMonth(graph.timeline().toMonth())
+                .setTimezone(graph.timeline().timezone())
+                .build();
+        return GetSkillGraphResponse.newBuilder()
+                .setScope(scope)
+                .setTimeline(timeline)
+                .setTotalJobCount(graph.totalJobCount())
+                .addAllSkills(graph.skills().stream().map(node ->
+                        SkillGraphNode.newBuilder()
+                                .setSkillId(node.id())
+                                .setSkillName(orEmpty(node.name()))
+                                .setJobCount(node.jobCount())
+                                .setCoverage(node.coverage())
+                                .addAllParents(node.parents().stream().map(parent ->
+                                        SkillGraphParent.newBuilder()
+                                                .setId(parent.id())
+                                                .setName(orEmpty(parent.name()))
+                                                .build()).toList())
+                                .addAllEvidenceJobs(node.evidenceJobs().stream().map(evidence ->
+                                        SkillGraphEvidenceJob.newBuilder()
+                                                .setJobId(evidence.jobId())
+                                                .setJobName(orEmpty(evidence.jobName()))
+                                                .setCompanyName(orEmpty(evidence.companyName()))
+                                                .setSourcePlatform(orEmpty(evidence.sourcePlatform()))
+                                                .setSourceUrl(orEmpty(evidence.sourceUrl()))
+                                                .setPublishDate(time(evidence.publishDate()))
+                                                .build()).toList())
+                                .build()).toList())
                 .build();
     }
 

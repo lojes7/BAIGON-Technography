@@ -51,6 +51,8 @@ service OccupationService {
   rpc ListSkills (ListSkillsRequest) returns (ListSkillsResponse) {}
   rpc GetSkill (GetSkillRequest) returns (GetSkillResponse) {}
   rpc LookupSkills (LookupSkillsRequest) returns (LookupSkillsResponse) {}
+  // 按职业或专业及自然月边界查询岗位直接贡献的技能图谱。
+  rpc GetSkillGraph (GetSkillGraphRequest) returns (GetSkillGraphResponse) {}
   rpc AddSkillRelation (SkillRelationMutationRequest) returns (SkillRelationMutationResponse) {}
   rpc DeleteSkillRelation (SkillRelationMutationRequest) returns (SkillRelationMutationResponse) {}
   rpc ListJobSkillResolutionTasks (ListJobSkillResolutionTasksRequest) returns (ListJobSkillResolutionTasksResponse) {}
@@ -345,6 +347,64 @@ message SkillLookupData {
 message LookupSkillsResponse {
   // 仅返回仍活动的规范技能，并按 id 升序排列。
   repeated SkillLookupData items = 1;
+}
+
+message GetSkillGraphRequest {
+  string scope_type = 1; // OCCUPATION / MAJOR
+  int64 scope_id = 2;
+  string from_month = 3; // YYYY-MM，包含；空表示不设下界
+  string to_month = 4;   // YYYY-MM，不包含；空表示不设上界
+  int32 evidence_limit = 5; // 每个技能的代表岗位数，默认 10、最大 50
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+message SkillGraphScope {
+  string type = 1;
+  int64 id = 2;
+  string code = 3;
+  string name = 4;
+}
+
+message SkillGraphTimeline {
+  string from_month = 1;
+  string to_month = 2;
+  string timezone = 3;
+}
+
+message SkillGraphParent {
+  int64 id = 1;
+  string name = 2;
+}
+
+message SkillGraphEvidenceJob {
+  int64 job_id = 1;
+  string job_name = 2;
+  string company_name = 3;
+  string source_platform = 4;
+  string source_url = 5;
+  string publish_date = 6;
+}
+
+message SkillGraphNode {
+  int64 skill_id = 1;
+  string skill_name = 2;
+  int64 job_count = 3;
+  double coverage = 4; // 0 到 1；只统计岗位直接要求，不向父技能推导
+  repeated SkillGraphParent parents = 5;
+  repeated SkillGraphEvidenceJob evidence_jobs = 6;
+}
+
+message GetSkillGraphResponse {
+  SkillGraphScope scope = 1;
+  SkillGraphTimeline timeline = 2;
+  int64 total_job_count = 3;
+  repeated SkillGraphNode skills = 4;
 }
 
 message SkillRelationMutationRequest {

@@ -15,6 +15,7 @@ import com.baigon.occupation.service.occupation.OccupationCatalogService;
 import com.baigon.occupation.service.skill.SkillHierarchyService;
 import com.baigon.occupation.service.skill.SkillResolutionQueryService;
 import com.baigon.occupation.service.skill.SkillResolutionReviewService;
+import com.baigon.occupation.service.skill.graph.SkillGraphQueryService;
 import io.grpc.stub.StreamObserver;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -43,6 +44,7 @@ class OccupationGrpcJobAnalysisTest {
                 mock(SkillResolutionQueryService.class),
                 mock(SkillResolutionReviewService.class),
                 mock(SkillHierarchyService.class),
+                mock(SkillGraphQueryService.class),
                 mock(JobQueryService.class),
                 mock(AuditLogQueryService.class),
                 mock(LogService.class));

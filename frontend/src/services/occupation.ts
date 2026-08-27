@@ -2,7 +2,8 @@
 // 目录查询（学科门类/专业类/专业/职业大类/中类/小类/职业）+ 名称向量化任务。
 import type {
   ApiResponse, CatalogItem, EmbeddableCatalogItem, CatalogPage,
-  EmbeddingProgressResponse, EmbeddingTaskStatus,
+  EmbeddingProgressResponse, EmbeddingTaskStatus, SkillGraphData,
+  SkillGraphScopeType,
 } from "../types/api";
 import { parseJson } from "./lossless";
 
@@ -64,6 +65,26 @@ export function getOccupationCategories(params: PageQuery & { occupationSubCateg
 
 export function getOccupations(params: PageQuery & { occupationCategoryId?: string }) {
   return request<CatalogPage<EmbeddableCatalogItem>>(`${BASE}/occupations${qs(params)}`, { headers: hdrs() });
+}
+
+// ==================== 职业/专业技能时间图谱 ====================
+
+export interface SkillGraphQuery {
+  fromMonth?: string;
+  toMonth?: string;
+  evidenceLimit?: number;
+}
+
+export function getSkillGraph(
+  scopeType: SkillGraphScopeType,
+  scopeId: string,
+  params: SkillGraphQuery = {},
+) {
+  const resource = scopeType === "OCCUPATION" ? "occupations" : "majors";
+  return request<SkillGraphData>(
+    `${BASE}/${resource}/${encodeURIComponent(scopeId)}/skill-graph${qs(params)}`,
+    { headers: hdrs() },
+  );
 }
 
 // ==================== 向量化 ====================

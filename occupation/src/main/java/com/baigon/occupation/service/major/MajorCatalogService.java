@@ -42,7 +42,11 @@ public class MajorCatalogService {
     }
 
     public Page<Major> listMajors(long parentId, int page, int pageSize, String keyword) {
-        return majorRepository.search(parent(parentId), keyword(keyword), pageable(page, pageSize));
+        String normalizedKeyword = keyword(keyword);
+        Pageable normalizedPage = pageable(page, pageSize);
+        return parentId == 0
+                ? majorRepository.searchAll(normalizedKeyword, normalizedPage)
+                : majorRepository.search(parent(parentId), normalizedKeyword, normalizedPage);
     }
 
     public int normalizedPageSize(int pageSize) {

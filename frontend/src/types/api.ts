@@ -677,6 +677,54 @@ export interface CatalogPage<T> {
   pageSize: number;
 }
 
+// ── 职业/专业技能时间图谱 ──
+
+export type SkillGraphScopeType = "OCCUPATION" | "MAJOR";
+
+export interface SkillGraphScope {
+  type: SkillGraphScopeType;
+  id: string;
+  code: string;
+  name: string;
+}
+
+export interface SkillGraphTimeline {
+  fromMonth: string;
+  toMonth: string;
+  timezone: string;
+}
+
+export interface SkillGraphParent {
+  id: string;
+  name: string;
+}
+
+export interface SkillGraphEvidenceJob {
+  jobId: string;
+  jobName: string;
+  companyName: string;
+  sourcePlatform: string;
+  sourceUrl: string;
+  publishDate: string;
+}
+
+export interface SkillGraphSkill {
+  skillId: string;
+  skillName: string;
+  // json-bigint 会将整数保留为字符串；兼容普通 JSON 解析器返回 number。
+  jobCount: number | string;
+  coverage: number;
+  parents: SkillGraphParent[];
+  evidenceJobs: SkillGraphEvidenceJob[];
+}
+
+export interface SkillGraphData {
+  scope: SkillGraphScope;
+  timeline: SkillGraphTimeline;
+  totalJobCount: number | string;
+  skills: SkillGraphSkill[];
+}
+
 // 向量化进度（embedded / total）
 export interface EmbeddingProgress {
   embedded: number;

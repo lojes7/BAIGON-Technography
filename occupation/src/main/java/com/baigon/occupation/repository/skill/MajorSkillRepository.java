@@ -8,17 +8,23 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
+
 public interface MajorSkillRepository extends JpaRepository<MajorSkill, Long> {
 
     /** “其他”专业是否跳过由业务层决定；这里仅提供通用幂等关系写入。 */
     @Transactional
     @Modifying(flushAutomatically = true)
     @Query(value = """
-            INSERT INTO major_skills (id, major_id, skill_id)
-            VALUES (:id, :majorId, :skillId)
+            INSERT INTO major_skills (
+                id, major_id, skill_id, job_id, publish_date
+            )
+            VALUES (:id, :majorId, :skillId, :jobId, :publishDate)
             ON CONFLICT DO NOTHING
             """, nativeQuery = true)
     int insertIfAbsent(@Param("id") long id,
                        @Param("majorId") long majorId,
-                       @Param("skillId") long skillId);
+                       @Param("skillId") long skillId,
+                       @Param("jobId") long jobId,
+                       @Param("publishDate") OffsetDateTime publishDate);
 }

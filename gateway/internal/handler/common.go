@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	occupationpb "baigon-technography/gateway/pb/occupationpb"
 
@@ -119,6 +120,61 @@ func OptionalPositiveQueryID(c *gin.Context, name string) (int64, error) {
 		return 0, fmt.Errorf("invalid %s", name)
 	}
 	return id, nil
+}
+
+// PositivePathID 解析路径中的雪花 ID，要求为正整数。
+func PositivePathID(c *gin.Context, name string) (int64, error) {
+	value, err := strconv.ParseInt(c.Param(name), 10, 64)
+	if err != nil || value <= 0 {
+		return 0, fmt.Errorf("invalid %s", name)
+	}
+	return value, nil
+}
+
+// SkillGraphQuery 技能图谱按自然月过滤；toMonth 是不包含的上界。
+type SkillGraphQuery struct {
+	FromMonth     string
+	ToMonth       string
+	EvidenceLimit int32
+}
+
+// ParseSkillGraphQuery 校验 YYYY-MM 边界及每个技能的代表岗位上限。
+func ParseSkillGraphQuery(c *gin.Context) (SkillGraphQuery, error) {
+	fromMonth := c.Query("fromMonth")
+	toMonth := c.Query("toMonth")
+	from, err := parseOptionalMonth(fromMonth, "fromMonth")
+	if err != nil {
+		return SkillGraphQuery{}, err
+	}
+	to, err := parseOptionalMonth(toMonth, "toMonth")
+	if err != nil {
+		return SkillGraphQuery{}, err
+	}
+	if !from.IsZero() && !to.IsZero() && !from.Before(to) {
+		return SkillGraphQuery{}, fmt.Errorf("fromMonth must be before toMonth")
+	}
+
+	evidenceLimit := 10
+	if value := c.Query("evidenceLimit"); value != "" {
+		evidenceLimit, err = strconv.Atoi(value)
+		if err != nil || evidenceLimit < 1 || evidenceLimit > 50 {
+			return SkillGraphQuery{}, fmt.Errorf("invalid evidenceLimit")
+		}
+	}
+	return SkillGraphQuery{
+		FromMonth: fromMonth, ToMonth: toMonth, EvidenceLimit: int32(evidenceLimit),
+	}, nil
+}
+
+func parseOptionalMonth(value string, field string) (time.Time, error) {
+	if value == "" {
+		return time.Time{}, nil
+	}
+	parsed, err := time.Parse("2006-01", value)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid %s", field)
+	}
+	return parsed, nil
 }
 
 const grpcErrorCodeTrailer = "baigon-error-code"
