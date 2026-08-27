@@ -4,7 +4,8 @@ INSERT INTO users (id, name, password, role, uid) VALUES
     (1, '管理员', '$2b$12$5u5NsXnt3x6cADRcAW8U5uWLUb61MoTBt3mKOyOtyKRylVn7sJvmO', 'ADMIN', 'admin'),
     (3, '数据审核员', '$2b$12$5u5NsXnt3x6cADRcAW8U5uWLUb61MoTBt3mKOyOtyKRylVn7sJvmO', 'DATA_REVIEWER', 'reviewer'),
     (4, '数据分析师', '$2b$12$5u5NsXnt3x6cADRcAW8U5uWLUb61MoTBt3mKOyOtyKRylVn7sJvmO', 'DATA_ANALYST', 'analyst'),
-    (5,'示例用户', '$2b$12$5u5NsXnt3x6cADRcAW8U5uWLUb61MoTBt3mKOyOtyKRylVn7sJvmO', 'CIVILIAN', 'user');
+    (5,'示例用户', '$2b$12$5u5NsXnt3x6cADRcAW8U5uWLUb61MoTBt3mKOyOtyKRylVn7sJvmO', 'CIVILIAN', 'user'),
+    (6, '示例学生', '$2b$12$5u5NsXnt3x6cADRcAW8U5uWLUb61MoTBt3mKOyOtyKRylVn7sJvmO', 'STUDENT', 'student');
 
 INSERT INTO universities (id, name) VALUES (1, '常州工学院');
 INSERT INTO schools (id, name, university_id) VALUES (1, '计算机信息工程学院', 1);

@@ -59,8 +59,10 @@ REST 登录路径仍为 `POST /api/login`，protobuf 仍为
 文字提取、ai-service `AnalyzeResume` 调用以及 Java 二次格式/来源校验。OCR 完成后先在短事务创建
 软删除的简历占位记录和 `RESUME_EXTRACTION/PENDING` 任务；只有全部步骤成功后，占位记录才写入
 OCR `content`、五类结构化数组并恢复为可见的 `SYSTEM` 简历。失败时任务标记 `FAILED`，新占位记录
-保持软删除。
-`EditMyResume` 接收可空 `content` 和完整 `fields_json`，校验格式、日期、长度及 proficiency 后
+保持软删除。结构化描述按行回溯 OCR 原文，匹配时仅忽略排版空白；Java 二次校验使用同一规则，
+不会因 PDF 换行或中英文空格差异误判整段描述。
+`EditMyResume` 接收可空 `content` 和完整 `fields_json`，日期允许空字符串、`YYYY`、
+`YYYY-MM` 或 `YYYY-MM-DD`；校验格式、日历合法性、范围、长度及 proficiency 后
 新增一条 `EDITED` 记录；该记录的 MinIO 文件字段全部为 `NULL`，不会继承旧文件。
 `GetMyResume`、编辑和上传完成响应均通过一个已经校验的 `fields_json` 传输五类字段，并返回
 `source`；gateway 将其转换为 REST `fields` 对象。接口不暴露 bucket、object key 或摘要。
@@ -82,7 +84,8 @@ OCR `content`、五类结构化数组并恢复为可见的 `SYSTEM` 简历。失
 `professional_skills`、`awards` 五个 JSONB 数组，五组数据同时为空时返回 400。技能结果以
 `skill_name / proficiency / evidence / rank` 扁平写入 `user_graphs`，历史批次只追加不覆盖，
 `created_at` 即本次系统识别时间。熟练度统一为
-`EXPERT / ADVANCED / FAMILIAR / BASIC`，证据必须可按 NFKC 与空白归一化规则回溯简历原文。
+`EXPERT / ADVANCED / FAMILIAR / BASIC`，证据必须可按 NFKC 且忽略 PDF/OCR 排版空白后
+回溯简历原文；无法回溯的单项技能在 AI 层过滤。
 
 简历抽取、简历技能分析和人岗匹配均在调用 LLM 前创建 `PENDING` 的 `user_analysis_tasks`，在事务外
 调用 AI。人岗匹配成功后，独立短事务会原子追加一条 `user_job_match_results` 并把任务改为

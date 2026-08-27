@@ -8,11 +8,19 @@ from src.service.resume_analysis.models import (
 
 DATE_SCHEMA = {
     "type": "string",
-    "pattern": r"^(?:|\d{4}-\d{2}-\d{2})$",
-    "description": "原文有完整年月日时使用 YYYY-MM-DD，否则必须为空字符串。",
+    "pattern": r"^(?:|\d{4}(?:-\d{2}(?:-\d{2})?)?)$",
+    "description": (
+        "按原文精度使用 YYYY、YYYY-MM 或 YYYY-MM-DD；原文没有日期时为空字符串，"
+        "原文使用点号或斜杠时仅将分隔符替换为连字符，"
+        "不得补写原文缺失的月份或日期。"
+    ),
 }
 NAME_SCHEMA = {"type": "string", "maxLength": MAX_NAME_LENGTH}
-DESCRIPTION_SCHEMA = {"type": "string", "maxLength": MAX_DESCRIPTION_LENGTH}
+DESCRIPTION_SCHEMA = {
+    "type": "string",
+    "maxLength": MAX_DESCRIPTION_LENGTH,
+    "description": "逐行复制原文描述并保留条目边界，不得概括、改写或补写。",
+}
 
 
 def object_array(properties: dict[str, dict], required: list[str]) -> dict:

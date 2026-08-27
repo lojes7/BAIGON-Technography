@@ -104,6 +104,39 @@ class ResumeAnalysisTest(unittest.TestCase):
 
         self.assertEqual(result.work_experience, [])
 
+    def test_project_description_keeps_grounded_lines_despite_layout_whitespace(self):
+        model_result = empty_result()
+        model_result["project_experience"] = [
+            {
+                "project_name": "询觅 后端开发",
+                "start_date": "",
+                "end_date": "",
+                "description": (
+                    "基于 Go语言实现的 Web办公助手软件\n"
+                    "主要工作：\n"
+                    "• AI服务设计：集成 qwen3-vl-embedding模型\n"
+                    "• 虚构功能：自动生成周报"
+                ),
+            }
+        ]
+        content = (
+            "询觅 后端开发\n"
+            "基于 Go 语言实现的 Web 办公助手软件\n"
+            "主要工作：\n"
+            "• AI 服务设计：集成 qwen3-vl-embedding 模型"
+        )
+
+        result = analyze_resume(FakeSparkModel(model_result), content).value
+
+        self.assertEqual(
+            result.project_experience[0].description,
+            (
+                "基于 Go语言实现的 Web办公助手软件\n"
+                "主要工作：\n"
+                "• AI服务设计：集成 qwen3-vl-embedding模型"
+            ),
+        )
+
     def test_incomplete_source_date_is_cleared(self):
         model_result = empty_result()
         model_result["awards"] = [
@@ -120,6 +153,102 @@ class ResumeAnalysisTest(unittest.TestCase):
         ).value
 
         self.assertEqual(result.awards[0].date, "")
+
+    def test_model_dates_keep_the_precision_found_in_resume(self):
+        model_result = empty_result()
+        model_result["education_experience"] = [
+            {
+                "major": "软件工程",
+                "university_name": "常州工学院",
+                "start_date": "2024.09",
+                "end_date": "2028.06",
+                "description": "",
+            }
+        ]
+        model_result["project_experience"] = [
+            {
+                "project_name": "询觅 后端开发",
+                "start_date": "2025.12",
+                "end_date": "2026.04",
+                "description": "",
+            }
+        ]
+        model_result["awards"] = [
+            {
+                "award_name": "优秀学生奖",
+                "date": "2026",
+                "description": "",
+            }
+        ]
+
+        result = analyze_resume(
+            FakeSparkModel(model_result),
+            (
+                "常州工学院 软件工程 2024.09 - 2028.06\n"
+                "询觅 后端开发 2025.12 - 2026.04\n"
+                "2026 年获得优秀学生奖"
+            ),
+        ).value
+
+        self.assertEqual(result.education_experience[0].start_date, "2024-09")
+        self.assertEqual(result.education_experience[0].end_date, "2028-06")
+        self.assertEqual(result.project_experience[0].start_date, "2025-12")
+        self.assertEqual(result.project_experience[0].end_date, "2026-04")
+        self.assertEqual(result.awards[0].date, "2026")
+
+    def test_slash_separated_model_date_is_normalized(self):
+        model_result = empty_result()
+        model_result["awards"] = [
+            {
+                "award_name": "优秀员工奖",
+                "date": "2022/12/31",
+                "description": "",
+            }
+        ]
+
+        result = analyze_resume(
+            FakeSparkModel(model_result), "2022/12/31 获得优秀员工奖"
+        ).value
+
+        self.assertEqual(result.awards[0].date, "2022-12-31")
+
+    def test_invalid_calendar_date_is_still_rejected(self):
+        model_result = empty_result()
+        model_result["awards"] = [
+            {
+                "award_name": "优秀员工奖",
+                "date": "2022.13",
+                "description": "",
+            }
+        ]
+
+        with self.assertRaises(ModelResponseError):
+            analyze_resume(FakeSparkModel(model_result), "2022.13 获得优秀员工奖")
+
+    def test_date_range_allows_ambiguous_precision_but_rejects_certain_reverse(self):
+        allowed = empty_result()
+        allowed["project_experience"] = [
+            {
+                "project_name": "项目甲",
+                "start_date": "2024-12",
+                "end_date": "2024",
+                "description": "",
+            }
+        ]
+        result = ResumeAnalysisResult.model_validate(allowed)
+        self.assertEqual(result.project_experience[0].end_date, "2024")
+
+        rejected = empty_result()
+        rejected["project_experience"] = [
+            {
+                "project_name": "项目乙",
+                "start_date": "2025",
+                "end_date": "2024-12",
+                "description": "",
+            }
+        ]
+        with self.assertRaises(ValueError):
+            ResumeAnalysisResult.model_validate(rejected)
 
     def test_proficiency_without_matching_source_term_is_cleared(self):
         model_result = empty_result()
@@ -185,6 +314,19 @@ class ResumeAnalysisTest(unittest.TestCase):
         )
         self.assertIn("逐字复制", RESUME_ANALYSIS_SYSTEM_PROMPT)
         self.assertIn("不得补写", RESUME_ANALYSIS_SYSTEM_PROMPT)
+        self.assertIn("YYYY-MM", RESUME_ANALYSIS_SYSTEM_PROMPT)
+        self.assertIn("分隔符改为连字符", RESUME_ANALYSIS_SYSTEM_PROMPT)
+        self.assertIn("每一行都逐字复制", RESUME_ANALYSIS_SYSTEM_PROMPT)
+        self.assertIn(
+            "保留条目边界",
+            parameters["properties"]["project_experience"]["items"]
+            ["properties"]["description"]["description"],
+        )
+        self.assertEqual(
+            parameters["properties"]["awards"]["items"]["properties"]["date"]
+            ["pattern"],
+            r"^(?:|\d{4}(?:-\d{2}(?:-\d{2})?)?)$",
+        )
 
     def test_empty_content_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "content 不能为空"):

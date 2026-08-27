@@ -819,7 +819,7 @@ export type ResumeProficiency = "" | "Basic" | "Familiar" | "Advanced" | "Expert
 export interface EducationExperience {
   major: string;
   university_name: string;
-  start_date: string; // YYYY-MM-DD 或空串
+  start_date: string; // YYYY、YYYY-MM、YYYY-MM-DD 或空串
   end_date: string;
   description: string;
 }
@@ -850,7 +850,7 @@ export interface ProfessionalSkill {
 // 获奖
 export interface ResumeAward {
   award_name: string;
-  date: string; // YYYY-MM-DD 或空串
+  date: string; // YYYY、YYYY-MM、YYYY-MM-DD 或空串
   description: string;
 }
 

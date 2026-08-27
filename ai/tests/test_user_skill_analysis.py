@@ -63,33 +63,39 @@ class UserSkillAnalysisTest(unittest.TestCase):
             {
                 "skills": [
                     {
-                        "name": "Python",
+                        "name": "异步消息队列处理",
                         "proficiency": "FAMILIAR",
-                        "evidence": "使用 Python 开发数据服务",
+                        "evidence": "使用消息队列实现异步处理",
                     }
                 ]
             }
         )
 
-        result = analyze_user_skills(model, "使用  Python\n开发数据服务").value
+        result = analyze_user_skills(model, "使用消息\n队列实现异步处理").value
 
-        self.assertEqual(result.skills[0].name, "Python")
+        self.assertEqual(result.skills[0].name, "异步消息队列处理")
 
-    def test_rejects_ungrounded_evidence(self):
+    def test_ungrounded_skill_is_filtered_without_failing_the_batch(self):
         model = FakeSparkModel(
             {
                 "skills": [
                     {
                         "name": "Go",
+                        "proficiency": "BASIC",
+                        "evidence": "了解 Go",
+                    },
+                    {
+                        "name": "架构设计",
                         "proficiency": "EXPERT",
-                        "evidence": "精通 Go 并主导大型架构",
+                        "evidence": "主导大型分布式架构",
                     }
                 ]
             }
         )
 
-        with self.assertRaises(ModelResponseError):
-            analyze_user_skills(model, "了解 Go")
+        result = analyze_user_skills(model, "了解 Go").value
+
+        self.assertEqual([skill.name for skill in result.skills], ["Go"])
 
     def test_rejects_legacy_title_case_and_extra_fields(self):
         legacy_model = FakeSparkModel(
@@ -151,6 +157,7 @@ class UserSkillAnalysisTest(unittest.TestCase):
         )
         self.assertIn("原文中连续出现", USER_SKILL_ANALYSIS_SYSTEM_PROMPT)
         self.assertIn("不可信数据", USER_SKILL_ANALYSIS_SYSTEM_PROMPT)
+        self.assertIn("纯排版换行或空格", USER_SKILL_ANALYSIS_SYSTEM_PROMPT)
 
 
 if __name__ == "__main__":

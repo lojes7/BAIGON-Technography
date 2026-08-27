@@ -91,7 +91,7 @@ class UserAnalysisServiceTest {
 
     @Test
     void analyzeSkillsShouldPersistGroundedSnapshotWithoutReadingJobs() {
-        Resume resume = resume(101L, "项目使用 Java 开发，熟悉 PostgreSQL 数据库");
+        Resume resume = resume(101L, "项目使用 Java 开发，熟悉 Postgre\nSQL 数据库");
         when(resumeRepository.findFirstByUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(7L))
                 .thenReturn(Optional.of(resume));
         when(aiGrpcClient.analyzeUserSkills(resume.getContent(), audit())).thenReturn(

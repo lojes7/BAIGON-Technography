@@ -33,6 +33,19 @@ class ResumeAnalysisValidatorTest {
     }
 
     @Test
+    void yearAndYearMonthDatesShouldKeepSourcePrecision() {
+        ResumeAnalysisResult yearResult = validator.parseAndValidate(
+                completeJson("", "2022"),
+                "2022 年获得优秀员工奖，技能 Java");
+        ResumeAnalysisResult monthResult = validator.parseAndValidate(
+                completeJson("", "2022-12"),
+                "2022.12 获得优秀员工奖，技能 Java");
+
+        assertEquals("2022", yearResult.awards().getFirst().date());
+        assertEquals("2022-12", monthResult.awards().getFirst().date());
+    }
+
+    @Test
     void unknownFieldsAndMissingArraysShouldFail() {
         String unknown = completeJson("", "")
                 .replace("\"awards\":", "\"summary\":\"generated\",\"awards\":");
@@ -67,7 +80,7 @@ class ResumeAnalysisValidatorTest {
     }
 
     @Test
-    void generatedTextAndIncompleteDateShouldFail() {
+    void generatedTextAndOverPreciseDateShouldFail() {
         assertThrows(IllegalArgumentException.class,
                 () -> validator.parseAndValidate(
                         completeJson("", "2022-12-01"),
@@ -76,6 +89,28 @@ class ResumeAnalysisValidatorTest {
                 () -> validator.parseAndValidate(
                         completeJson("", "").replace("Java", "Python"),
                         "技能 Java，获得优秀员工奖"));
+    }
+
+    @Test
+    void descriptionLinesShouldIgnoreLayoutWhitespaceButRejectGeneratedText() {
+        String description = """
+                基于 Go语言实现的 Web办公助手软件
+                主要工作：
+                • AI服务设计：集成 qwen3-vl-embedding模型""";
+        String content = """
+                项目甲
+                基于 Go 语言实现的 Web 办公助手软件
+                主要工作：
+                • AI 服务设计：集成 qwen3-vl-embedding 模型""";
+
+        ResumeAnalysisResult result = validator.parseAndValidate(
+                projectDescriptionJson(description), content);
+
+        assertEquals(description, result.projectExperience().getFirst().description());
+        assertThrows(IllegalArgumentException.class,
+                () -> validator.parseAndValidate(
+                        projectDescriptionJson(description + "\n• 虚构功能：自动生成周报"),
+                        content));
     }
 
     @Test
@@ -125,6 +160,16 @@ class ResumeAnalysisValidatorTest {
                 () -> validator.parseEdited(completeJson("Skilled", "")));
     }
 
+    @Test
+    void dateRangeShouldRespectUnknownLowerPrecisionParts() {
+        ResumeAnalysisResult allowed = validator.parseEdited(
+                projectJson("2024-12", "2024"));
+
+        assertEquals("2024", allowed.projectExperience().getFirst().endDate());
+        assertThrows(IllegalArgumentException.class,
+                () -> validator.parseEdited(projectJson("2025", "2024-12")));
+    }
+
     private String completeJson(String proficiency, String date) {
         return """
                 {
@@ -139,5 +184,43 @@ class ResumeAnalysisValidatorTest {
                   ]
                 }
                 """.formatted(proficiency, date);
+    }
+
+    private String projectJson(String startDate, String endDate) {
+        return """
+                {
+                  "education_experience": [],
+                  "work_experience": [],
+                  "project_experience": [{
+                    "project_name":"项目甲",
+                    "start_date":"%s",
+                    "end_date":"%s",
+                    "description":""
+                  }],
+                  "professional_skills": [],
+                  "awards": []
+                }
+                """.formatted(startDate, endDate);
+    }
+
+    private String projectDescriptionJson(String description) {
+        String escaped = description
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n");
+        return """
+                {
+                  "education_experience": [],
+                  "work_experience": [],
+                  "project_experience": [{
+                    "project_name":"项目甲",
+                    "start_date":"",
+                    "end_date":"",
+                    "description":"%s"
+                  }],
+                  "professional_skills": [],
+                  "awards": []
+                }
+                """.formatted(escaped);
     }
 }

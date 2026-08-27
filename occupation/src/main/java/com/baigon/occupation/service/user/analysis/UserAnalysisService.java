@@ -463,7 +463,7 @@ public class UserAnalysisService {
         }
         Set<String> names = new HashSet<>();
         List<ValidatedSkill> validated = new ArrayList<>(result.skills().size());
-        String normalizedContent = normalizeWhitespace(resumeContent);
+        String normalizedContent = normalizeEvidence(resumeContent);
         for (AIGrpcClient.AnalyzedSkillResult item : result.skills()) {
             if (item == null) {
                 throw new IllegalStateException("AI user skill item is missing");
@@ -474,7 +474,7 @@ public class UserAnalysisService {
             if (!names.add(name.toLowerCase(Locale.ROOT))) {
                 throw new IllegalStateException("AI user skills contain duplicate names");
             }
-            if (!normalizedContent.contains(normalizeWhitespace(evidence))) {
+            if (!normalizedContent.contains(normalizeEvidence(evidence))) {
                 throw new IllegalStateException("AI user skill evidence is not grounded");
             }
             validated.add(new ValidatedSkill(name, proficiency, evidence));
@@ -541,11 +541,12 @@ public class UserAnalysisService {
         return normalized;
     }
 
-    private String normalizeWhitespace(String value) {
+    /** 证据匹配忽略 PDF/OCR 排版空白，但保留所有实际文本字符。 */
+    private String normalizeEvidence(String value) {
         String normalized = value == null
                 ? ""
                 : Normalizer.normalize(value, Normalizer.Form.NFKC);
-        return normalized.replaceAll("\\s+", " ").trim();
+        return normalized.replaceAll("\\s+", "");
     }
 
     private String safeError(RuntimeException exception) {
