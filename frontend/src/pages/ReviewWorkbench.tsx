@@ -4,7 +4,6 @@ import { CheckCircle, Eye, Loader2, Plus, Search, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Btn, Card, PageHeader, Pagination, UnderlineTabs } from "../components/ui";
-import CanonicalSkillMultiSelect from "../components/skill/CanonicalSkillMultiSelect";
 import T from "../constants/tokens";
 import { isHttpErrorStatus } from "../services/http-error";
 import {
@@ -23,6 +22,7 @@ import type {
 } from "../types/api";
 
 const PAGE_SIZE = 20;
+const MAX_PAGE_SIZE = 100;
 const SKILL_PAGE_SIZE = 50;
 
 const TASK_STATUS_LABEL: Record<string, string> = {
@@ -56,7 +56,6 @@ function ReviewWorkbenchPage() {
   const [action, setAction] = useState<SkillResolutionAction>("SELECT_CANDIDATE");
   const [selectedSkillId, setSelectedSkillId] = useState("");
   const [newSkillName, setNewSkillName] = useState("");
-  const [newParentSkills, setNewParentSkills] = useState<CanonicalSkillItem[]>([]);
   const [keyword, setKeyword] = useState("");
   const [appliedKeyword, setAppliedKeyword] = useState("");
   const [similarSkills, setSimilarSkills] = useState<JobSkillResolutionCandidate[]>([]);
@@ -114,7 +113,6 @@ function ReviewWorkbenchPage() {
     setLoadingSimilarSkills(false);
     setSearching(false);
     setNewSkillName("");
-    setNewParentSkills([]);
 
     const persistedAction = nextDetail.task.resolutionAction as SkillResolutionAction;
     if (persistedAction === "SELECT_CANDIDATE" || persistedAction === "SELECT_EXISTING" || persistedAction === "CREATE_NEW") {
@@ -252,7 +250,7 @@ function ReviewWorkbenchPage() {
   const canReview = detail?.task.reviewStatus === "PENDING"
     && (detail.task.taskStatus === "SUCCESS" || detail.task.taskStatus === "FAILED");
   const canSelectCandidate = detail?.task.taskStatus === "SUCCESS" && detail.candidates.length > 0;
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(visibleItems.length / PAGE_SIZE));
   const skillPageCount = Math.max(1, Math.ceil(skillTotal / SKILL_PAGE_SIZE));
 
   return (
@@ -261,47 +259,44 @@ function ReviewWorkbenchPage() {
         breadcrumbs={[t("nav.aiProcessing"), t("nav.reviewQueue")]}
         title="技能归一审核"
         description="将岗位分析产出的原始技能映射为规范技能，或创建新的规范技能"
-        actions={<span className="font-mono text-[13px]" style={{ color: T.info }}>共 {total} 项</span>}
+        actions={<span className="font-mono text-[13px]" style={{ color: T.info }}>共 {visibleItems.length} 项</span>}
       />
 
-      <div className="flex gap-4">
-        {/* 左侧竖排筛选面板 */}
-        <div className="w-44 flex-shrink-0">
-          <VerticalFilter
-            sections={[
-              {
-                title: "AI 任务状态",
-                value: taskStatus,
-                onChange: (value) => { setTaskStatus(value); setReviewStatus(""); setPage(1); },
-                options: [
-                  { value: "", label: "全部" },
-                  { value: "PENDING", label: "等待处理" },
-                  { value: "RUNNING", label: "AI 处理中" },
-                  { value: "SUCCESS", label: "候选已生成" },
-                  { value: "FAILED", label: "AI 处理失败" },
-                ],
-              },
+      <UnderlineTabs
+        sections={[
+          {
+            value: taskStatusFilter,
+            onChange: (value) => {
+              setTaskStatusFilter(value as "success" | "failed" | "processing");
+              setReviewFilter("all");
+              setPage(1);
+            },
+            options: [
+              { value: "success", label: `成功 ${items.filter((item) => item.taskStatus === "SUCCESS").length}` },
+              { value: "failed", label: `失败 ${items.filter((item) => item.taskStatus === "FAILED").length}` },
+              { value: "processing", label: `处理中 ${items.filter((item) => item.taskStatus === "PENDING" || item.taskStatus === "RUNNING").length}` },
+            ],
+          },
+          // 处理中任务还不能审核；成功与失败任务都支持按审核状态查看。
+          ...(taskStatusFilter !== "processing" ? [{
+            value: reviewFilter,
+            onChange: (value: string) => {
+              setReviewFilter(value as "all" | "pending" | "reviewed");
+              setPage(1);
+            },
+            options: [
+              { value: "all", label: "全部" },
+              { value: "pending", label: "待复核" },
+              { value: "reviewed", label: "已复核" },
+            ],
+          }] : []),
+        ]}
+      />
 
-              ...(taskStatus === "" || taskStatus === "SUCCESS" || taskStatus === "FAILED" ? [{
-                title: "审核状态",
-                value: reviewStatus,
-                onChange: (value: string) => { setReviewStatus(value); setPage(1); },
-                options: [
-                  { value: "", label: "全部" },
-                  { value: "PENDING", label: "待复核" },
-                  { value: "PASSED", label: "已复核" },
-                ],
-              }] : []),
-            ]}
-          />
-        </div>
-
-        {/* 右侧表格 */}
-        <div className="flex-1 min-w-0">
-          <Card>
+      <Card>
         {loading ? (
           <div className="px-4 py-12 text-center text-[13px]" style={{ color: T.info }}>加载中…</div>
-        ) : items.length === 0 ? (
+        ) : visibleItems.length === 0 ? (
           <div className="px-4 py-12 text-center text-[13px]" style={{ color: T.info }}>暂无符合条件的技能归一任务</div>
         ) : (
           <div className="overflow-x-auto">
@@ -314,7 +309,7 @@ function ReviewWorkbenchPage() {
                 </tr>
               </thead>
               <tbody>
-                {items.map((item) => (
+                {pagedItems.map((item) => (
                   <tr key={item.id} className="transition-colors hover:bg-gray-50" style={{ borderTop: `1px solid ${T.cloud}` }}>
                     <td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{item.id}</td>
                     <td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{item.jobId}</td>
@@ -345,11 +340,9 @@ function ReviewWorkbenchPage() {
         )}
       </Card>
 
-      {total > PAGE_SIZE && (
+      {visibleItems.length > PAGE_SIZE && (
         <Pagination page={page} totalPages={pageCount} onChange={setPage} />
       )}
-        </div>
-      </div>
 
       {detail && (
         <div className="fixed inset-0 z-50 flex" style={{ background: "rgba(25,50,77,0.3)" }} onClick={closeDetail}>
