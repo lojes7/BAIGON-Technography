@@ -254,7 +254,7 @@ function EvolutionEventsPage() {
 
       {/* 分页 */}
       {totalPages > 1 && (
-        <Pagination page={page} totalPages={totalPages} onChange={setPage} />
+        <Pagination page={page} totalPages={totalPages} onChange={setPage} total={total} />
       )}
 
       {/* 证据抽屉 */}

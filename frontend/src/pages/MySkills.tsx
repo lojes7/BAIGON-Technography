@@ -72,55 +72,12 @@ export default function MySkills() {
         description="基于最新简历调用 AI 识别你的技能，并保留历次分析的能力时间线"
       />
 
-      {/* AI 分析简历 */}
-      <Card title="AI 分析我的简历">
-        <div className="px-6 py-5 space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: T.cloud }}>
-              <Sparkles size={20} style={{ color: T.teal }} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-[13px] font-medium" style={{ color: T.ink }}>
-                基于我的最新简历重新分析技能
-              </div>
-              <div className="text-[12px] mt-0.5" style={{ color: T.info }}>
-                系统自动选取最新简历正文，提取有原文证据的技能并保留本次快照
-              </div>
-            </div>
-            <Btn icon={Sparkles} onClick={handleAnalyze} disabled={analyzing}>
-              {analyzing ? "分析中…" : "开始分析"}
-            </Btn>
-          </div>
-
-          {/* 本次分析结果 */}
-          {latest && (
-            <div className="rounded-lg p-4" style={{ background: T.cloud, border: `1px solid ${T.border}` }}>
-              <div className="flex items-center gap-2 mb-3">
-                <Award size={14} style={{ color: T.teal }} />
-                <span className="text-[13px] font-medium" style={{ color: T.ink }}>
-                  本次识别 {latest.length} 项技能
-                </span>
-              </div>
-              {latest.length === 0 ? (
-                <div className="text-[13px]" style={{ color: T.info }}>未识别出技能，请先上传或完善简历</div>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {latest.map((s) => (
-                    <SkillChip key={String(s.id)} skill={s} />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </Card>
-
-      {/* 能力图谱 */}
+      {/* 顶部通栏：能力图谱（核心亮点模块） */}
       <Card title="能力图谱">
         <div className="px-6 py-4">
           {currentSkills.length === 0 ? (
             <div className="py-10 text-center text-[13px]" style={{ color: T.info }}>
-              暂无能力，点击上方「开始分析」生成能力图谱
+              暂无能力，点击右侧「开始分析」生成能力图谱
             </div>
           ) : (
             <AbilityRadialGraph
@@ -130,53 +87,99 @@ export default function MySkills() {
                 proficiency: s.proficiency,
                 evidence: s.evidence,
               }))}
-              emptyHint="暂无能力，点击上方「开始分析」生成能力图谱"
+              emptyHint="暂无能力，点击右侧「开始分析」生成能力图谱"
             />
           )}
         </div>
       </Card>
 
-      {/* 能力时间线 */}
-      <Card title="能力时间线" action={<Btn variant="ghost" size="sm" icon={RefreshCw} onClick={fetchSkills}>刷新</Btn>}>
-        {loading ? (
-          <div className="px-4 py-12 text-center text-[13px]" style={{ color: T.info }}>{t("common.loading")}</div>
-        ) : groups.length === 0 ? (
-          <div className="px-4 py-12 text-center text-[13px]" style={{ color: T.info }}>
-            暂无能力记录，点击上方「开始分析」生成第一份能力快照
-          </div>
-        ) : (
-          <div className="px-6 py-4 space-y-5">
-            {groups.map((g, gi) => (
-              <div key={g.resumeId} className="flex gap-4">
-                {/* 时间轴节点 */}
-                <div className="flex flex-col items-center">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-                    style={{ background: gi === 0 ? T.teal : T.cloud }}>
-                    <FileText size={14} style={{ color: gi === 0 ? "white" : T.info }} />
-                  </div>
-                  {gi < groups.length - 1 && <div className="w-px flex-1 mt-1" style={{ background: T.border }} />}
+      {/* 下方双栏并排 */}
+      <div className="grid grid-cols-2 gap-5">
+        {/* 左栏：AI 分析我的简历 */}
+        <Card title="AI 分析我的简历">
+          <div className="px-6 py-5 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: T.cloud }}>
+                <Sparkles size={20} style={{ color: T.teal }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] font-medium" style={{ color: T.ink }}>
+                  基于我的最新简历重新分析技能
                 </div>
-                {/* 批次内容 */}
-                <div className="flex-1 min-w-0 pb-5">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[13px] font-medium" style={{ color: T.ink }}>
-                      {gi === 0 ? "最新能力快照" : `历史批次 #${g.resumeId}`}
-                    </span>
-                    <span className="font-mono text-[12px]" style={{ color: T.info }}>
-                      {new Date(g.createdAt).toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {g.skills.map((s) => (
-                      <SkillChip key={String(s.id)} skill={s} showEvidence />
-                    ))}
-                  </div>
+                <div className="text-[12px] mt-0.5" style={{ color: T.info }}>
+                  系统自动选取最新简历正文，提取有原文证据的技能并保留本次快照
                 </div>
               </div>
-            ))}
+              <Btn icon={Sparkles} onClick={handleAnalyze} disabled={analyzing}>
+                {analyzing ? "分析中…" : "开始分析"}
+              </Btn>
+            </div>
+
+            {/* 本次分析结果 */}
+            {latest && (
+              <div className="rounded-lg p-4" style={{ background: T.cloud, border: `1px solid ${T.border}` }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <Award size={14} style={{ color: T.teal }} />
+                  <span className="text-[13px] font-medium" style={{ color: T.ink }}>
+                    本次识别 {latest.length} 项技能
+                  </span>
+                </div>
+                {latest.length === 0 ? (
+                  <div className="text-[13px]" style={{ color: T.info }}>未识别出技能，请先上传或完善简历</div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {latest.map((s) => (
+                      <SkillChip key={String(s.id)} skill={s} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        )}
-      </Card>
+        </Card>
+
+        {/* 右栏：能力时间线 */}
+        <Card title="能力时间线" action={<Btn variant="ghost" size="sm" icon={RefreshCw} onClick={fetchSkills}>刷新</Btn>}>
+          {loading ? (
+            <div className="px-4 py-12 text-center text-[13px]" style={{ color: T.info }}>{t("common.loading")}</div>
+          ) : groups.length === 0 ? (
+            <div className="px-4 py-12 text-center text-[13px]" style={{ color: T.info }}>
+              暂无能力记录，点击「开始分析」生成第一份能力快照
+            </div>
+          ) : (
+            <div className="px-6 py-4 space-y-5 max-h-[420px] overflow-y-auto">
+              {groups.map((g, gi) => (
+                <div key={g.resumeId} className="flex gap-4">
+                  {/* 时间轴节点 */}
+                  <div className="flex flex-col items-center">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                      style={{ background: gi === 0 ? T.teal : T.cloud }}>
+                      <FileText size={14} style={{ color: gi === 0 ? "white" : T.info }} />
+                    </div>
+                    {gi < groups.length - 1 && <div className="w-px flex-1 mt-1" style={{ background: T.border }} />}
+                  </div>
+                  {/* 批次内容 */}
+                  <div className="flex-1 min-w-0 pb-5">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[13px] font-medium" style={{ color: T.ink }}>
+                        {gi === 0 ? "最新能力快照" : `历史批次 #${g.resumeId}`}
+                      </span>
+                      <span className="font-mono text-[12px]" style={{ color: T.info }}>
+                        {new Date(g.createdAt).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {g.skills.map((s) => (
+                        <SkillChip key={String(s.id)} skill={s} showEvidence />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
     </div>
   );
 }

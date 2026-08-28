@@ -358,12 +358,12 @@ export default function AuditLogPage() {
             <div className="py-16 text-center text-[13px]" style={{ color: T.info }}>当前筛选条件下暂无日志</div>
           )}
         </div>
-        <div className="px-4 py-3 flex items-center justify-between text-[12px]" style={{ borderTop: `1px solid ${T.cloud}`, color: T.info }}>
-          <span>共 {result.total} 条</span>
+        <div className="px-4 py-3" style={{ borderTop: `1px solid ${T.cloud}` }}>
           <Pagination
             page={page + 1}
             totalPages={totalPages}
             disabled={loading}
+            total={result.total}
             onChange={(value) => setPage(value - 1)}
           />
         </div>

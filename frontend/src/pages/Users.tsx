@@ -130,7 +130,7 @@ function UsersPage() {
 
         {total > 20 && (
           <div className="px-4 py-3">
-            <Pagination page={page} totalPages={Math.ceil(total / 20)} onChange={setPage} />
+            <Pagination page={page} totalPages={Math.ceil(total / 20)} onChange={setPage} total={total} />
           </div>
         )}
       </Card>

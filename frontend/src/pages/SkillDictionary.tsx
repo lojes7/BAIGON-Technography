@@ -281,7 +281,7 @@ function SkillDictionaryPage() {
       </Card>
 
       {total > PAGE_SIZE && (
-        <Pagination page={page} totalPages={pageCount} onChange={setPage} />
+        <Pagination page={page} totalPages={pageCount} onChange={setPage} total={total} />
       )}
 
       {detail && (

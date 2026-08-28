@@ -5,15 +5,10 @@ import { toast } from "sonner";
 import { X, Eye, Search, RotateCcw, Sparkles } from "lucide-react";
 import T from "../constants/tokens";
 import { getJobDetail, getLatestMyJobMatch, listJobs, matchMyResumeToJob } from "../services/jobs";
-import { lookupCanonicalSkills } from "../services/skill-resolution";
 import { isHttpErrorStatus } from "../services/http-error";
-import type { JobData, JobDetail, JobMatchResult, JobSkillData } from "../types/api";
+import type { JobData, JobDetail, JobMatchResult } from "../types/api";
 import { PageHeader, Card, Btn, Pagination } from "../components/ui";
-import AbilityRadialGraph, {
-  type AbilityItem,
-  type AbilityRelation,
-  type RelatedAbilityItem,
-} from "../components/AbilityRadialGraph";
+import AbilityRadialGraph from "../components/AbilityRadialGraph";
 import DirectoryPicker from "../components/job-analysis/DirectoryPicker";
 
 interface FilterForm {
@@ -48,7 +43,6 @@ export default function JobsPage() {
 
   // 详情抽屉
   const [detail, setDetail] = useState<JobDetail | null>(null);
-  const [relationSkillNames, setRelationSkillNames] = useState<Record<string, string>>({});
   const detailRequestRef = useRef(0);
   // 人岗匹配
   const [match, setMatch] = useState<JobMatchResult | null>(null);
@@ -91,7 +85,6 @@ export default function JobsPage() {
   const openDetail = async (id: string | number) => {
     const requestId = ++detailRequestRef.current;
     setDetail(null);
-    setRelationSkillNames({});
     setMatch(null);
     setMatchLoading(true);
     setMatching(false);
@@ -101,10 +94,8 @@ export default function JobsPage() {
     ]);
     if (detailRequestRef.current !== requestId) return;
 
-    let nextDetail: JobDetail | null = null;
     if (detailResult.status === "fulfilled") {
-      nextDetail = detailResult.value.data;
-      setDetail(nextDetail);
+      setDetail(detailResult.value.data);
     } else {
       toast.error(detailResult.reason instanceof Error ? detailResult.reason.message : "岗位详情加载失败");
     }
@@ -114,23 +105,6 @@ export default function JobsPage() {
       toast.error(matchResult.reason instanceof Error ? matchResult.reason.message : "最近匹配结果加载失败");
     }
     setMatchLoading(false);
-
-    if (nextDetail) {
-      const relationIds = collectRelationSkillIds(nextDetail.jobSkills ?? []);
-      if (relationIds.length > 0) {
-        try {
-          const response = await lookupCanonicalSkills(relationIds);
-          if (detailRequestRef.current !== requestId) return;
-          setRelationSkillNames(Object.fromEntries(
-            (response.data.items ?? []).map((skill) => [String(skill.id), skill.name]),
-          ));
-        } catch (error) {
-          if (detailRequestRef.current === requestId) {
-            toast.error(error instanceof Error ? error.message : "技能关系名称加载失败");
-          }
-        }
-      }
-    }
   };
 
   const handleMatch = async () => {
@@ -152,7 +126,6 @@ export default function JobsPage() {
     // 使尚未返回的详情或匹配请求失效，避免关闭后抽屉被旧请求重新打开。
     detailRequestRef.current += 1;
     setDetail(null);
-    setRelationSkillNames({});
     setMatch(null);
     setMatchLoading(false);
     setMatching(false);
@@ -171,7 +144,7 @@ export default function JobsPage() {
     { key: "nature", label: "工作性质", placeholder: "如 全职" },
     { key: "companySize", label: "公司规模", placeholder: "如 100-499人" },
   ];
-  const abilityGraph = buildJobSkillGraph(detail?.jobSkills ?? [], relationSkillNames);
+  const [extraOpen, setExtraOpen] = useState(false);
 
   return (
     <div className="flex flex-col gap-5">
@@ -364,9 +337,11 @@ export default function JobsPage() {
                     <div className="rounded-lg p-3" style={{ background: "white", border: `1px solid ${T.border}` }}>
                       <AbilityRadialGraph
                         centerLabel={detail.job?.name || "岗位"}
-                        abilities={abilityGraph.abilities}
-                        relatedAbilities={abilityGraph.relatedAbilities}
-                        relations={abilityGraph.relations}
+                        abilities={detail.jobSkills.map(s => ({
+                          name: s.skillName,
+                          proficiency: s.skillProficiency,
+                          evidence: s.evidence,
+                        }))}
                         emptyHint="暂无正式技能"
                       />
                     </div>
@@ -500,75 +475,4 @@ function scoreColor(score: number): string {
   if (score >= 80) return T.emerging;
   if (score >= 60) return T.pending;
   return T.risk;
-}
-
-// 收集关系图全部端点，并把参与关系的岗位技能自身也纳入规范名称查询。
-function collectRelationSkillIds(jobSkills: JobSkillData[]): string[] {
-  const ids = new Set<string>();
-  for (const skill of jobSkills) {
-    const parents = (skill.parentSkillIds ?? []).map(String);
-    const children = (skill.childSkillIds ?? []).map(String);
-    parents.forEach((id) => ids.add(id));
-    children.forEach((id) => ids.add(id));
-    if (skill.skillId && (parents.length > 0 || children.length > 0)) {
-      ids.add(String(skill.skillId));
-    }
-  }
-  return Array.from(ids);
-}
-
-function buildJobSkillGraph(
-  jobSkills: JobSkillData[],
-  relationNames: Record<string, string>,
-): {
-  abilities: AbilityItem[];
-  relatedAbilities: RelatedAbilityItem[];
-  relations: AbilityRelation[];
-} {
-  const abilities: AbilityItem[] = [];
-  const directIds = new Set<string>();
-
-  for (const skill of jobSkills) {
-    const id = skill.skillId ? String(skill.skillId) : `job-skill-${skill.id}`;
-    // 多条岗位技能可能归一到同一规范技能，图上只保留一个直接节点。
-    if (directIds.has(id)) continue;
-    directIds.add(id);
-    abilities.push({
-      id,
-      name: skill.skillId ? relationNames[id] || skill.skillName : skill.skillName,
-      proficiency: skill.skillProficiency,
-      evidence: skill.evidence,
-    });
-  }
-
-  const relationMap = new Map<string, AbilityRelation>();
-  const relatedIds = new Set<string>();
-  for (const skill of jobSkills) {
-    if (!skill.skillId) continue;
-    const currentId = String(skill.skillId);
-    for (const parentIdValue of skill.parentSkillIds ?? []) {
-      const parentId = String(parentIdValue);
-      if (parentId === currentId) continue;
-      relationMap.set(`${parentId}->${currentId}`, { parentId, childId: currentId });
-      relatedIds.add(parentId);
-      relatedIds.add(currentId);
-    }
-    for (const childIdValue of skill.childSkillIds ?? []) {
-      const childId = String(childIdValue);
-      if (childId === currentId) continue;
-      relationMap.set(`${currentId}->${childId}`, { parentId: currentId, childId });
-      relatedIds.add(currentId);
-      relatedIds.add(childId);
-    }
-  }
-
-  const relatedAbilities = Array.from(relatedIds)
-    .filter((id) => !directIds.has(id))
-    .map((id) => ({ id, name: relationNames[id] || `技能 #${id}` }));
-
-  return {
-    abilities,
-    relatedAbilities,
-    relations: Array.from(relationMap.values()),
-  };
 }

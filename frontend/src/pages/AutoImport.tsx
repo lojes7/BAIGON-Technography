@@ -5,7 +5,7 @@ import { Play, Square, RefreshCw, ArrowRight, ChevronDown, X, Loader2 } from "lu
 import { toast } from "sonner";
 import T from "../constants/tokens";
 import { startCrawler, stopCrawler, getCrawlerStatus } from "../services/engineer";
-import { PageHeader, Btn, Card, MetricCard } from "../components/ui";
+import { PageHeader, Btn, Card, MetricCard, Segmented } from "../components/ui";
 
 // 数据类型 — 平铺高频项，低频收进下拉
 const DATA_TYPES_FLAT = [
@@ -21,9 +21,8 @@ const DATA_TYPES_MORE = [
 // 地区 — 江苏省常用市平铺，全国省-市放进下拉
 const REGIONS_FLAT = [
   { value: "", label: "全部地区" },
-  { value: "常州", label: "常州市" },
-  { value: "南京", label: "南京市" },
-  { value: "苏州", label: "苏州市" },
+  { value: "上海", label: "上海市" },
+  { value: "北京", label: "北京市" },
 ];
 const PROVINCES: Record<string, string[]> = {
   "江苏": ["常州", "南京", "苏州", "无锡", "南通", "徐州", "扬州", "镇江", "盐城", "泰州", "淮安", "连云港", "宿迁"],
@@ -209,35 +208,35 @@ export default function AutoImportPage() {
         </div>
       )}
 
-      {/* ── 筛选条件 ── */}
-      {/* 第一行：数据类型 */}
-      <div className="rounded-lg px-4 py-3" style={{ background: "#F7F9FB", border: `1px solid ${T.border}` }}>
-        <div className="flex items-center gap-3">
-          <span className="text-[13px] font-medium flex-shrink-0 w-20" style={{ color: T.ink }}>{tt("dataType")}</span>
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {DATA_TYPES_FLAT.map(dt => (
-              <button key={dt.value}
-                className="px-3 py-1.5 rounded-md text-[13px] transition-colors"
-                style={{
-                  border: `1px solid ${dataType === dt.value ? T.teal : T.border}`,
-                  color: dataType === dt.value ? "white" : T.ink,
-                  background: dataType === dt.value ? T.teal : "white",
-                }}
-                onClick={() => setDataType(dt.value)}
-              >{dt.label}</button>
-            ))}
-            {/* 更多下拉 */}
+      {/* ── 紧凑筛选条 ── */}
+      <div className="rounded-lg bg-white px-4 py-3" style={{ border: `1px solid ${T.border}` }}>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+          {/* 数据类型（分段控件） */}
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] text-neutral-400 flex-shrink-0">{tt("dataType")}</span>
+            <Segmented
+              value={dataType}
+              onChange={(v) => setDataType(v)}
+              options={DATA_TYPES_FLAT.map(dt => ({ value: dt.value, label: dt.label }))}
+            />
             <div className="relative">
               <button
-                className="flex items-center gap-1 px-3 py-1.5 rounded-md text-[13px] transition-colors"
-                style={{ border: `1px solid ${T.border}`, color: T.ink, background: "white" }}
+                className="flex items-center gap-1 rounded-md px-2 py-1.5 text-[13px]"
+                style={{
+                  border: `1px solid ${T.border}`,
+                  color: DATA_TYPES_MORE.some(d => d.value === dataType) ? T.teal : T.info,
+                  background: "white",
+                }}
                 onClick={() => setMoreTypeOpen(!moreTypeOpen)}
-              >{tt("moreDataTypes")} <ChevronDown size={12} style={{ color: T.info }} /></button>
+              >
+                {DATA_TYPES_MORE.find(d => d.value === dataType)?.label ?? tt("moreDataTypes")}
+                <ChevronDown size={12} style={{ color: T.info }} />
+              </button>
               {moreTypeOpen && (
-                <div className="absolute top-full left-0 mt-1 bg-white rounded-md shadow-lg z-20 py-1 min-w-[140px]" style={{ border: `1px solid ${T.border}` }}>
+                <div className="absolute top-full left-0 mt-1 bg-white rounded-md shadow-lg z-20 py-1 min-w-[120px]" style={{ border: `1px solid ${T.border}` }}>
                   {DATA_TYPES_MORE.map(dt => (
                     <button key={dt.value}
-                      className="w-full text-left px-4 py-2 text-[13px] hover:bg-gray-50"
+                      className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-gray-50"
                       style={{ color: dataType === dt.value ? T.teal : T.ink }}
                       onClick={() => { setDataType(dt.value); setMoreTypeOpen(false); }}
                     >{dt.label}</button>
@@ -246,35 +245,23 @@ export default function AutoImportPage() {
               )}
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* 第二行：地区区域 */}
-      <div className="rounded-lg px-4 py-3" style={{ background: "#F7F9FB", border: `1px solid ${T.border}` }}>
-        <div className="flex items-center gap-3">
-          <span className="text-[13px] font-medium flex-shrink-0 w-20" style={{ color: T.ink }}>{tt("region")}</span>
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {REGIONS_FLAT.map(r => (
-              <button key={r.value}
-                className="px-3 py-1.5 rounded-md text-[13px] transition-colors"
-                style={{
-                  border: `1px solid ${region === r.value ? T.teal : T.border}`,
-                  color: region === r.value ? "white" : T.ink,
-                  background: region === r.value ? T.teal : "white",
-                }}
-                onClick={() => setRegion(r.value)}
-              >{r.label}</button>
-            ))}
-            {/* 全国省-市下拉 */}
+          {/* 区域（分段控件） */}
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] text-neutral-400 flex-shrink-0">{tt("region")}</span>
+            <Segmented
+              value={region}
+              onChange={(v) => setRegion(v)}
+              options={REGIONS_FLAT.map(r => ({ value: r.value, label: r.label }))}
+            />
             <div className="relative">
               <button
-                className="flex items-center gap-1 px-3 py-1.5 rounded-md text-[13px] transition-colors"
-                style={{ border: `1px solid ${T.border}`, color: T.ink, background: "white" }}
+                className="flex items-center gap-1 rounded-md px-2 py-1.5 text-[13px]"
+                style={{ border: `1px solid ${T.border}`, color: T.info, background: "white" }}
                 onClick={() => setRegionDropdown(!regionDropdown)}
               >{tt("moreRegions")} <ChevronDown size={12} style={{ color: T.info }} /></button>
               {regionDropdown && (
                 <div className="absolute top-full left-0 mt-1 bg-white rounded-md shadow-lg z-20 py-2 flex" style={{ border: `1px solid ${T.border}`, minWidth: 280 }}>
-                  {/* 省份列 */}
                   <div className="w-24 border-r max-h-[260px] overflow-y-auto" style={{ borderColor: T.cloud }}>
                     {Object.keys(PROVINCES).map(prov => (
                       <button key={prov}
@@ -284,7 +271,6 @@ export default function AutoImportPage() {
                       >{prov}</button>
                     ))}
                   </div>
-                  {/* 城市列 */}
                   <div className="flex-1 max-h-[260px] overflow-y-auto">
                     {selProvince && PROVINCES[selProvince]?.map(city => (
                       <button key={city}
@@ -299,43 +285,36 @@ export default function AutoImportPage() {
               )}
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* 第三行：产业范围 */}
-      <div className="rounded-lg px-4 py-3" style={{ background: "#F7F9FB", border: `1px solid ${T.border}` }}>
-        <div className="flex items-start gap-3">
-          <span className="text-[13px] font-medium flex-shrink-0 w-20 mt-1" style={{ color: T.ink }}>{tt("industry")}</span>
-          <div className="flex-1">
-            {/* 已选标签 */}
-            <div className="flex items-center gap-1.5 flex-wrap mb-2">
-              {industries.map(ind => (
-                <span key={ind} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[12px]"
-                  style={{ background: `${T.teal}15`, color: T.teal, border: `1px solid ${T.teal}30` }}>
-                  {ind}
-                  <button onClick={() => setIndustries(prev => prev.filter(i => i !== ind))} style={{ color: T.teal }}><X size={11} /></button>
-                </span>
-              ))}
-              <div className="relative">
-                <button className="flex items-center gap-1 px-2 py-0.5 rounded text-[12px]"
-                  style={{ border: `1px dashed ${T.border}`, color: T.info }}
-                  onClick={() => setIndustryOpen(!industryOpen)}
-                >{industries.length === 0 ? tt("selectIndustry") : tt("addIndustry")} <ChevronDown size={11} /></button>
-                {industryOpen && (
-                  <div className="absolute top-full left-0 mt-1 bg-white rounded-md shadow-lg z-20 py-1 max-h-[220px] overflow-y-auto" style={{ border: `1px solid ${T.border}`, minWidth: 160 }}>
-                    {INDUSTRIES.map(ind => (
-                      <button key={ind}
-                        className="w-full text-left px-4 py-1.5 text-[12px] hover:bg-gray-50 flex items-center gap-2"
-                        style={{ color: industries.includes(ind) ? T.teal : T.ink }}
-                        onClick={() => {
-                          setIndustries(prev => prev.includes(ind) ? prev.filter(i => i !== ind) : [...prev, ind]);
-                        }}
-                      >{industries.includes(ind) && <span style={{ color: T.teal }}>✓</span>}{ind}</button>
-                    ))}
-                  </div>
-                )}
-              </div>
+          {/* 产业范围（下拉多选） */}
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] text-neutral-400 flex-shrink-0">{tt("industry")}</span>
+            <div className="relative">
+              <button
+                className="flex items-center gap-1 rounded-md px-2.5 py-1.5 text-[13px]"
+                style={{ border: `1px solid ${T.border}`, color: industries.length > 0 ? T.teal : T.info, background: "white" }}
+                onClick={() => setIndustryOpen(!industryOpen)}
+              >
+                {industries.length > 0 ? `已选 ${industries.length} 项` : tt("selectIndustry")}
+                <ChevronDown size={12} style={{ color: T.info }} />
+              </button>
+              {industryOpen && (
+                <div className="absolute top-full left-0 mt-1 bg-white rounded-md shadow-lg z-20 py-1 max-h-[220px] overflow-y-auto" style={{ border: `1px solid ${T.border}`, minWidth: 160 }}>
+                  {INDUSTRIES.map(ind => (
+                    <button key={ind}
+                      className="w-full text-left px-4 py-1.5 text-[12px] hover:bg-gray-50 flex items-center gap-2"
+                      style={{ color: industries.includes(ind) ? T.teal : T.ink }}
+                      onClick={() => {
+                        setIndustries(prev => prev.includes(ind) ? prev.filter(i => i !== ind) : [...prev, ind]);
+                      }}
+                    >{industries.includes(ind) && <span style={{ color: T.teal }}>✓</span>}{ind}</button>
+                  ))}
+                </div>
+              )}
             </div>
+            {industries.length > 0 && (
+              <button className="text-[12px]" style={{ color: T.risk }} onClick={() => setIndustries([])}>清空</button>
+            )}
           </div>
         </div>
       </div>
