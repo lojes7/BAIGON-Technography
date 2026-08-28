@@ -6,7 +6,7 @@ function ImportWizardPage() {
   const { t } = useTranslation();
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-6">
       <PageHeader
         breadcrumbs={[t("nav.dataCenter"), t("nav.importBatches")]}
         title={t("nav.importBatches")}

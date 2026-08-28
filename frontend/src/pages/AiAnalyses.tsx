@@ -97,7 +97,7 @@ export default function AiAnalysesPage() {
       </Card>
 
       {total > 20 && (
-        <Pagination page={page} totalPages={Math.ceil(total / 20)} onChange={setPage} />
+        <Pagination page={page} totalPages={Math.ceil(total / 20)} onChange={setPage} total={total} />
       )}
     </div>
   );

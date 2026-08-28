@@ -1,8 +1,7 @@
-// 分页检索已审核岗位，支持多字段包含匹配，进入详情查看职业与技能。
 import { useTranslation } from "react-i18next";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { X, Eye, Search, RotateCcw, Sparkles } from "lucide-react";
+import { X, Eye, Search, RotateCcw, Sparkles, ChevronDown } from "lucide-react";
 import T from "../constants/tokens";
 import { getJobDetail, getLatestMyJobMatch, listJobs, matchMyResumeToJob } from "../services/jobs";
 import { isHttpErrorStatus } from "../services/http-error";
@@ -133,9 +132,13 @@ export default function JobsPage() {
 
   const setField = (k: keyof FilterForm, v: string) => setForm(p => ({ ...p, [k]: v }));
 
-  const FIELDS: { key: keyof FilterForm; label: string; placeholder: string; numeric?: boolean }[] = [
-    { key: "name", label: "岗位名称", placeholder: "如 Java" },
-    { key: "company", label: "公司", placeholder: "如 百工" },
+  // 高频筛选（主搜索栏，加宽）
+  const MAIN_FIELDS: { key: keyof FilterForm; label: string; placeholder: string }[] = [
+    { key: "name", label: "岗位名称", placeholder: "请输入岗位关键词" },
+    { key: "company", label: "公司", placeholder: "请输入公司名称" },
+  ];
+  // 低频筛选（折叠进「更多筛选」）
+  const EXTRA_FIELDS: { key: keyof FilterForm; label: string; placeholder: string }[] = [
     { key: "major", label: "专业", placeholder: "如 计算机" },
     { key: "city", label: "城市", placeholder: "如 杭州" },
     { key: "province", label: "省份", placeholder: "如 浙江" },
@@ -144,6 +147,7 @@ export default function JobsPage() {
     { key: "nature", label: "工作性质", placeholder: "如 全职" },
     { key: "companySize", label: "公司规模", placeholder: "如 100-499人" },
   ];
+  const [extraOpen, setExtraOpen] = useState(false);
 
   return (
     <div className="flex flex-col gap-5">
@@ -155,24 +159,60 @@ export default function JobsPage() {
 
       {/* 筛选区 */}
       <Card>
-        <div className="px-4 py-4">
-          <div className="grid grid-cols-5 gap-3">
-            {FIELDS.map(f => (
-              <div key={f.key}>
-                <label className="text-[11px] block mb-1" style={{ color: T.info }}>{f.label}</label>
+        <div className="px-5 py-5">
+          {/* 主搜索栏：岗位名称 + 公司 + 查询按钮 */}
+          <div className="flex items-end gap-4">
+            {MAIN_FIELDS.map(f => (
+              <div key={f.key} className="flex-1">
+                <label className="text-[13px] block mb-1.5 font-medium" style={{ color: "#595959" }}>{f.label}</label>
                 <input
-                  className="w-full px-2.5 py-1.5 rounded-md text-[13px] outline-none"
-                  style={{ background: T.cloud, border: `1px solid ${T.border}`, color: T.ink }}
+                  className="w-full h-10 px-3 rounded-md text-[14px] outline-none"
+                  style={{ background: "#FFFFFF", border: `1px solid #D9D9D9`, color: T.ink }}
                   value={form[f.key]}
                   onChange={e => setField(f.key, e.target.value)}
                   placeholder={f.placeholder}
-                  inputMode={f.numeric ? "numeric" : undefined}
                 />
               </div>
             ))}
+            <div className="flex items-center gap-2">
+              <Btn icon={Search} onClick={applyFilter}>搜索</Btn>
+              <Btn variant="secondary" icon={RotateCcw} onClick={resetFilter}>重置</Btn>
+            </div>
           </div>
-          <details className="mt-3 rounded-lg bg-white px-3 py-2" style={{ border: `1px solid ${T.border}` }}>
-            <summary className="cursor-pointer text-[12px] font-medium" style={{ color: T.info }}>
+
+          {/* 低频筛选折叠 */}
+          <button
+            className="mt-4 flex items-center gap-1 text-[13px] font-medium"
+            style={{ color: T.teal }}
+            onClick={() => setExtraOpen(!extraOpen)}
+          >
+            <ChevronDown size={14} style={{ transform: extraOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
+            更多筛选条件
+            {(form.major || form.city || form.province || form.salary || form.education || form.nature || form.companySize) && (
+              <span className="text-[12px]" style={{ color: T.info }}>（已设置 {EXTRA_FIELDS.filter(f => form[f.key]).length} 项）</span>
+            )}
+          </button>
+
+          {extraOpen && (
+            <div className="mt-3 grid grid-cols-4 gap-3">
+              {EXTRA_FIELDS.map(f => (
+                <div key={f.key}>
+                  <label className="text-[13px] block mb-1.5 font-medium" style={{ color: "#595959" }}>{f.label}</label>
+                  <input
+                    className="w-full h-10 px-3 rounded-md text-[14px] outline-none"
+                    style={{ background: "#FFFFFF", border: `1px solid #D9D9D9`, color: T.ink }}
+                    value={form[f.key]}
+                    onChange={e => setField(f.key, e.target.value)}
+                    placeholder={f.placeholder}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 规范目录精确筛选 */}
+          <details className="mt-4 rounded-lg bg-white px-3 py-2" style={{ border: `1px solid ${T.border}` }}>
+            <summary className="cursor-pointer text-[13px] font-medium" style={{ color: T.info }}>
               规范目录精确筛选
               {(form.majorId || form.occupationId) && (
                 <span className="ml-2 font-mono text-[11px]" style={{ color: T.teal }}>
@@ -183,7 +223,7 @@ export default function JobsPage() {
             </summary>
             <div className="mt-3 grid grid-cols-2 gap-4">
               <div>
-                <div className="mb-1 text-[11px]" style={{ color: T.info }}>专业目录</div>
+                <div className="mb-1 text-[12px]" style={{ color: T.info }}>专业目录</div>
                 <DirectoryPicker
                   kind="major"
                   selectedId={form.majorId || null}
@@ -195,7 +235,7 @@ export default function JobsPage() {
                 />
               </div>
               <div>
-                <div className="mb-1 text-[11px]" style={{ color: T.info }}>职业目录</div>
+                <div className="mb-1 text-[12px]" style={{ color: T.info }}>职业目录</div>
                 <DirectoryPicker
                   kind="occupation"
                   selectedId={form.occupationId || null}
@@ -208,10 +248,6 @@ export default function JobsPage() {
               </div>
             </div>
           </details>
-          <div className="flex items-center gap-2 mt-3">
-            <Btn icon={Search} size="sm" onClick={applyFilter}>查询</Btn>
-            <Btn variant="secondary" size="sm" icon={RotateCcw} onClick={resetFilter}>重置</Btn>
-          </div>
         </div>
       </Card>
 
@@ -221,32 +257,40 @@ export default function JobsPage() {
         ) : items.length === 0 ? (
           <div className="px-4 py-12 text-center text-[13px]" style={{ color: T.info }}>暂无岗位数据</div>
         ) : (
-          <table className="w-full text-[13px]">
+          <table className="w-full table-fixed text-[13px]">
             <thead>
               <tr style={{ background: T.cloud }}>
-                {["ID", "岗位名称", "公司", "城市", "省份", "薪资", "学历", "经验", "专业", "来源", "发布时间", "操作"].map(h => (
-                  <th key={h} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: T.info }}>{h}</th>
+                {[
+                  ["岗位名称", "w-[14%]"],
+                  ["公司", "w-[16%]"],
+                  ["城市", "w-[8%]"],
+                  ["省份", "w-[8%]"],
+                  ["薪资", "w-[9%]"],
+                  ["学历", "w-[8%]"],
+                  ["经验", "w-[10%]"],
+                  ["专业", "w-[9%]"],
+                  ["来源", "w-[9%]"],
+                  ["发布时间", "w-[9%]"],
+                  ["操作", "w-[8%]"],
+                ].map(([h, w]) => (
+                  <th key={h} className={`${w} px-3 py-2.5 text-left font-medium text-[12px] whitespace-nowrap`} style={{ color: T.info }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {items.map((j) => (
                 <tr key={j.id} className="hover:bg-gray-50 transition-colors" style={{ borderTop: `1px solid ${T.cloud}` }}>
-                  <td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{j.id}</td>
-                  <td className="px-4 py-3 font-medium" style={{ color: T.ink }}>{j.name || "—"}</td>
-                  <td className="px-4 py-3" style={{ color: T.ink }}>{j.companyName || "—"}</td>
-                  <td className="px-4 py-3 text-[12px]" style={{ color: T.info }}>{j.city || "—"}</td>
-                  <td className="px-4 py-3 text-[12px]" style={{ color: T.info }}>{j.province || "—"}</td>
-                  <td className="px-4 py-3 text-[12px]" style={{ color: T.info }}>{j.salary || "—"}</td>
-                  <td className="px-4 py-3 text-[12px]" style={{ color: T.info }}>{j.education || "—"}</td>
-                  <td className="px-4 py-3 text-[12px]" style={{ color: T.info }}>{j.experience || "—"}</td>
-                  <td className="px-4 py-3 text-[12px]" style={{ color: T.info }}>
-                    <div>{j.major || "—"}</div>
-                    {j.majorId && <div className="mt-0.5 font-mono text-[10px]">ID：{j.majorId}</div>}
-                  </td>
-                  <td className="px-4 py-3 text-[12px]" style={{ color: T.info }}>{j.sourcePlatform || "—"}</td>
-                  <td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{j.publishDate?.slice(0, 10) || "—"}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3 font-medium truncate" style={{ color: T.ink }} title={j.name || undefined}>{j.name || "—"}</td>
+                  <td className="px-3 py-3 truncate" style={{ color: T.ink }} title={j.companyName || undefined}>{j.companyName || "—"}</td>
+                  <td className="px-3 py-3 text-[12px] truncate" style={{ color: T.info }} title={j.city || undefined}>{j.city || "—"}</td>
+                  <td className="px-3 py-3 text-[12px] truncate" style={{ color: T.info }} title={j.province || undefined}>{j.province || "—"}</td>
+                  <td className="px-3 py-3 text-[12px] truncate" style={{ color: T.info }} title={j.salary || undefined}>{j.salary || "—"}</td>
+                  <td className="px-3 py-3 text-[12px] truncate" style={{ color: T.info }} title={j.education || undefined}>{j.education || "—"}</td>
+                  <td className="px-3 py-3 text-[12px] truncate" style={{ color: T.info }} title={j.experience || undefined}>{j.experience || "—"}</td>
+                  <td className="px-3 py-3 text-[12px] truncate" style={{ color: T.info }} title={j.major || undefined}>{j.major || "—"}</td>
+                  <td className="px-3 py-3 text-[12px] truncate" style={{ color: T.info }} title={j.sourcePlatform || undefined}>{j.sourcePlatform || "—"}</td>
+                  <td className="px-3 py-3 font-mono text-[12px] whitespace-nowrap" style={{ color: T.info }}>{j.publishDate?.slice(0, 10) || "—"}</td>
+                  <td className="px-3 py-3">
                     <button className="text-[12px] font-medium flex items-center gap-1" style={{ color: T.teal }}
                       onClick={() => openDetail(j.id)}>
                       <Eye size={12} />详情
@@ -260,7 +304,7 @@ export default function JobsPage() {
       </Card>
 
       {total > 20 && (
-        <Pagination page={page} totalPages={Math.ceil(total / 20)} onChange={setPage} />
+        <Pagination page={page} totalPages={Math.ceil(total / 20)} onChange={setPage} total={total} />
       )}
 
       {/* 详情抽屉 */}

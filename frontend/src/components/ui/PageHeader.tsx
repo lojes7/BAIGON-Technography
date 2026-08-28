@@ -19,8 +19,8 @@ function PageHeader({
       </div>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-[15px] font-medium leading-tight" style={{ color: T.ink }}>{title}</h1>
-          {description && <p className="text-[13px] mt-0.5" style={{ color: T.info }}>{description}</p>}
+          <h1 className="text-[24px] font-bold leading-8" style={{ color: T.ink }}>{title}</h1>
+          {description && <p className="text-[14px] leading-[22px] mt-1" style={{ color: T.info }}>{description}</p>}
           {updated && (
             <p className="text-[12px] mt-1 font-mono" style={{ color: T.info }}>
               常州市 · 人工智能软件与智能制造 · 数据截至 {updated}

@@ -333,7 +333,7 @@ export default function RawRecordsPage() {
               <tr style={{ background: T.cloud }}>
                 {isReviewer && (
                   <th className="w-10 px-2 py-2.5">
-                    <input type="checkbox" className="accent-[#315D6D] cursor-pointer"
+                    <input type="checkbox" className="accent-[#3996b7] cursor-pointer"
                       checked={records.length > 0 && records.every(r => selectedIds.has(r.id))}
                       onChange={toggleAll}
                       title="全选 / 取消全选" />
@@ -360,7 +360,7 @@ export default function RawRecordsPage() {
                   <tr key={r.id} className="hover:bg-gray-50 transition-colors" style={{ borderTop: `1px solid ${T.cloud}` }}>
                     {isReviewer && (
                       <td className="px-2 py-2.5">
-                        <input type="checkbox" className="accent-[#315D6D] cursor-pointer"
+                        <input type="checkbox" className="accent-[#2563EB] cursor-pointer"
                           checked={selectedIds.has(r.id)}
                           onChange={() => toggleSelect(r.id)} />
                       </td>
@@ -385,7 +385,7 @@ export default function RawRecordsPage() {
       </Card>
 
       {total > 20 && (
-        <Pagination page={page} totalPages={Math.ceil(total / 20)} onChange={setPage} />
+        <Pagination page={page} totalPages={Math.ceil(total / 20)} onChange={setPage} total={total} />
       )}
 
       {/* ==================== 批量审核弹窗 ==================== */}
@@ -431,7 +431,7 @@ export default function RawRecordsPage() {
                             border: `1px solid ${reviewStatus === "REVIEW_PASSED" ? T.emerging : T.border}`,
                             background: reviewStatus === "REVIEW_PASSED" ? `${T.emerging}10` : T.white,
                           }}>
-                          <input type="radio" className="accent-[#16856B]" checked={reviewStatus === "REVIEW_PASSED"}
+                          <input type="radio" className="accent-[#10B981]" checked={reviewStatus === "REVIEW_PASSED"}
                             onChange={() => setReviewStatus("REVIEW_PASSED")} />
                           <ShieldCheck size={15} style={{ color: T.emerging }} />
                           审核通过
@@ -441,7 +441,7 @@ export default function RawRecordsPage() {
                             border: `1px solid ${reviewStatus === "REVIEW_REJECT" ? T.risk : T.border}`,
                             background: reviewStatus === "REVIEW_REJECT" ? `${T.risk}10` : T.white,
                           }}>
-                          <input type="radio" className="accent-[#B54848]" checked={reviewStatus === "REVIEW_REJECT"}
+                          <input type="radio" className="accent-[#EF4444]" checked={reviewStatus === "REVIEW_REJECT"}
                             onChange={() => setReviewStatus("REVIEW_REJECT")} />
                           <XCircle size={15} style={{ color: T.risk }} />
                           审核驳回

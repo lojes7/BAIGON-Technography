@@ -334,7 +334,7 @@ function ReviewWorkbenchPage() {
       </Card>
 
       {visibleItems.length > PAGE_SIZE && (
-        <Pagination page={page} totalPages={pageCount} onChange={setPage} />
+        <Pagination page={page} totalPages={pageCount} onChange={setPage} total={visibleItems.length} />
       )}
 
       {detail && (
@@ -548,7 +548,7 @@ function ReviewWorkbenchPage() {
                     </div>
                     {skillTotal > SKILL_PAGE_SIZE && (
                       <div className="pt-1">
-                        <Pagination page={skillPage} totalPages={skillPageCount} onChange={changeSkillPage} disabled={searching} />
+                        <Pagination page={skillPage} totalPages={skillPageCount} onChange={changeSkillPage} disabled={searching} total={skillTotal} />
                       </div>
                     )}
                   </div>
