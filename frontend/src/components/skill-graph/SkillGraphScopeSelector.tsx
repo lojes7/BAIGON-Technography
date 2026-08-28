@@ -50,12 +50,12 @@ export default function SkillGraphScopeSelector({
   };
 
   const selectItem = (id: string) => {
-    const item = items.find((candidate) => candidate.id === id);
+    const item = items.find((candidate) => String(candidate.id) === id);
     if (!item) {
       onChange(null);
       return;
     }
-    onChange({ type: scopeType, id: item.id, code: item.code, name: item.name });
+    onChange({ type: scopeType, id: String(item.id), code: item.code, name: item.name });
   };
 
   return (
@@ -105,12 +105,12 @@ export default function SkillGraphScopeSelector({
         <select
           className={`${fieldClass} w-full`}
           style={fieldStyle}
-          value={value?.type === scopeType ? value.id : ""}
+          value={value?.type === scopeType ? String(value.id) : ""}
           onChange={(event) => selectItem(event.target.value)}
         >
           <option value="">{loading ? "正在加载…" : "请选择"}</option>
           {items.map((item) => (
-            <option key={item.id} value={item.id}>
+            <option key={String(item.id)} value={String(item.id)}>
               {item.name}{item.code ? ` · ${item.code}` : ""}
             </option>
           ))}

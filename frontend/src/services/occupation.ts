@@ -5,6 +5,7 @@ import type {
   EmbeddingProgressResponse, EmbeddingTaskStatus, SkillGraphData,
   SkillGraphScopeType,
 } from "../types/api";
+import { normalizeCatalogPageIds } from "../utils/catalog";
 import { parseJson } from "./lossless";
 
 const BASE = "/api/auth/occupation";
@@ -21,6 +22,17 @@ async function request<T>(url: string, init?: RequestInit): Promise<ApiResponse<
   // 用 lossless 解析，避免目录 id（雪花 ID int64）被 JSON.parse 丢精度
   const text = await res.text();
   return parseJson(text) as ApiResponse<T>;
+}
+
+async function requestCatalog<T extends CatalogItem>(
+  url: string,
+  init?: RequestInit,
+): Promise<ApiResponse<CatalogPage<T>>> {
+  const response = await request<CatalogPage<T>>(url, init);
+  return {
+    ...response,
+    data: normalizeCatalogPageIds<T>(response.data),
+  };
 }
 
 // 分页/筛选查询参数（额外参数如 parentId 由调用方通过交叉类型传入）
@@ -40,31 +52,31 @@ function qs(params: object): string {
 // ==================== 目录列表 ====================
 
 export function getDisciplineCategories(params?: PageQuery) {
-  return request<CatalogPage<CatalogItem>>(`${BASE}/discipline-categories${qs(params ?? {})}`, { headers: hdrs() });
+  return requestCatalog<CatalogItem>(`${BASE}/discipline-categories${qs(params ?? {})}`, { headers: hdrs() });
 }
 
 export function getMajorCategories(params: PageQuery & { disciplineCategoryId?: string }) {
-  return request<CatalogPage<CatalogItem>>(`${BASE}/major-categories${qs(params)}`, { headers: hdrs() });
+  return requestCatalog<CatalogItem>(`${BASE}/major-categories${qs(params)}`, { headers: hdrs() });
 }
 
 export function getMajors(params: PageQuery & { majorCategoryId?: string }) {
-  return request<CatalogPage<EmbeddableCatalogItem>>(`${BASE}/majors${qs(params)}`, { headers: hdrs() });
+  return requestCatalog<EmbeddableCatalogItem>(`${BASE}/majors${qs(params)}`, { headers: hdrs() });
 }
 
 export function getOccupationMajorCategories(params?: PageQuery) {
-  return request<CatalogPage<CatalogItem>>(`${BASE}/occupation-major-categories${qs(params ?? {})}`, { headers: hdrs() });
+  return requestCatalog<CatalogItem>(`${BASE}/occupation-major-categories${qs(params ?? {})}`, { headers: hdrs() });
 }
 
 export function getOccupationSubCategories(params: PageQuery & { occupationMajorCategoryId?: string }) {
-  return request<CatalogPage<CatalogItem>>(`${BASE}/occupation-sub-categories${qs(params)}`, { headers: hdrs() });
+  return requestCatalog<CatalogItem>(`${BASE}/occupation-sub-categories${qs(params)}`, { headers: hdrs() });
 }
 
 export function getOccupationCategories(params: PageQuery & { occupationSubCategoryId?: string }) {
-  return request<CatalogPage<CatalogItem>>(`${BASE}/occupation-categories${qs(params)}`, { headers: hdrs() });
+  return requestCatalog<CatalogItem>(`${BASE}/occupation-categories${qs(params)}`, { headers: hdrs() });
 }
 
 export function getOccupations(params: PageQuery & { occupationCategoryId?: string }) {
-  return request<CatalogPage<EmbeddableCatalogItem>>(`${BASE}/occupations${qs(params)}`, { headers: hdrs() });
+  return requestCatalog<EmbeddableCatalogItem>(`${BASE}/occupations${qs(params)}`, { headers: hdrs() });
 }
 
 // ==================== 职业/专业技能时间图谱 ====================
