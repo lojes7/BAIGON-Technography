@@ -48,6 +48,26 @@ class AIServicer(ai_pb2_grpc.AIServiceServicer):
             self._audit_failure(request, "PagedSearchAuditLogs", "QUERY_SERVICE_UNAVAILABLE")
             context.abort(grpc.StatusCode.UNAVAILABLE, "audit log query unavailable")
         try:
+            if request.target_log_ids:
+                items = self.audit_log_query_service.batch_get(
+                    requester_role=request.user_role,
+                    ids=list(request.target_log_ids),
+                )
+                found_ids = {item.id for item in items}
+                response = audit_pb2.PagedSearchAuditLogsResponse(
+                    detail_items=[self._audit_log_item(item) for item in items],
+                    # 允许批次部分命中；缺失 ID 去重并保持首次请求顺序。
+                    missing_audit_log_ids=[
+                        item_id
+                        for item_id in dict.fromkeys(request.target_log_ids)
+                        if item_id not in found_ids
+                    ],
+                    total=len(items),
+                    page=0,
+                    page_size=len(items),
+                )
+                self._audit_success(request, "PagedSearchAuditLogs")
+                return response
             page = self.audit_log_query_service.paged_search(
                 requester_role=request.user_role,
                 page=request.page,
@@ -58,7 +78,7 @@ class AIServicer(ai_pb2_grpc.AIServiceServicer):
                 target_user_id=request.target_user_id,
             )
             response = audit_pb2.PagedSearchAuditLogsResponse(
-                items=[self._audit_log_item(item) for item in page.items],
+                audit_log_ids=[item.id for item in page.items],
                 total=page.total,
                 page=page.page,
                 page_size=page.page_size,

@@ -5,11 +5,17 @@ import com.baigon.occupation.entity.jobanalysis.JobAnalysisMajorCandidate;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
+import java.util.Collection;
+import java.util.Optional;
 
 public interface JobAnalysisMajorCandidateRepository
         extends JpaRepository<JobAnalysisMajorCandidate, Long> {
 
     List<JobAnalysisMajorCandidate> findByTaskIdAndDeletedAtIsNullOrderByRankAsc(Long taskId);
+
+    Optional<JobAnalysisMajorCandidate> findByIdAndDeletedAtIsNull(Long id);
+
+    List<JobAnalysisMajorCandidate> findByIdInAndDeletedAtIsNullOrderByIdAsc(Collection<Long> ids);
 
     void deleteByTaskId(Long taskId);
 }

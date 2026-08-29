@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
 import { type RoleKey } from "./roles";
 import { login as apiLogin, type LoginResult } from "../services/auth";
+import { getMe } from "../services/user";
 import { isTokenExpired } from "./token";
 
 // 新版角色映射（不再有 DATA_ENGINEER）
@@ -28,7 +29,7 @@ export const useAuth = () => useContext(AuthCtx);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => {
-    // 从 localStorage 恢复用户会话（新版无 GET /api/auth/me）
+    // 从 localStorage 恢复已由 /me 校验过的用户会话。
     try {
       const stored = localStorage.getItem("baigon_user");
       if (!stored) return null;
@@ -48,15 +49,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (uid: string, password: string) => {
     const data: LoginResult = await apiLogin(uid, password);
-    const u: User = {
-      id: String(data.user.id),
-      name: data.user.name,
-      role: normalizeRole(data.user.role),
-    };
+    // 登录响应只签发身份引用；先保存 token，再通过 /me 读取展示资料。
     localStorage.setItem("baigon_token", data.token);
-    localStorage.setItem("baigon_user", JSON.stringify(u));
-    setToken(data.token);
-    setUser(u);
+    try {
+      const profile = await getMe();
+      const u: User = {
+        id: String(profile.data.id || data.userId),
+        name: profile.data.name,
+        role: normalizeRole(profile.data.role),
+      };
+      localStorage.setItem("baigon_user", JSON.stringify(u));
+      setToken(data.token);
+      setUser(u);
+    } catch (error) {
+      localStorage.removeItem("baigon_token");
+      localStorage.removeItem("baigon_user");
+      throw error;
+    }
   }, []);
 
   const logout = useCallback(() => {

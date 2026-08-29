@@ -46,6 +46,8 @@ public interface MajorRepository extends JpaRepository<Major, Long> {
 
     List<Major> findByIdInAndDeletedAtIsNull(Collection<Long> ids);
 
+    List<Major> findByIdInAndDeletedAtIsNullOrderByIdAsc(Collection<Long> ids);
+
     Optional<Major> findByCodeAndDeletedAtIsNull(String code);
 
     /** 使用 pgvector 余弦距离返回相似度最高的 Top N 专业。 */

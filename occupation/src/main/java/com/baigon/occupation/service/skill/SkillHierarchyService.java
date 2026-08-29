@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -42,20 +43,37 @@ public class SkillHierarchyService {
         this.snowflake = snowflake;
     }
 
-    /** 查询技能自身与一跳父子 ID；关系 ID 始终按数值升序返回。 */
-    public Optional<SkillDetail> getDetail(Long skillId) {
+    /** 查询活动技能本体，不附带任何关系。 */
+    public Optional<Skill> getSkill(Long skillId) {
         long id = positiveId(skillId, "skill_id");
-        return skillRepository.findByIdAndDeletedAtIsNull(id)
-                .map(skill -> new SkillDetail(skill, directRelations(List.of(id)).get(id)));
+        return skillRepository.findByIdAndDeletedAtIsNull(id);
     }
 
-    /** 批量按 ID 解析活动技能名称；不存在或已软删除的 ID 不返回。 */
-    public List<Skill> lookupSkills(Collection<Long> skillIds) {
-        TreeSet<Long> ids = normalizedIds(skillIds, "skill_ids");
-        if (ids.isEmpty() || ids.size() > MAX_LOOKUP_SKILLS) {
+    /** 查询指定技能的一跳父子 ID；关系 ID 始终按数值升序返回。 */
+    public Optional<DirectRelations> getDirectRelations(Long skillId) {
+        long id = positiveId(skillId, "skill_id");
+        return skillRepository.findByIdAndDeletedAtIsNull(id)
+                .map(ignored -> directRelations(List.of(id)).get(id));
+    }
+
+    /** 批量解析活动技能本体，并显式返回不存在或已软删除的 ID。 */
+    public SkillLookup lookupSkills(Collection<Long> skillIds) {
+        if (skillIds == null || skillIds.isEmpty() || skillIds.size() > MAX_LOOKUP_SKILLS) {
             throw new IllegalArgumentException("skill_ids must contain between 1 and 200 ids");
         }
-        return skillRepository.findByIdInAndDeletedAtIsNullOrderByIdAsc(ids);
+        LinkedHashSet<Long> ids = new LinkedHashSet<>();
+        for (Long skillId : skillIds) ids.add(positiveId(skillId, "skill_ids"));
+        Map<Long, Skill> loadedById = new LinkedHashMap<>();
+        skillRepository.findByIdInAndDeletedAtIsNullOrderByIdAsc(ids)
+                .forEach(skill -> loadedById.put(skill.getId(), skill));
+        List<Skill> skills = ids.stream()
+                .map(loadedById::get)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        List<Long> missingIds = ids.stream()
+                .filter(id -> !loadedById.containsKey(id))
+                .toList();
+        return new SkillLookup(List.copyOf(skills), List.copyOf(missingIds));
     }
 
     /**
@@ -177,6 +195,6 @@ public class SkillHierarchyService {
         }
     }
 
-    public record SkillDetail(Skill skill, DirectRelations relations) {
+    public record SkillLookup(List<Skill> skills, List<Long> missingSkillIds) {
     }
 }

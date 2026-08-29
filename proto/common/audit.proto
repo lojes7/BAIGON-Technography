@@ -17,6 +17,7 @@ message PagedSearchAuditLogsRequest {
   string created_at_to = 5; // RFC3339，空字符串表示不限制
   int64 target_user_id = 6; // 0 表示不按具体用户筛选
   string user_type = 7; // occupation 使用；其他服务忽略
+  repeated int64 target_log_ids = 8; // 非空时按 ID 查询当前来源的详情
 
   // Gateway 鉴权后透传的请求者上下文；后端据此做纵深权限校验并写业务日志。
   string trace_id = 20;
@@ -44,8 +45,12 @@ message AuditLogItem {
 }
 
 message PagedSearchAuditLogsResponse {
-  repeated AuditLogItem items = 1;
+  reserved 1;
+  reserved "items";
   int64 total = 2;
   int32 page = 3;
   int32 page_size = 4;
+  repeated int64 audit_log_ids = 5;
+  repeated AuditLogItem detail_items = 6;
+  repeated int64 missing_audit_log_ids = 7;
 }

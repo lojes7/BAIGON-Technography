@@ -6,6 +6,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -37,13 +38,13 @@ public class SkillGraphQueryRepository {
         return count == null ? 0 : count;
     }
 
-    public List<SkillAggregate> findSkills(ScopeType scope,
-                                           long scopeId,
-                                           OffsetDateTime publishedFrom,
-                                           OffsetDateTime publishedTo) {
+    /** 返回时间窗内由岗位直接贡献的技能 ID，不读取技能父子关系。 */
+    public List<Long> findDirectSkillIds(ScopeType scope,
+                                         long scopeId,
+                                         OffsetDateTime publishedFrom,
+                                         OffsetDateTime publishedTo) {
         StringBuilder sql = new StringBuilder("""
-                SELECT skill.id AS skill_id,
-                       skill.name AS skill_name,
+                SELECT relation.skill_id,
                        COUNT(DISTINCT relation.job_id) AS job_count
                 FROM %s relation
                 JOIN skills skill
@@ -60,63 +61,108 @@ public class SkillGraphQueryRepository {
         MapSqlParameterSource parameters = parameters(scopeId);
         appendTimeline(sql, parameters, "relation.publish_date", publishedFrom, publishedTo);
         sql.append("""
-                GROUP BY skill.id, skill.name
-                ORDER BY job_count DESC, skill.name ASC, skill.id ASC
+                GROUP BY relation.skill_id
+                ORDER BY job_count DESC, relation.skill_id ASC
+                """);
+        return jdbcTemplate.query(sql.toString(), parameters,
+                (resultSet, rowNum) -> resultSet.getLong("skill_id"));
+    }
+
+    /** 批量返回请求技能与范围之间的直接关系指标。 */
+    public List<SkillMetricAggregate> findMetrics(ScopeType scope,
+                                                  long scopeId,
+                                                  Collection<Long> skillIds,
+                                                  OffsetDateTime publishedFrom,
+                                                  OffsetDateTime publishedTo) {
+        StringBuilder sql = new StringBuilder("""
+                SELECT relation.skill_id,
+                       COUNT(DISTINCT relation.job_id) AS job_count
+                FROM %s relation
+                JOIN skills skill
+                  ON skill.id = relation.skill_id
+                 AND skill.deleted_at IS NULL
+                JOIN jobs job
+                  ON job.id = relation.job_id
+                 AND job.deleted_at IS NULL
+                 AND job.%s = relation.%s
+                WHERE relation.deleted_at IS NULL
+                  AND relation.%s = :scopeId
+                  AND relation.skill_id IN (:skillIds)
+                """.formatted(
+                scope.relationTable(), scope.scopeColumn(), scope.scopeColumn(), scope.scopeColumn()));
+        MapSqlParameterSource parameters = parameters(scopeId).addValue("skillIds", skillIds);
+        appendTimeline(sql, parameters, "relation.publish_date", publishedFrom, publishedTo);
+        sql.append("""
+                GROUP BY relation.skill_id
+                ORDER BY job_count DESC, relation.skill_id ASC
                 """);
         return jdbcTemplate.query(sql.toString(), parameters, (resultSet, rowNum) ->
-                new SkillAggregate(
+                new SkillMetricAggregate(
                         resultSet.getLong("skill_id"),
-                        resultSet.getString("skill_name"),
                         resultSet.getLong("job_count")));
     }
 
-    public List<JobEvidence> findEvidence(ScopeType scope,
-                                          long scopeId,
-                                          OffsetDateTime publishedFrom,
-                                          OffsetDateTime publishedTo,
-                                          int evidenceLimit) {
+    /** 统计指定直接技能在范围和时间窗内的岗位证据数量。 */
+    public long countEvidenceJobs(ScopeType scope,
+                                  long scopeId,
+                                  long skillId,
+                                  OffsetDateTime publishedFrom,
+                                  OffsetDateTime publishedTo) {
         StringBuilder sql = new StringBuilder("""
-                WITH ranked_evidence AS (
-                    SELECT relation.skill_id,
-                           job.id AS job_id,
-                           job.name AS job_name,
-                           job.company_name,
-                           job.source_platform,
-                           job.source_url,
-                           relation.publish_date,
-                           ROW_NUMBER() OVER (
-                               PARTITION BY relation.skill_id
-                               ORDER BY relation.publish_date DESC NULLS LAST, job.id DESC
-                           ) AS evidence_rank
-                    FROM %s relation
-                    JOIN jobs job
-                      ON job.id = relation.job_id
-                     AND job.deleted_at IS NULL
-                     AND job.%s = relation.%s
-                    WHERE relation.deleted_at IS NULL
-                      AND relation.%s = :scopeId
+                SELECT COUNT(DISTINCT relation.job_id)
+                FROM %s relation
+                JOIN skills skill
+                  ON skill.id = relation.skill_id
+                 AND skill.deleted_at IS NULL
+                JOIN jobs job
+                  ON job.id = relation.job_id
+                 AND job.deleted_at IS NULL
+                 AND job.%s = relation.%s
+                WHERE relation.deleted_at IS NULL
+                  AND relation.%s = :scopeId
+                  AND relation.skill_id = :skillId
+                """.formatted(
+                scope.relationTable(), scope.scopeColumn(), scope.scopeColumn(), scope.scopeColumn()));
+        MapSqlParameterSource parameters = parameters(scopeId).addValue("skillId", skillId);
+        appendTimeline(sql, parameters, "relation.publish_date", publishedFrom, publishedTo);
+        Long count = jdbcTemplate.queryForObject(sql.toString(), parameters, Long.class);
+        return count == null ? 0 : count;
+    }
+
+    /** 分页返回岗位证据 ID；详情由岗位 detail/batch-detail API 解析。 */
+    public List<Long> findEvidenceJobIds(ScopeType scope,
+                                         long scopeId,
+                                         long skillId,
+                                         OffsetDateTime publishedFrom,
+                                         OffsetDateTime publishedTo,
+                                         int page,
+                                         int pageSize) {
+        StringBuilder sql = new StringBuilder("""
+                SELECT relation.job_id
+                FROM %s relation
+                JOIN skills skill
+                  ON skill.id = relation.skill_id
+                 AND skill.deleted_at IS NULL
+                JOIN jobs job
+                  ON job.id = relation.job_id
+                 AND job.deleted_at IS NULL
+                 AND job.%s = relation.%s
+                WHERE relation.deleted_at IS NULL
+                  AND relation.%s = :scopeId
+                  AND relation.skill_id = :skillId
                 """.formatted(
                 scope.relationTable(), scope.scopeColumn(), scope.scopeColumn(), scope.scopeColumn()));
         MapSqlParameterSource parameters = parameters(scopeId)
-                .addValue("evidenceLimit", evidenceLimit);
+                .addValue("skillId", skillId)
+                .addValue("pageSize", pageSize)
+                .addValue("offset", (long) page * pageSize);
         appendTimeline(sql, parameters, "relation.publish_date", publishedFrom, publishedTo);
         sql.append("""
-                )
-                SELECT skill_id, job_id, job_name, company_name,
-                       source_platform, source_url, publish_date
-                FROM ranked_evidence
-                WHERE evidence_rank <= :evidenceLimit
-                ORDER BY skill_id ASC, evidence_rank ASC
+                ORDER BY relation.publish_date DESC NULLS LAST, relation.job_id DESC
+                LIMIT :pageSize OFFSET :offset
                 """);
-        return jdbcTemplate.query(sql.toString(), parameters, (resultSet, rowNum) ->
-                new JobEvidence(
-                        resultSet.getLong("skill_id"),
-                        resultSet.getLong("job_id"),
-                        resultSet.getString("job_name"),
-                        resultSet.getString("company_name"),
-                        resultSet.getString("source_platform"),
-                        resultSet.getString("source_url"),
-                        resultSet.getObject("publish_date", OffsetDateTime.class)));
+        return jdbcTemplate.query(sql.toString(), parameters,
+                (resultSet, rowNum) -> resultSet.getLong("job_id"));
     }
 
     private MapSqlParameterSource parameters(long scopeId) {
@@ -154,15 +200,6 @@ public class SkillGraphQueryRepository {
         public String scopeColumn() { return scopeColumn; }
     }
 
-    public record SkillAggregate(long skillId, String skillName, long jobCount) {
-    }
-
-    public record JobEvidence(long skillId,
-                              long jobId,
-                              String jobName,
-                              String companyName,
-                              String sourcePlatform,
-                              String sourceUrl,
-                              OffsetDateTime publishDate) {
+    public record SkillMetricAggregate(long skillId, long jobCount) {
     }
 }

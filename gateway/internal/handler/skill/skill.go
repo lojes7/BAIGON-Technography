@@ -25,14 +25,14 @@ type mutateSkillRelationRequest struct {
 	RelatedSkillID int64 `json:"relatedSkillId"`
 }
 
-// LookupSkillsHandler 按一组规范技能 ID 批量解析名称，供所有已登录用户使用。
-// @Summary      批量解析规范技能名称
+// LookupSkillsHandler 按一组规范技能 ID 批量解析本体详情，供所有已登录用户使用。
+// @Summary      批量解析规范技能详情
 // @Tags         技能关系
 // @Accept       json
 // @Produce      json
 // @Security     Bearer
 // @Param        request body lookupSkillsRequest true "1 到 200 个规范技能 ID"
-// @Success      200 {object} response.SuccessBody "data.items 仅含活动技能的 id/name"
+// @Success      200 {object} response.SuccessBody{data=skill.SkillLookupData} "data 含 items(id/name/isEmbed) 与 missingIds"
 // @Failure      400 {object} response.ErrorBody
 // @Failure      401 {object} response.ErrorBody
 // @Failure      503 {object} response.ErrorBody
@@ -40,7 +40,12 @@ type mutateSkillRelationRequest struct {
 func LookupSkillsHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var request lookupSkillsRequest
-		if err := c.ShouldBindJSON(&request); err != nil || !validLookupSkillIDs(request.SkillIDs) {
+		if err := c.ShouldBindJSON(&request); err != nil {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+		skillIDs, ok := normalizeLookupSkillIDs(request.SkillIDs)
+		if !ok {
 			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
 			return
 		}
@@ -56,7 +61,7 @@ func LookupSkillsHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc {
 		result, err := occupationpb.NewOccupationServiceClient(conn).LookupSkills(
 			ctx,
 			&occupationpb.LookupSkillsRequest{
-				SkillIds: request.SkillIDs,
+				SkillIds: skillIDs,
 				TraceId:  c.GetString("trace_id"), UserId: commonhandler.UserIDFromContext(c),
 				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
 				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
@@ -68,17 +73,20 @@ func LookupSkillsHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc {
 			response.Error(c, httpCode, errorCode)
 			return
 		}
-		response.Success(c, gin.H{"items": skillLookupItems(result.GetItems())})
+		response.Success(c, gin.H{
+			"items":      skillLookupItems(result.GetItems()),
+			"missingIds": nonNilIDs(result.GetMissingSkillIds()),
+		})
 	}
 }
 
-// GetSkillHandler 查询单个规范技能及其直接父、子技能 ID。
+// GetSkillHandler 查询单个规范技能本体，不附带父子关系。
 // @Summary      查询规范技能详情
 // @Tags         技能关系
 // @Produce      json
 // @Security     Bearer
 // @Param        id path int true "skills.id"
-// @Success      200 {object} response.SuccessBody "data 含 skill/parentSkillIds/childSkillIds"
+// @Success      200 {object} response.SuccessBody{data=skill.SkillData} "data 仅含 id/name/isEmbed"
 // @Failure      400 {object} response.ErrorBody
 // @Failure      401 {object} response.ErrorBody
 // @Failure      403 {object} response.ErrorBody
@@ -120,6 +128,56 @@ func GetSkillHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc {
 	}
 }
 
+// GetSkillRelationsHandler 显式查询指定方向的一跳规范技能关系。
+// @Summary      查询规范技能一跳关系
+// @Tags         技能关系
+// @Produce      json
+// @Security     Bearer
+// @Param        id path int true "skills.id"
+// @Param        direction query string true "parents 或 children"
+// @Success      200 {object} response.SuccessBody{data=response.SkillIDsData} "data.skillIds 仅含一跳关系 ID"
+// @Failure      400 {object} response.ErrorBody
+// @Failure      401 {object} response.ErrorBody
+// @Failure      403 {object} response.ErrorBody
+// @Failure      404 {object} response.ErrorBody
+// @Failure      503 {object} response.ErrorBody
+// @Router       /api/auth/occupation/skills/{id}/relations [get]
+func GetSkillRelationsHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, ok := positiveID(c.Param("id"))
+		direction := c.Query("direction")
+		if !ok || (direction != "parents" && direction != "children") {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+
+		conn, err := pool.GetConn("occupation-service")
+		if err != nil {
+			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+		var trailer metadata.MD
+		result, err := occupationpb.NewOccupationServiceClient(conn).GetSkillRelations(
+			ctx,
+			&occupationpb.GetSkillRelationsRequest{
+				Id: id, Direction: direction, TraceId: c.GetString("trace_id"),
+				UserId: commonhandler.UserIDFromContext(c), UserName: c.GetString("uid"),
+				UserIp: c.ClientIP(), RequestMethod: c.Request.Method,
+				RequestUrl: c.Request.URL.Path,
+			},
+			grpc.Trailer(&trailer),
+		)
+		if err != nil {
+			httpCode, errorCode := commonhandler.GRPCErrorCodes(err, trailer)
+			response.Error(c, httpCode, errorCode)
+			return
+		}
+		response.Success(c, gin.H{"skillIds": nonNilIDs(result.GetSkillIds())})
+	}
+}
+
 // AddSkillRelationHandler 为指定技能新增一个直接父技能或子技能。
 // @Summary      新增规范技能父子关系
 // @Tags         技能关系
@@ -129,7 +187,7 @@ func GetSkillHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc {
 // @Param        id path int true "当前 skills.id"
 // @Param        direction path string true "parents 或 children"
 // @Param        request body mutateSkillRelationRequest true "关联技能 ID"
-// @Success      200 {object} response.SuccessBody "data 含实际写入的 parentSkillId/childSkillId"
+// @Success      200 {object} response.SuccessBody{data=response.RelationIDsData} "data 含实际写入的 parentSkillId/childSkillId"
 // @Failure      400 {object} response.ErrorBody
 // @Failure      401 {object} response.ErrorBody
 // @Failure      403 {object} response.ErrorBody
@@ -149,7 +207,7 @@ func AddSkillRelationHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc {
 // @Param        id path int true "当前 skills.id"
 // @Param        direction path string true "parents 或 children"
 // @Param        relatedId path int true "关联 skills.id"
-// @Success      200 {object} response.SuccessBody "data 含实际删除的 parentSkillId/childSkillId"
+// @Success      200 {object} response.SuccessBody{data=response.RelationIDsData} "data 含实际删除的 parentSkillId/childSkillId"
 // @Failure      400 {object} response.ErrorBody
 // @Failure      401 {object} response.ErrorBody
 // @Failure      403 {object} response.ErrorBody
@@ -234,7 +292,9 @@ func positiveID(value string) (int64, bool) {
 func skillLookupItems(items []*occupationpb.SkillLookupData) []gin.H {
 	result := make([]gin.H, 0, len(items))
 	for _, item := range items {
-		result = append(result, gin.H{"id": item.GetId(), "name": item.GetName()})
+		result = append(result, gin.H{
+			"id": item.GetId(), "name": item.GetName(), "isEmbed": item.GetIsEmbed(),
+		})
 	}
 	return result
 }
@@ -243,11 +303,7 @@ func skillDetailData(detail *occupationpb.SkillDetailData) gin.H {
 	if detail == nil {
 		return nil
 	}
-	return gin.H{
-		"skill":          commonhandler.CanonicalSkillData(detail.GetSkill()),
-		"parentSkillIds": nonNilIDs(detail.GetParentSkillIds()),
-		"childSkillIds":  nonNilIDs(detail.GetChildSkillIds()),
-	}
+	return commonhandler.CanonicalSkillData(detail.GetSkill())
 }
 
 // nonNilIDs 保证 repeated 字段为空时仍编码为 JSON []，而不是 null。
@@ -270,9 +326,24 @@ func validPositiveIDs(ids []int64, requireItem bool) bool {
 	return true
 }
 
-// validLookupSkillIDs 限制单次名称解析为 1 到 200 个技能 ID。
-func validLookupSkillIDs(ids []int64) bool {
-	return len(ids) <= 200 && validPositiveIDs(ids, true)
+// normalizeLookupSkillIDs 先校验原始数量，再按首次出现顺序去重。
+func normalizeLookupSkillIDs(values []int64) ([]int64, bool) {
+	if len(values) == 0 || len(values) > 200 {
+		return nil, false
+	}
+	seen := make(map[int64]struct{}, len(values))
+	ids := make([]int64, 0, len(values))
+	for _, id := range values {
+		if id <= 0 {
+			return nil, false
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	return ids, true
 }
 
 // relationEndpoints 将相对当前技能的方向转换为数据库关系的父、子技能 ID。

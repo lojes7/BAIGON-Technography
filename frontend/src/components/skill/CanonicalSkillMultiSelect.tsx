@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Check, Loader2, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import T from "../../constants/tokens";
-import { searchCanonicalSkills } from "../../services/skill-resolution";
+import { loadCanonicalSkillPage } from "../../services/skill-resolution";
 import type { CanonicalSkillItem } from "../../types/api";
 import { Btn, Pagination } from "../ui";
 
@@ -40,7 +40,7 @@ export default function CanonicalSkillMultiSelect({
 
   useEffect(() => {
     let active = true;
-    searchCanonicalSkills({
+    loadCanonicalSkillPage({
       page: page - 1,
       pageSize: PAGE_SIZE,
       keyword: appliedKeyword || undefined,

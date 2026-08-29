@@ -3,52 +3,41 @@ package com.baigon.occupation.service.job;
 
 import com.baigon.occupation.entity.job.Job;
 import com.baigon.occupation.entity.job.JobSkill;
-import com.baigon.occupation.entity.major.Major;
-import com.baigon.occupation.entity.occupation.Occupation;
 import com.baigon.occupation.repository.job.JobRepository;
 import com.baigon.occupation.repository.job.JobSkillRepository;
-import com.baigon.occupation.repository.major.MajorRepository;
-import com.baigon.occupation.repository.occupation.OccupationRepository;
-import com.baigon.occupation.service.skill.SkillHierarchyService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class JobQueryServiceTest {
 
     private JobRepository jobRepository;
-    private MajorRepository majorRepository;
-    private OccupationRepository occupationRepository;
     private JobSkillRepository jobSkillRepository;
-    private SkillHierarchyService skillHierarchyService;
     private JobQueryService service;
 
     @BeforeEach
     void setUp() {
         jobRepository = mock(JobRepository.class);
-        majorRepository = mock(MajorRepository.class);
-        occupationRepository = mock(OccupationRepository.class);
         jobSkillRepository = mock(JobSkillRepository.class);
-        skillHierarchyService = mock(SkillHierarchyService.class);
-        service = new JobQueryService(
-                jobRepository, majorRepository, occupationRepository,
-                jobSkillRepository, skillHierarchyService);
+        service = new JobQueryService(jobRepository, jobSkillRepository);
     }
 
     @Test
@@ -74,40 +63,26 @@ class JobQueryServiceTest {
     }
 
     @Test
-    void detailShouldAggregateMajorOccupationAndJobSkills() {
+    void detailShouldReturnOnlyJobBodyAndJobSkillIds() {
         Job job = new Job();
         job.setId(10L);
         job.setMajorId(15L);
         job.setOccupationId(20L);
-        Major major = new Major();
-        major.setId(15L);
-        Occupation occupation = new Occupation();
-        occupation.setId(20L);
         JobSkill skill = new JobSkill();
         skill.setId(30L);
         skill.setSkillId(300L);
 
         when(jobRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(job));
-        when(majorRepository.findByIdAndDeletedAtIsNull(15L)).thenReturn(Optional.of(major));
-        when(occupationRepository.findByIdAndDeletedAtIsNull(20L)).thenReturn(Optional.of(occupation));
         when(jobSkillRepository.findByJobIdAndDeletedAtIsNullOrderByIdAsc(10L))
                 .thenReturn(List.of(skill));
-        when(skillHierarchyService.directRelations(List.of(300L))).thenReturn(Map.of(
-                300L, new SkillHierarchyService.DirectRelations(
-                        List.of(100L, 200L), List.of(400L))));
-
         JobQueryService.JobDetail detail = service.detail(10L).orElseThrow();
 
-        assertEquals(15L, detail.major().getId());
-        assertEquals(20L, detail.occupation().getId());
-        assertEquals(30L, detail.jobSkills().get(0).skill().getId());
-        assertEquals(List.of(100L, 200L), detail.jobSkills().get(0).parentSkillIds());
-        assertEquals(List.of(400L), detail.jobSkills().get(0).childSkillIds());
-        verify(skillHierarchyService).directRelations(List.of(300L));
+        assertEquals(job, detail.job());
+        assertEquals(List.of(30L), detail.jobSkillIds());
     }
 
     @Test
-    void detailShouldAllowJobWithoutOccupation() {
+    void detailShouldAllowJobWithoutJobSkills() {
         Job job = new Job();
         job.setId(10L);
         when(jobRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(job));
@@ -116,9 +91,54 @@ class JobQueryServiceTest {
 
         JobQueryService.JobDetail detail = service.detail(10L).orElseThrow();
 
-        assertNull(detail.major());
-        assertNull(detail.occupation());
-        assertEquals(List.of(), detail.jobSkills());
+        assertEquals(job, detail.job());
+        assertEquals(List.of(), detail.jobSkillIds());
+    }
+
+    @Test
+    void lookupJobsShouldUseTwoQueriesAndKeepFirstRequestOrder() {
+        Job first = job(10L);
+        Job third = job(30L);
+        JobSkill firstSkill = jobSkill(101L, 10L);
+        JobSkill thirdSkill = jobSkill(301L, 30L);
+        Collection<Long> normalized = new LinkedHashSet<>(List.of(30L, 99L, 10L));
+        when(jobRepository.findByIdInAndDeletedAtIsNullOrderByIdAsc(normalized))
+                .thenReturn(List.of(first, third));
+        when(jobSkillRepository.findByJobIdInAndDeletedAtIsNullOrderByJobIdAscIdAsc(
+                List.of(10L, 30L))).thenReturn(List.of(firstSkill, thirdSkill));
+
+        JobQueryService.JobLookup lookup = service.lookupJobs(List.of(30L, 99L, 10L, 30L));
+
+        assertEquals(List.of(30L, 10L), lookup.items().stream()
+                .map(item -> item.job().getId()).toList());
+        assertEquals(List.of(301L), lookup.items().get(0).jobSkillIds());
+        assertEquals(List.of(101L), lookup.items().get(1).jobSkillIds());
+        assertEquals(List.of(99L), lookup.missingIds());
+        verify(jobRepository).findByIdInAndDeletedAtIsNullOrderByIdAsc(normalized);
+        verify(jobSkillRepository).findByJobIdInAndDeletedAtIsNullOrderByJobIdAscIdAsc(
+                List.of(10L, 30L));
+    }
+
+    @Test
+    void lookupJobSkillsShouldKeepFirstRequestOrderAndReportMissingIds() {
+        JobSkill first = jobSkill(10L, 100L);
+        JobSkill third = jobSkill(30L, 300L);
+        Collection<Long> normalized = new LinkedHashSet<>(List.of(30L, 99L, 10L));
+        when(jobSkillRepository.findByIdInAndDeletedAtIsNullOrderByIdAsc(normalized))
+                .thenReturn(List.of(first, third));
+
+        JobQueryService.JobSkillLookup lookup =
+                service.lookupJobSkills(List.of(30L, 99L, 10L, 30L));
+
+        assertEquals(List.of(30L, 10L), lookup.items().stream().map(JobSkill::getId).toList());
+        assertEquals(List.of(99L), lookup.missingIds());
+    }
+
+    @Test
+    void lookupShouldRejectRawBatchOverTwoHundredBeforeDeduplication() {
+        assertThrows(IllegalArgumentException.class,
+                () -> service.lookupJobs(Collections.nCopies(201, 10L)));
+        verify(jobRepository, never()).findByIdInAndDeletedAtIsNullOrderByIdAsc(any());
     }
 
     @Test
@@ -133,5 +153,18 @@ class JobQueryServiceTest {
         assertThrows(IllegalArgumentException.class,
                 () -> service.list(0, 20, new JobQueryService.JobSearchCriteria(
                         "", null, -1L, "", "", "", "", "", "", "", "")));
+    }
+
+    private Job job(long id) {
+        Job job = new Job();
+        job.setId(id);
+        return job;
+    }
+
+    private JobSkill jobSkill(long id, long jobId) {
+        JobSkill skill = new JobSkill();
+        skill.setId(id);
+        skill.setJobId(jobId);
+        return skill;
     }
 }

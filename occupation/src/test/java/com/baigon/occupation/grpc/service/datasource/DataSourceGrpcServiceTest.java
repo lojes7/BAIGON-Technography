@@ -2,9 +2,13 @@
 package com.baigon.occupation.grpc.service.datasource;
 
 import com.baigon.crawler.GetJobSourceByTraceIdResponse;
+import com.baigon.datasource.BatchGetCleanedJobsRequest;
+import com.baigon.datasource.BatchGetCleanedJobsResponse;
 import com.baigon.datasource.CleanedJobDetail;
 import com.baigon.datasource.GetSourceJobRequest;
 import com.baigon.datasource.GetSourceJobResponse;
+import com.baigon.datasource.ListCleanedJobsRequest;
+import com.baigon.datasource.ListCleanedJobsResponse;
 import com.baigon.datasource.ReviewAction;
 import com.baigon.datasource.ReviewJobRequest;
 import com.baigon.datasource.ReviewJobResponse;
@@ -20,7 +24,10 @@ import io.grpc.stub.StreamObserver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -95,7 +102,53 @@ class DataSourceGrpcServiceTest {
     }
 
     @Test
-    void approveWithEditShouldForwardAndReturnEditedMajor() {
+    void listCleanedJobsShouldReturnOnlyIdPage() {
+        CleanedJobSource first = cleanedJob(1001L, "Java 工程师");
+        CleanedJobSource second = cleanedJob(1002L, "Go 工程师");
+        when(cleanedJobSourceService.list(1, 20, null, null, null))
+                .thenReturn(new PageImpl<>(
+                        List.of(first, second), PageRequest.of(1, 20), 42));
+        @SuppressWarnings("unchecked")
+        StreamObserver<ListCleanedJobsResponse> observer = mock(StreamObserver.class);
+
+        service.listCleanedJobs(ListCleanedJobsRequest.newBuilder()
+                .setPage(1)
+                .setPageSize(20)
+                .build(), observer);
+
+        ArgumentCaptor<ListCleanedJobsResponse> response =
+                ArgumentCaptor.forClass(ListCleanedJobsResponse.class);
+        verify(observer).onNext(response.capture());
+        verify(observer).onCompleted();
+        assertEquals(List.of(1001L, 1002L), response.getValue().getCleanedJobIdsList());
+        assertEquals(42L, response.getValue().getTotal());
+        assertEquals(null, response.getValue().getDescriptorForType().findFieldByName("items"));
+    }
+
+    @Test
+    void batchGetCleanedJobsShouldKeepStableOrderAndReportMissingIds() {
+        CleanedJobSource first = cleanedJob(1002L, "Go 工程师");
+        CleanedJobSource second = cleanedJob(1001L, "Java 工程师");
+        when(cleanedJobSourceService.batchFindByIds(List.of(1002L, 1001L, 1002L, 9999L)))
+                .thenReturn(List.of(first, second));
+        @SuppressWarnings("unchecked")
+        StreamObserver<BatchGetCleanedJobsResponse> observer = mock(StreamObserver.class);
+
+        service.batchGetCleanedJobs(BatchGetCleanedJobsRequest.newBuilder()
+                .addAllIds(List.of(1002L, 1001L, 1002L, 9999L))
+                .build(), observer);
+
+        ArgumentCaptor<BatchGetCleanedJobsResponse> response =
+                ArgumentCaptor.forClass(BatchGetCleanedJobsResponse.class);
+        verify(observer).onNext(response.capture());
+        verify(observer).onCompleted();
+        assertEquals(List.of(1002L, 1001L), response.getValue().getJobsList().stream()
+                .map(CleanedJobDetail::getId).toList());
+        assertEquals(List.of(9999L), response.getValue().getMissingIdsList());
+    }
+
+    @Test
+    void approveWithEditShouldForwardEditAndReturnOnlyCleanedJobId() {
         CleanedJobSource source = new CleanedJobSource();
         source.setId(1001L);
         source.setTraceId(9003L);
@@ -134,7 +187,8 @@ class DataSourceGrpcServiceTest {
         verify(observer).onNext(response.capture());
         verify(observer).onCompleted();
         verify(observer, never()).onError(any());
-        assertEquals("软件工程", response.getValue().getJob().getMajor());
+        assertEquals(1001L, response.getValue().getCleanedJobId());
+        assertEquals(1, response.getValue().getDescriptorForType().getFields().size());
     }
 
     private GetSourceJobRequest request(long id) {
@@ -147,5 +201,13 @@ class DataSourceGrpcServiceTest {
                 .setRequestMethod("GET")
                 .setRequestUrl("/api/auth/data-source/1001/source")
                 .build();
+    }
+
+    private CleanedJobSource cleanedJob(long id, String name) {
+        CleanedJobSource source = new CleanedJobSource();
+        source.setId(id);
+        source.setTraceId(id + 8000L);
+        source.setJobName(name);
+        return source;
     }
 }

@@ -4,11 +4,14 @@ package com.baigon.occupation.grpc.service.occupation;
 import com.baigon.common.AuditLogItem;
 import com.baigon.common.PagedSearchAuditLogsRequest;
 import com.baigon.common.PagedSearchAuditLogsResponse;
-import com.baigon.occupation.CatalogItem;
+import com.baigon.occupation.CatalogDetailData;
+import com.baigon.occupation.CatalogDetailRequest;
+import com.baigon.occupation.CatalogDetailResponse;
 import com.baigon.occupation.CatalogListRequest;
 import com.baigon.occupation.CatalogListResponse;
+import com.baigon.occupation.CatalogLookupRequest;
+import com.baigon.occupation.CatalogLookupResponse;
 import com.baigon.occupation.ChildCatalogListRequest;
-import com.baigon.occupation.EmbeddableCatalogItem;
 import com.baigon.occupation.EmbeddableCatalogListResponse;
 import com.baigon.occupation.EmbeddingProgress;
 import com.baigon.occupation.EmbeddingTaskRequest;
@@ -16,12 +19,19 @@ import com.baigon.occupation.EmbeddingTaskStatus;
 import com.baigon.occupation.GetEmbeddingProgressResponse;
 import com.baigon.occupation.GetJobRequest;
 import com.baigon.occupation.GetJobResponse;
+import com.baigon.occupation.GetJobSkillResponse;
 import com.baigon.occupation.GetJobAnalysisTaskRequest;
 import com.baigon.occupation.GetJobAnalysisTaskResponse;
+import com.baigon.occupation.GetJobAnalysisMajorCandidateResponse;
+import com.baigon.occupation.GetJobAnalysisOccupationCandidateResponse;
+import com.baigon.occupation.GetJobAnalysisResultResponse;
+import com.baigon.occupation.GetJobSkillResolutionCandidateResponse;
 import com.baigon.occupation.GetJobSkillResolutionTaskRequest;
 import com.baigon.occupation.GetJobSkillResolutionTaskResponse;
 import com.baigon.occupation.GetSkillRequest;
 import com.baigon.occupation.GetSkillResponse;
+import com.baigon.occupation.GetSkillRelationsRequest;
+import com.baigon.occupation.GetSkillRelationsResponse;
 import com.baigon.occupation.GetSkillGraphRequest;
 import com.baigon.occupation.GetSkillGraphResponse;
 import com.baigon.occupation.JobData;
@@ -30,8 +40,6 @@ import com.baigon.occupation.JobAnalysisMajorCandidate;
 import com.baigon.occupation.JobAnalysisResult;
 import com.baigon.occupation.JobAnalysisTaskDetail;
 import com.baigon.occupation.JobAnalysisTaskSummary;
-import com.baigon.occupation.JobMajorData;
-import com.baigon.occupation.JobOccupationData;
 import com.baigon.occupation.JobSkillData;
 import com.baigon.occupation.JobSkillResolutionTaskDetail;
 import com.baigon.occupation.JobSkillResolutionTaskSummary;
@@ -40,33 +48,41 @@ import com.baigon.occupation.ListJobAnalysisTasksResponse;
 import com.baigon.occupation.ListJobSkillResolutionTasksRequest;
 import com.baigon.occupation.ListJobSkillResolutionTasksResponse;
 import com.baigon.occupation.ListJobSkillResolutionSimilarSkillsResponse;
+import com.baigon.occupation.ListSkillGraphEvidenceJobsRequest;
+import com.baigon.occupation.ListSkillGraphEvidenceJobsResponse;
 import com.baigon.occupation.ListJobsRequest;
 import com.baigon.occupation.ListJobsResponse;
 import com.baigon.occupation.ListSkillsRequest;
 import com.baigon.occupation.ListSkillsResponse;
+import com.baigon.occupation.LookupJobsResponse;
+import com.baigon.occupation.LookupJobSkillsResponse;
+import com.baigon.occupation.LookupJobAnalysisMajorCandidatesResponse;
+import com.baigon.occupation.LookupJobAnalysisOccupationCandidatesResponse;
+import com.baigon.occupation.LookupJobAnalysisResultsResponse;
+import com.baigon.occupation.LookupJobAnalysisTasksResponse;
+import com.baigon.occupation.LookupJobSkillResolutionCandidatesResponse;
+import com.baigon.occupation.LookupJobSkillResolutionTasksResponse;
 import com.baigon.occupation.LookupSkillsRequest;
 import com.baigon.occupation.LookupSkillsResponse;
+import com.baigon.occupation.LookupSkillGraphMetricsRequest;
+import com.baigon.occupation.LookupSkillGraphMetricsResponse;
 import com.baigon.occupation.OccupationServiceGrpc;
 import com.baigon.occupation.ReviewJobAnalysisTaskRequest;
 import com.baigon.occupation.ReviewJobSkillResolutionTaskRequest;
+import com.baigon.occupation.ResourceIdResponse;
 import com.baigon.occupation.SkillData;
 import com.baigon.occupation.SkillDetailData;
-import com.baigon.occupation.SkillGraphEvidenceJob;
-import com.baigon.occupation.SkillGraphNode;
-import com.baigon.occupation.SkillGraphParent;
-import com.baigon.occupation.SkillGraphScope;
-import com.baigon.occupation.SkillGraphTimeline;
+import com.baigon.occupation.SkillGraphMetric;
 import com.baigon.occupation.SkillLookupData;
 import com.baigon.occupation.SkillRelationMutationRequest;
 import com.baigon.occupation.SkillRelationMutationResponse;
+import com.baigon.occupation.entity.BaseEntity;
 import com.baigon.occupation.entity.TaskStatus;
 import com.baigon.occupation.entity.Log;
 import com.baigon.occupation.entity.job.Job;
 import com.baigon.occupation.entity.job.JobSkill;
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisReviewAction;
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisTask;
-import com.baigon.occupation.entity.major.Major;
-import com.baigon.occupation.entity.occupation.Occupation;
 import com.baigon.occupation.entity.skill.JobSkillResolutionTask;
 import com.baigon.occupation.entity.skill.Skill;
 import com.baigon.occupation.entity.skill.SkillResolutionAction;
@@ -79,6 +95,8 @@ import com.baigon.occupation.service.EmbeddingTaskManager.Resource;
 import com.baigon.occupation.service.EmbeddingTaskSnapshot;
 import com.baigon.occupation.service.LogService;
 import com.baigon.occupation.service.audit.AuditLogQueryService;
+import com.baigon.occupation.service.catalog.CatalogDetail;
+import com.baigon.occupation.service.catalog.CatalogLookupResult;
 import com.baigon.occupation.service.jobanalysis.JobAnalysisQueryService;
 import com.baigon.occupation.service.jobanalysis.JobAnalysisReviewService;
 import com.baigon.occupation.service.job.JobQueryService;
@@ -95,8 +113,11 @@ import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
+import java.util.function.Supplier;
 
 /** gateway REST 请求经 gRPC 进入本服务，所有成功与失败都写 occupation.logs。 */
 @Service
@@ -159,6 +180,22 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                 // gRPC 入口先拒绝非管理员，业务层仍保留相同校验作为纵深防御。
                 throw new ApiException(ApiException.ErrorCode.FORBIDDEN, "ADMIN role required");
             }
+            if (request.getTargetLogIdsCount() > 0) {
+                var items = auditLogQueryService.batchGet(
+                        request.getUserId(), requesterRole, request.getTargetLogIdsList());
+                var missingIds = new LinkedHashSet<>(request.getTargetLogIdsList());
+                items.stream().map(item -> item.log().getId()).forEach(missingIds::remove);
+                respond(observer, PagedSearchAuditLogsResponse.newBuilder()
+                        .addAllDetailItems(items.stream().map(this::auditLogItem).toList())
+                        .addAllMissingAuditLogIds(missingIds)
+                        .setTotal(items.size())
+                        .setPage(0)
+                        .setPageSize(items.size())
+                        .build());
+                logService.info(audit,
+                        "batch get occupation audit logs: total=" + items.size());
+                return;
+            }
             Log.Level level = enumOrNull(Log.Level.class, request.getLevel(), "level");
             User.Role userType = enumOrNull(User.Role.class, request.getUserType(), "user_type");
             Page<AuditLogQueryService.AuditLogEntry> page = auditLogQueryService.pagedSearch(
@@ -174,7 +211,8 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                             userType));
 
             respond(observer, PagedSearchAuditLogsResponse.newBuilder()
-                    .addAllItems(page.getContent().stream().map(this::auditLogItem).toList())
+                    .addAllAuditLogIds(page.getContent().stream()
+                            .map(entry -> entry.log().getId()).toList())
                     .setTotal(page.getTotalElements())
                     .setPage(page.getNumber())
                     .setPageSize(page.getSize())
@@ -195,8 +233,7 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
             int pageSize = majorCatalogService.normalizedPageSize(request.getPageSize());
             var page = majorCatalogService.listDisciplineCategories(
                     request.getPage(), pageSize, request.getKeyword());
-            respond(observer, catalogResponse(page.map(item -> catalogItem(
-                    item.getId(), item.getCode(), item.getName()))));
+            respond(observer, catalogResponse(page));
             logService.info(audit, "list discipline categories: total=" + page.getTotalElements());
         } catch (Exception exception) {
             fail(observer, audit, exception, "list discipline categories failed");
@@ -213,8 +250,7 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
             int pageSize = majorCatalogService.normalizedPageSize(request.getPageSize());
             var page = majorCatalogService.listMajorCategories(
                     request.getParentId(), request.getPage(), pageSize, request.getKeyword());
-            respond(observer, catalogResponse(page.map(item -> catalogItem(
-                    item.getId(), item.getCode(), item.getName()))));
+            respond(observer, catalogResponse(page));
             logService.info(audit, "list major categories: total=" + page.getTotalElements());
         } catch (Exception exception) {
             fail(observer, audit, exception, "list major categories failed");
@@ -231,8 +267,7 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
             int pageSize = majorCatalogService.normalizedPageSize(request.getPageSize());
             var page = majorCatalogService.listMajors(
                     request.getParentId(), request.getPage(), pageSize, request.getKeyword());
-            respond(observer, embeddableResponse(page.map(item -> embeddableCatalogItem(
-                    item.getId(), item.getCode(), item.getName(), item.getEmbeddingStatus()))));
+            respond(observer, embeddableResponse(page));
             logService.info(audit, "list majors: total=" + page.getTotalElements());
         } catch (Exception exception) {
             fail(observer, audit, exception, "list majors failed");
@@ -249,8 +284,7 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
             int pageSize = occupationCatalogService.normalizedPageSize(request.getPageSize());
             var page = occupationCatalogService.listMajorCategories(
                     request.getPage(), pageSize, request.getKeyword());
-            respond(observer, catalogResponse(page.map(item -> catalogItem(
-                    item.getId(), item.getCode(), item.getName()))));
+            respond(observer, catalogResponse(page));
             logService.info(audit, "list occupation major categories: total=" + page.getTotalElements());
         } catch (Exception exception) {
             fail(observer, audit, exception, "list occupation major categories failed");
@@ -267,8 +301,7 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
             int pageSize = occupationCatalogService.normalizedPageSize(request.getPageSize());
             var page = occupationCatalogService.listSubCategories(
                     request.getParentId(), request.getPage(), pageSize, request.getKeyword());
-            respond(observer, catalogResponse(page.map(item -> catalogItem(
-                    item.getId(), item.getCode(), item.getName()))));
+            respond(observer, catalogResponse(page));
             logService.info(audit, "list occupation sub categories: total=" + page.getTotalElements());
         } catch (Exception exception) {
             fail(observer, audit, exception, "list occupation sub categories failed");
@@ -285,8 +318,7 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
             int pageSize = occupationCatalogService.normalizedPageSize(request.getPageSize());
             var page = occupationCatalogService.listCategories(
                     request.getParentId(), request.getPage(), pageSize, request.getKeyword());
-            respond(observer, catalogResponse(page.map(item -> catalogItem(
-                    item.getId(), item.getCode(), item.getName()))));
+            respond(observer, catalogResponse(page));
             logService.info(audit, "list occupation categories: total=" + page.getTotalElements());
         } catch (Exception exception) {
             fail(observer, audit, exception, "list occupation categories failed");
@@ -303,12 +335,126 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
             int pageSize = occupationCatalogService.normalizedPageSize(request.getPageSize());
             var page = occupationCatalogService.listOccupations(
                     request.getParentId(), request.getPage(), pageSize, request.getKeyword());
-            respond(observer, embeddableResponse(page.map(item -> embeddableCatalogItem(
-                    item.getId(), item.getCode(), item.getName(), item.getEmbeddingStatus()))));
+            respond(observer, embeddableResponse(page));
             logService.info(audit, "list occupations: total=" + page.getTotalElements());
         } catch (Exception exception) {
             fail(observer, audit, exception, "list occupations failed");
         }
+    }
+
+    @Override
+    public void getDisciplineCategory(CatalogDetailRequest request,
+                                      StreamObserver<CatalogDetailResponse> observer) {
+        getCatalog(request, observer,
+                () -> majorCatalogService.getDisciplineCategory(request.getId()),
+                CatalogKind.DISCIPLINE_CATEGORY, "discipline category");
+    }
+
+    @Override
+    public void lookupDisciplineCategories(CatalogLookupRequest request,
+                                           StreamObserver<CatalogLookupResponse> observer) {
+        lookupCatalog(request, observer,
+                () -> majorCatalogService.lookupDisciplineCategories(request.getIdsList()),
+                CatalogKind.DISCIPLINE_CATEGORY, "discipline categories");
+    }
+
+    @Override
+    public void getMajorCategory(CatalogDetailRequest request,
+                                 StreamObserver<CatalogDetailResponse> observer) {
+        getCatalog(request, observer,
+                () -> majorCatalogService.getMajorCategory(request.getId()),
+                CatalogKind.MAJOR_CATEGORY, "major category");
+    }
+
+    @Override
+    public void lookupMajorCategories(CatalogLookupRequest request,
+                                      StreamObserver<CatalogLookupResponse> observer) {
+        lookupCatalog(request, observer,
+                () -> majorCatalogService.lookupMajorCategories(request.getIdsList()),
+                CatalogKind.MAJOR_CATEGORY, "major categories");
+    }
+
+    @Override
+    public void getMajor(CatalogDetailRequest request,
+                         StreamObserver<CatalogDetailResponse> observer) {
+        getCatalog(request, observer,
+                () -> majorCatalogService.getMajor(request.getId()),
+                CatalogKind.MAJOR, "major");
+    }
+
+    @Override
+    public void lookupMajors(CatalogLookupRequest request,
+                             StreamObserver<CatalogLookupResponse> observer) {
+        lookupCatalog(request, observer,
+                () -> majorCatalogService.lookupMajors(request.getIdsList()),
+                CatalogKind.MAJOR, "majors");
+    }
+
+    @Override
+    public void getOccupationMajorCategory(CatalogDetailRequest request,
+                                           StreamObserver<CatalogDetailResponse> observer) {
+        getCatalog(request, observer,
+                () -> occupationCatalogService.getMajorCategory(request.getId()),
+                CatalogKind.OCCUPATION_MAJOR_CATEGORY, "occupation major category");
+    }
+
+    @Override
+    public void lookupOccupationMajorCategories(
+            CatalogLookupRequest request,
+            StreamObserver<CatalogLookupResponse> observer) {
+        lookupCatalog(request, observer,
+                () -> occupationCatalogService.lookupMajorCategories(request.getIdsList()),
+                CatalogKind.OCCUPATION_MAJOR_CATEGORY, "occupation major categories");
+    }
+
+    @Override
+    public void getOccupationSubCategory(CatalogDetailRequest request,
+                                         StreamObserver<CatalogDetailResponse> observer) {
+        getCatalog(request, observer,
+                () -> occupationCatalogService.getSubCategory(request.getId()),
+                CatalogKind.OCCUPATION_SUB_CATEGORY, "occupation sub category");
+    }
+
+    @Override
+    public void lookupOccupationSubCategories(
+            CatalogLookupRequest request,
+            StreamObserver<CatalogLookupResponse> observer) {
+        lookupCatalog(request, observer,
+                () -> occupationCatalogService.lookupSubCategories(request.getIdsList()),
+                CatalogKind.OCCUPATION_SUB_CATEGORY, "occupation sub categories");
+    }
+
+    @Override
+    public void getOccupationCategory(CatalogDetailRequest request,
+                                      StreamObserver<CatalogDetailResponse> observer) {
+        getCatalog(request, observer,
+                () -> occupationCatalogService.getCategory(request.getId()),
+                CatalogKind.OCCUPATION_CATEGORY, "occupation category");
+    }
+
+    @Override
+    public void lookupOccupationCategories(
+            CatalogLookupRequest request,
+            StreamObserver<CatalogLookupResponse> observer) {
+        lookupCatalog(request, observer,
+                () -> occupationCatalogService.lookupCategories(request.getIdsList()),
+                CatalogKind.OCCUPATION_CATEGORY, "occupation categories");
+    }
+
+    @Override
+    public void getOccupation(CatalogDetailRequest request,
+                              StreamObserver<CatalogDetailResponse> observer) {
+        getCatalog(request, observer,
+                () -> occupationCatalogService.getOccupation(request.getId()),
+                CatalogKind.OCCUPATION, "occupation");
+    }
+
+    @Override
+    public void lookupOccupations(CatalogLookupRequest request,
+                                  StreamObserver<CatalogLookupResponse> observer) {
+        lookupCatalog(request, observer,
+                () -> occupationCatalogService.lookupOccupations(request.getIdsList()),
+                CatalogKind.OCCUPATION, "occupations");
     }
 
     @Override
@@ -394,10 +540,11 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                 request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
                 request.getRequestMethod(), request.getRequestUrl());
         try {
-            Page<JobAnalysisQueryService.JobAnalysisTaskView> page = jobAnalysisQueryService.list(
-                    request.getPage(), request.getPageSize(), request.getReviewStatus());
+            Page<JobAnalysisTask> page = jobAnalysisQueryService.list(
+                    request.getPage(), request.getPageSize(),
+                    request.getTaskStatus(), request.getReviewStatus());
             respond(observer, ListJobAnalysisTasksResponse.newBuilder()
-                    .addAllItems(page.getContent().stream().map(this::jobAnalysisSummary).toList())
+                    .addAllIds(page.getContent().stream().map(JobAnalysisTask::getId).toList())
                     .setTotal(page.getTotalElements())
                     .setPage(page.getNumber())
                     .setPageSize(page.getSize())
@@ -431,8 +578,143 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
     }
 
     @Override
+    public void lookupJobAnalysisTasks(
+            CatalogLookupRequest request,
+            StreamObserver<LookupJobAnalysisTasksResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            JobAnalysisQueryService.Lookup<JobAnalysisTask> lookup =
+                    jobAnalysisQueryService.lookupTasks(request.getIdsList());
+            respond(observer, LookupJobAnalysisTasksResponse.newBuilder()
+                    .addAllItems(lookup.items().stream().map(this::jobAnalysisSummary).toList())
+                    .addAllMissingIds(lookup.missingIds())
+                    .build());
+            logService.info(audit, "lookup job analysis tasks: total=" + lookup.items().size()
+                    + ", missing=" + lookup.missingIds().size());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "lookup job analysis tasks failed");
+        }
+    }
+
+    @Override
+    public void getJobAnalysisOccupationCandidate(
+            GetJobAnalysisTaskRequest request,
+            StreamObserver<GetJobAnalysisOccupationCandidateResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            var item = jobAnalysisQueryService.getOccupationCandidate(request.getId())
+                    .orElseThrow(() -> new ApiException(
+                            ApiException.ErrorCode.NOT_FOUND, "occupation candidate not found"));
+            respond(observer, GetJobAnalysisOccupationCandidateResponse.newBuilder()
+                    .setItem(jobAnalysisCandidate(item)).build());
+            logService.info(audit, "get job analysis occupation candidate: id=" + request.getId());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "get job analysis occupation candidate failed");
+        }
+    }
+
+    @Override
+    public void lookupJobAnalysisOccupationCandidates(
+            CatalogLookupRequest request,
+            StreamObserver<LookupJobAnalysisOccupationCandidatesResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            var lookup = jobAnalysisQueryService.lookupOccupationCandidates(request.getIdsList());
+            respond(observer, LookupJobAnalysisOccupationCandidatesResponse.newBuilder()
+                    .addAllItems(lookup.items().stream().map(this::jobAnalysisCandidate).toList())
+                    .addAllMissingIds(lookup.missingIds()).build());
+            logService.info(audit, "lookup job analysis occupation candidates: total="
+                    + lookup.items().size() + ", missing=" + lookup.missingIds().size());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "lookup job analysis occupation candidates failed");
+        }
+    }
+
+    @Override
+    public void getJobAnalysisMajorCandidate(
+            GetJobAnalysisTaskRequest request,
+            StreamObserver<GetJobAnalysisMajorCandidateResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            var item = jobAnalysisQueryService.getMajorCandidate(request.getId())
+                    .orElseThrow(() -> new ApiException(
+                            ApiException.ErrorCode.NOT_FOUND, "major candidate not found"));
+            respond(observer, GetJobAnalysisMajorCandidateResponse.newBuilder()
+                    .setItem(jobAnalysisMajorCandidate(item)).build());
+            logService.info(audit, "get job analysis major candidate: id=" + request.getId());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "get job analysis major candidate failed");
+        }
+    }
+
+    @Override
+    public void lookupJobAnalysisMajorCandidates(
+            CatalogLookupRequest request,
+            StreamObserver<LookupJobAnalysisMajorCandidatesResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            var lookup = jobAnalysisQueryService.lookupMajorCandidates(request.getIdsList());
+            respond(observer, LookupJobAnalysisMajorCandidatesResponse.newBuilder()
+                    .addAllItems(lookup.items().stream().map(this::jobAnalysisMajorCandidate).toList())
+                    .addAllMissingIds(lookup.missingIds()).build());
+            logService.info(audit, "lookup job analysis major candidates: total="
+                    + lookup.items().size() + ", missing=" + lookup.missingIds().size());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "lookup job analysis major candidates failed");
+        }
+    }
+
+    @Override
+    public void getJobAnalysisResult(
+            GetJobAnalysisTaskRequest request,
+            StreamObserver<GetJobAnalysisResultResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            var item = jobAnalysisQueryService.getResult(request.getId())
+                    .orElseThrow(() -> new ApiException(
+                            ApiException.ErrorCode.NOT_FOUND, "job analysis result not found"));
+            respond(observer, GetJobAnalysisResultResponse.newBuilder()
+                    .setItem(jobAnalysisResult(item)).build());
+            logService.info(audit, "get job analysis result: id=" + request.getId());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "get job analysis result failed");
+        }
+    }
+
+    @Override
+    public void lookupJobAnalysisResults(
+            CatalogLookupRequest request,
+            StreamObserver<LookupJobAnalysisResultsResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            var lookup = jobAnalysisQueryService.lookupResults(request.getIdsList());
+            respond(observer, LookupJobAnalysisResultsResponse.newBuilder()
+                    .addAllItems(lookup.items().stream().map(this::jobAnalysisResult).toList())
+                    .addAllMissingIds(lookup.missingIds()).build());
+            logService.info(audit, "lookup job analysis results: total="
+                    + lookup.items().size() + ", missing=" + lookup.missingIds().size());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "lookup job analysis results failed");
+        }
+    }
+
+    @Override
     public void reviewJobAnalysisTask(ReviewJobAnalysisTaskRequest request,
-                                      StreamObserver<GetJobAnalysisTaskResponse> observer) {
+                                      StreamObserver<ResourceIdResponse> observer) {
         AuditContext audit = AuditContext.from(
                 request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
                 request.getRequestMethod(), request.getRequestUrl());
@@ -455,9 +737,8 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                         "job analysis task not found"));
                 return;
             }
-            var detail = jobAnalysisQueryService.detail(request.getId()).orElseThrow();
-            respond(observer, GetJobAnalysisTaskResponse.newBuilder()
-                    .setAnalysis(jobAnalysisDetail(detail))
+            respond(observer, ResourceIdResponse.newBuilder()
+                    .setId(reviewed.get().task().getId())
                     .build());
         } catch (ApiException exception) {
             logger.warn("review job analysis rejected: {}", exception.getMessage());
@@ -482,7 +763,7 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
             Page<Skill> page = skillResolutionQueryService.listSkills(
                     request.getPage(), request.getPageSize(), request.getKeyword());
             respond(observer, ListSkillsResponse.newBuilder()
-                    .addAllItems(page.getContent().stream().map(this::skillData).toList())
+                    .addAllIds(page.getContent().stream().map(Skill::getId).toList())
                     .setTotal(page.getTotalElements())
                     .setPage(page.getNumber())
                     .setPageSize(page.getSize())
@@ -500,12 +781,12 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                 request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
                 request.getRequestMethod(), request.getRequestUrl());
         try {
-            var detail = skillHierarchyService.getDetail(request.getId());
-            if (detail.isEmpty()) {
+            var skill = skillHierarchyService.getSkill(request.getId());
+            if (skill.isEmpty()) {
                 throw new ApiException(ApiException.ErrorCode.NOT_FOUND, "skill not found");
             }
             respond(observer, GetSkillResponse.newBuilder()
-                    .setSkill(skillDetailData(detail.get()))
+                    .setSkill(skillDetailData(skill.get()))
                     .build());
             logService.info(audit, "get canonical skill: id=" + request.getId());
         } catch (Exception exception) {
@@ -520,16 +801,47 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                 request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
                 request.getRequestMethod(), request.getRequestUrl());
         try {
-            List<Skill> skills = skillHierarchyService.lookupSkills(request.getSkillIdsList());
+            SkillHierarchyService.SkillLookup lookup =
+                    skillHierarchyService.lookupSkills(request.getSkillIdsList());
             respond(observer, LookupSkillsResponse.newBuilder()
-                    .addAllItems(skills.stream().map(skill -> SkillLookupData.newBuilder()
+                    .addAllItems(lookup.skills().stream().map(skill -> SkillLookupData.newBuilder()
                             .setId(skill.getId())
                             .setName(orEmpty(skill.getName()))
+                            .setIsEmbed(skill.getEmbeddingStatus() == TaskStatus.SUCCESS)
                             .build()).toList())
+                    .addAllMissingSkillIds(lookup.missingSkillIds())
                     .build());
-            logService.info(audit, "lookup canonical skills: total=" + skills.size());
+            logService.info(audit, "lookup canonical skills: total=" + lookup.skills().size()
+                    + ", missing=" + lookup.missingSkillIds().size());
         } catch (Exception exception) {
             fail(observer, audit, exception, "lookup canonical skills failed");
+        }
+    }
+
+    @Override
+    public void getSkillRelations(GetSkillRelationsRequest request,
+                                  StreamObserver<GetSkillRelationsResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            SkillHierarchyService.DirectRelations relations = skillHierarchyService
+                    .getDirectRelations(request.getId())
+                    .orElseThrow(() -> new ApiException(
+                            ApiException.ErrorCode.NOT_FOUND, "skill not found"));
+            List<Long> skillIds = switch (request.getDirection().trim().toLowerCase(Locale.ROOT)) {
+                case "parents" -> relations.parentSkillIds();
+                case "children" -> relations.childSkillIds();
+                default -> throw new IllegalArgumentException(
+                        "direction must be parents or children");
+            };
+            respond(observer, GetSkillRelationsResponse.newBuilder()
+                    .addAllSkillIds(skillIds)
+                    .build());
+            logService.info(audit, "get direct skill relations: id=" + request.getId()
+                    + ", direction=" + request.getDirection() + ", total=" + skillIds.size());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "get direct skill relations failed");
         }
     }
 
@@ -542,14 +854,68 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
         try {
             SkillGraphQueryService.SkillGraph graph = skillGraphQueryService.getGraph(
                     request.getScopeType(), request.getScopeId(),
-                    request.getFromMonth(), request.getToMonth(), request.getEvidenceLimit());
+                    request.getFromMonth(), request.getToMonth());
             respond(observer, skillGraphResponse(graph));
             logService.info(audit,
-                    "get skill graph: scope_type=" + graph.scope().type()
-                            + ", scope_id=" + graph.scope().id()
-                            + ", skills=" + graph.skills().size());
+                    "get skill graph: scope_type=" + request.getScopeType()
+                            + ", scope_id=" + graph.scopeId()
+                            + ", skills=" + graph.directSkillIds().size());
         } catch (Exception exception) {
             fail(observer, audit, exception, "get skill graph failed");
+        }
+    }
+
+    @Override
+    public void lookupSkillGraphMetrics(
+            LookupSkillGraphMetricsRequest request,
+            StreamObserver<LookupSkillGraphMetricsResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            SkillGraphQueryService.MetricLookup lookup = skillGraphQueryService.lookupMetrics(
+                    request.getScopeType(), request.getScopeId(), request.getSkillIdsList(),
+                    request.getFromMonth(), request.getToMonth());
+            respond(observer, LookupSkillGraphMetricsResponse.newBuilder()
+                    .addAllItems(lookup.items().stream().map(metric -> SkillGraphMetric.newBuilder()
+                            .setSkillId(metric.skillId())
+                            .setJobCount(metric.jobCount())
+                            .setCoverage(metric.coverage())
+                            .build()).toList())
+                    .addAllMissingIds(lookup.missingIds())
+                    .build());
+            logService.info(audit, "lookup skill graph metrics: scope_type="
+                    + request.getScopeType() + ", scope_id=" + request.getScopeId()
+                    + ", total=" + lookup.items().size()
+                    + ", missing=" + lookup.missingIds().size());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "lookup skill graph metrics failed");
+        }
+    }
+
+    @Override
+    public void listSkillGraphEvidenceJobs(
+            ListSkillGraphEvidenceJobsRequest request,
+            StreamObserver<ListSkillGraphEvidenceJobsResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            SkillGraphQueryService.EvidencePage page = skillGraphQueryService.listEvidenceJobs(
+                    request.getScopeType(), request.getScopeId(), request.getSkillId(),
+                    request.getFromMonth(), request.getToMonth(),
+                    request.getPage(), request.getPageSize());
+            respond(observer, ListSkillGraphEvidenceJobsResponse.newBuilder()
+                    .addAllJobIds(page.jobIds())
+                    .setTotal(page.total())
+                    .setPage(page.page())
+                    .setPageSize(page.pageSize())
+                    .build());
+            logService.info(audit, "list skill graph evidence jobs: scope_type="
+                    + request.getScopeType() + ", scope_id=" + request.getScopeId()
+                    + ", skill_id=" + request.getSkillId() + ", total=" + page.total());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "list skill graph evidence jobs failed");
         }
     }
 
@@ -600,14 +966,12 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                 request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
                 request.getRequestMethod(), request.getRequestUrl());
         try {
-            Page<SkillResolutionQueryService.ResolutionTaskListItem> page =
-                    skillResolutionQueryService.listTasks(
-                            request.getPage(), request.getPageSize(),
-                            request.getTaskStatus(), request.getReviewStatus());
+            Page<JobSkillResolutionTask> page = skillResolutionQueryService.listTasks(
+                    request.getPage(), request.getPageSize(),
+                    request.getTaskStatus(), request.getReviewStatus());
             respond(observer, ListJobSkillResolutionTasksResponse.newBuilder()
-                    .addAllItems(page.getContent().stream()
-                            .map(item -> skillResolutionSummary(item.task(), item.jobId()))
-                            .toList())
+                    .addAllIds(page.getContent().stream()
+                            .map(JobSkillResolutionTask::getId).toList())
                     .setTotal(page.getTotalElements())
                     .setPage(page.getNumber())
                     .setPageSize(page.getSize())
@@ -616,6 +980,66 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                     "list job skill resolution tasks: total=" + page.getTotalElements());
         } catch (Exception exception) {
             fail(observer, audit, exception, "list job skill resolution tasks failed");
+        }
+    }
+
+    @Override
+    public void lookupJobSkillResolutionTasks(
+            CatalogLookupRequest request,
+            StreamObserver<LookupJobSkillResolutionTasksResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            var lookup = skillResolutionQueryService.lookupTasks(request.getIdsList());
+            respond(observer, LookupJobSkillResolutionTasksResponse.newBuilder()
+                    .addAllItems(lookup.items().stream().map(this::skillResolutionSummary).toList())
+                    .addAllMissingIds(lookup.missingIds())
+                    .build());
+            logService.info(audit, "lookup job skill resolution tasks: total="
+                    + lookup.items().size() + ", missing=" + lookup.missingIds().size());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "lookup job skill resolution tasks failed");
+        }
+    }
+
+    @Override
+    public void getJobSkillResolutionCandidate(
+            GetJobSkillResolutionTaskRequest request,
+            StreamObserver<GetJobSkillResolutionCandidateResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            var item = skillResolutionQueryService.getCandidate(request.getId())
+                    .orElseThrow(() -> new ApiException(
+                            ApiException.ErrorCode.NOT_FOUND, "skill resolution candidate not found"));
+            respond(observer, GetJobSkillResolutionCandidateResponse.newBuilder()
+                    .setItem(skillResolutionCandidate(item))
+                    .build());
+            logService.info(audit, "get job skill resolution candidate: id=" + request.getId());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "get job skill resolution candidate failed");
+        }
+    }
+
+    @Override
+    public void lookupJobSkillResolutionCandidates(
+            CatalogLookupRequest request,
+            StreamObserver<LookupJobSkillResolutionCandidatesResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            var lookup = skillResolutionQueryService.lookupCandidates(request.getIdsList());
+            respond(observer, LookupJobSkillResolutionCandidatesResponse.newBuilder()
+                    .addAllItems(lookup.items().stream().map(this::skillResolutionCandidate).toList())
+                    .addAllMissingIds(lookup.missingIds())
+                    .build());
+            logService.info(audit, "lookup job skill resolution candidates: total="
+                    + lookup.items().size() + ", missing=" + lookup.missingIds().size());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "lookup job skill resolution candidates failed");
         }
     }
 
@@ -661,7 +1085,6 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
             for (var candidate : candidates.get()) {
                 response.addItems(com.baigon.occupation.JobSkillResolutionCandidate.newBuilder()
                         .setSkillId(candidate.getId())
-                        .setSkillName(orEmpty(candidate.getName()))
                         .setRank(rank++)
                         .setSimilarity(candidate.getSimilarity() == null
                                 ? 0 : candidate.getSimilarity())
@@ -679,7 +1102,7 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
     @Override
     public void reviewJobSkillResolutionTask(
             ReviewJobSkillResolutionTaskRequest request,
-            StreamObserver<GetJobSkillResolutionTaskResponse> observer) {
+            StreamObserver<ResourceIdResponse> observer) {
         AuditContext audit = AuditContext.from(
                 request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
                 request.getRequestMethod(), request.getRequestUrl());
@@ -699,12 +1122,8 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                         "job skill resolution task not found"));
                 return;
             }
-            SkillResolutionQueryService.Detail detail = skillResolutionQueryService
-                    .getDetail(request.getId())
-                    .orElseThrow(() -> new IllegalStateException(
-                            "reviewed job skill resolution task not found"));
-            respond(observer, GetJobSkillResolutionTaskResponse.newBuilder()
-                    .setResolution(skillResolutionDetail(detail))
+            respond(observer, ResourceIdResponse.newBuilder()
+                    .setId(reviewed.get().getId())
                     .build());
             logService.info(audit,
                     "review job skill resolution task: id=" + request.getId()
@@ -737,7 +1156,7 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                     request.getCompanySize());
             Page<Job> page = jobQueryService.list(request.getPage(), request.getPageSize(), criteria);
             respond(observer, ListJobsResponse.newBuilder()
-                    .addAllItems(page.getContent().stream().map(this::jobData).toList())
+                    .addAllIds(page.getContent().stream().map(Job::getId).toList())
                     .setTotal(page.getTotalElements())
                     .setPage(page.getNumber())
                     .setPageSize(page.getSize())
@@ -762,20 +1181,145 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                         ApiException.ErrorCode.NOT_FOUND, "job not found"));
                 return;
             }
-            GetJobResponse.Builder response = GetJobResponse.newBuilder()
-                    .setJob(jobData(detail.get().job()))
-                    .addAllJobSkills(detail.get().jobSkills().stream().map(this::jobSkillData).toList());
-            if (detail.get().occupation() != null) {
-                response.setOccupation(jobOccupationData(detail.get().occupation()));
-            }
-            if (detail.get().major() != null) {
-                response.setMajor(jobMajorData(detail.get().major()));
-            }
-            respond(observer, response.build());
+            respond(observer, GetJobResponse.newBuilder()
+                    .setJob(jobData(detail.get().job(), detail.get().jobSkillIds()))
+                    .build());
             logService.info(audit, "get job: id=" + request.getId());
         } catch (Exception exception) {
             fail(observer, audit, exception, "get job failed");
         }
+    }
+
+    @Override
+    public void lookupJobs(CatalogLookupRequest request,
+                           StreamObserver<LookupJobsResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            JobQueryService.JobLookup result = jobQueryService.lookupJobs(request.getIdsList());
+            respond(observer, LookupJobsResponse.newBuilder()
+                    .addAllItems(result.items().stream()
+                            .map(item -> jobData(item.job(), item.jobSkillIds())).toList())
+                    .addAllMissingIds(result.missingIds())
+                    .build());
+            logService.info(audit, "lookup jobs: total=" + result.items().size()
+                    + ", missing=" + result.missingIds().size());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "lookup jobs failed");
+        }
+    }
+
+    @Override
+    public void getJobSkill(GetJobRequest request,
+                            StreamObserver<GetJobSkillResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            JobSkill skill = jobQueryService.getJobSkill(request.getId())
+                    .orElseThrow(() -> new ApiException(
+                            ApiException.ErrorCode.NOT_FOUND, "job skill not found"));
+            respond(observer, GetJobSkillResponse.newBuilder()
+                    .setJobSkill(jobSkillData(skill))
+                    .build());
+            logService.info(audit, "get job skill: id=" + request.getId());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "get job skill failed");
+        }
+    }
+
+    @Override
+    public void lookupJobSkills(CatalogLookupRequest request,
+                                StreamObserver<LookupJobSkillsResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            JobQueryService.JobSkillLookup result =
+                    jobQueryService.lookupJobSkills(request.getIdsList());
+            respond(observer, LookupJobSkillsResponse.newBuilder()
+                    .addAllItems(result.items().stream().map(this::jobSkillData).toList())
+                    .addAllMissingIds(result.missingIds())
+                    .build());
+            logService.info(audit, "lookup job skills: total=" + result.items().size()
+                    + ", missing=" + result.missingIds().size());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "lookup job skills failed");
+        }
+    }
+
+    private void getCatalog(CatalogDetailRequest request,
+                            StreamObserver<CatalogDetailResponse> observer,
+                            Supplier<Optional<CatalogDetail>> loader,
+                            CatalogKind kind,
+                            String label) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            CatalogDetail detail = loader.get().orElseThrow(() -> new ApiException(
+                    ApiException.ErrorCode.NOT_FOUND, label + " not found"));
+            respond(observer, CatalogDetailResponse.newBuilder()
+                    .setItem(catalogDetailData(detail, kind))
+                    .build());
+            logService.info(audit, "get " + label + ": id=" + detail.id());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "get " + label + " failed");
+        }
+    }
+
+    private void lookupCatalog(CatalogLookupRequest request,
+                               StreamObserver<CatalogLookupResponse> observer,
+                               Supplier<CatalogLookupResult> loader,
+                               CatalogKind kind,
+                               String label) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            CatalogLookupResult result = loader.get();
+            respond(observer, CatalogLookupResponse.newBuilder()
+                    .addAllItems(result.items().stream()
+                            .map(item -> catalogDetailData(item, kind)).toList())
+                    .addAllMissingIds(result.missingIds())
+                    .build());
+            logService.info(audit, "lookup " + label + ": total=" + result.items().size()
+                    + ", missing=" + result.missingIds().size());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "lookup " + label + " failed");
+        }
+    }
+
+    private CatalogDetailData catalogDetailData(CatalogDetail detail, CatalogKind kind) {
+        CatalogDetailData.Builder builder = CatalogDetailData.newBuilder()
+                .setId(detail.id())
+                .setCode(orEmpty(detail.code()))
+                .setName(orEmpty(detail.name()));
+        long parentId = detail.parentId() == null ? 0 : detail.parentId();
+        switch (kind) {
+            case MAJOR_CATEGORY -> builder.setDisciplineCategoryId(parentId);
+            case MAJOR -> builder.setMajorCategoryId(parentId).setIsEmbed(detail.embed());
+            case OCCUPATION_SUB_CATEGORY -> builder.setOccupationMajorCategoryId(parentId);
+            case OCCUPATION_CATEGORY -> builder.setOccupationSubCategoryId(parentId);
+            case OCCUPATION -> builder.setOccupationCategoryId(parentId)
+                    .setIsEmbed(detail.embed())
+                    .setDescription(orEmpty(detail.description()));
+            case DISCIPLINE_CATEGORY, OCCUPATION_MAJOR_CATEGORY -> {
+                // 根级目录没有父级字段。
+            }
+        }
+        return builder.build();
+    }
+
+    private enum CatalogKind {
+        DISCIPLINE_CATEGORY,
+        MAJOR_CATEGORY,
+        MAJOR,
+        OCCUPATION_MAJOR_CATEGORY,
+        OCCUPATION_SUB_CATEGORY,
+        OCCUPATION_CATEGORY,
+        OCCUPATION
     }
 
     private void startTask(Resource resource,
@@ -819,38 +1363,19 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
         }
     }
 
-    private CatalogItem catalogItem(Long id, String code, String name) {
-        return CatalogItem.newBuilder()
-                .setId(id)
-                .setCode(orEmpty(code))
-                .setName(orEmpty(name))
-                .build();
-    }
-
-    private EmbeddableCatalogItem embeddableCatalogItem(Long id,
-                                                        String code,
-                                                        String name,
-                                                        TaskStatus status) {
-        return EmbeddableCatalogItem.newBuilder()
-                .setId(id)
-                .setCode(orEmpty(code))
-                .setName(orEmpty(name))
-                .setIsEmbed(status == TaskStatus.SUCCESS)
-                .build();
-    }
-
-    private CatalogListResponse catalogResponse(Page<CatalogItem> page) {
+    private CatalogListResponse catalogResponse(Page<? extends BaseEntity> page) {
         return CatalogListResponse.newBuilder()
-                .addAllItems(page.getContent())
+                .addAllIds(page.getContent().stream().map(BaseEntity::getId).toList())
                 .setTotal(page.getTotalElements())
                 .setPage(page.getNumber())
                 .setPageSize(page.getSize())
                 .build();
     }
 
-    private EmbeddableCatalogListResponse embeddableResponse(Page<EmbeddableCatalogItem> page) {
+    private EmbeddableCatalogListResponse embeddableResponse(
+            Page<? extends BaseEntity> page) {
         return EmbeddableCatalogListResponse.newBuilder()
-                .addAllItems(page.getContent())
+                .addAllIds(page.getContent().stream().map(BaseEntity::getId).toList())
                 .setTotal(page.getTotalElements())
                 .setPage(page.getNumber())
                 .setPageSize(page.getSize())
@@ -878,19 +1403,13 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                 .build();
     }
 
-    private JobAnalysisTaskSummary jobAnalysisSummary(
-            JobAnalysisQueryService.JobAnalysisTaskView summary) {
-        JobAnalysisTask task = summary.task();
+    private JobAnalysisTaskSummary jobAnalysisSummary(JobAnalysisTask task) {
         return JobAnalysisTaskSummary.newBuilder()
                 .setId(task.getId())
                 .setJobId(task.getJobId())
-                .setTraceId(task.getTraceId())
-                .setJobName(orEmpty(task.getJobName()))
                 .setTaskStatus(task.getTaskStatus() == null ? "" : task.getTaskStatus().name())
                 .setReviewStatus(task.getReviewStatus() == null ? "" : task.getReviewStatus().name())
                 .setSelectedOccupationId(task.getSelectedOccupationId() == null ? 0 : task.getSelectedOccupationId())
-                .setModelName(orEmpty(task.getModelName()))
-                .setErrorMsg(orEmpty(task.getErrorMsg()))
                 .setAttempts(task.getAttempts() == null ? 0 : task.getAttempts())
                 .setCreatedAt(time(task.getCreatedAt()))
                 .setReviewedAt(time(task.getReviewedAt()))
@@ -899,50 +1418,59 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                         ? "" : task.getOccupationAnalysisStatus().name())
                 .setJdAnalysisStatus(task.getJdAnalysisStatus() == null
                         ? "" : task.getJdAnalysisStatus().name())
-                .setJobMajor(orEmpty(task.getJobMajor()))
                 .setSelectedMajorId(task.getSelectedMajorId() == null ? 0 : task.getSelectedMajorId())
                 .setMajorAnalysisStatus(task.getMajorAnalysisStatus() == null
                         ? "" : task.getMajorAnalysisStatus().name())
-                .setSelectedOccupationName(orEmpty(summary.selectedOccupationName()))
-                .setSelectedMajorName(orEmpty(summary.selectedMajorName()))
                 .build();
     }
 
     private JobAnalysisTaskDetail jobAnalysisDetail(JobAnalysisQueryService.JobAnalysisDetail detail) {
         return JobAnalysisTaskDetail.newBuilder()
-                .setTask(jobAnalysisSummary(detail.summary()))
-                .addAllCandidates(detail.candidates().stream().map(candidate ->
-                        JobAnalysisCandidate.newBuilder()
-                                .setOccupationId(candidate.getOccupationId())
-                                .setOccupationName(orEmpty(candidate.getOccupationName()))
-                                .setRank(candidate.getRank())
-                                .setSimilarity(candidate.getSimilarity())
-                                .build()).toList())
-                .addAllMajorCandidates(detail.majorCandidates().stream().map(candidate ->
-                        JobAnalysisMajorCandidate.newBuilder()
-                                .setMajorId(candidate.getMajorId())
-                                .setMajorName(orEmpty(candidate.getMajorName()))
-                                .setRank(candidate.getRank())
-                                .setSimilarity(candidate.getSimilarity())
-                                .build()).toList())
-                .addAllResults(detail.results().stream().map(result ->
-                        JobAnalysisResult.newBuilder()
-                                .setId(result.getId())
-                                .setJobId(result.getJobId())
-                                .setSkillName(orEmpty(result.getSkillName()))
-                                .setSkillProficiency(orEmpty(result.getSkillProficiency()))
-                                .setEvidence(orEmpty(result.getEvidence()))
-                                .setRank(result.getRank() == null ? 0 : result.getRank())
-                                .setReviewStatus(result.getReviewStatus() == null
-                                        ? "" : result.getReviewStatus().name())
-                                .setReviewAction(result.getReviewAction() == null
-                                        ? "" : result.getReviewAction().name())
-                                .setReviewedSkillName(orEmpty(result.getReviewedSkillName()))
-                                .setReviewedSkillProficiency(orEmpty(result.getReviewedSkillProficiency()))
-                                .setReviewedEvidence(orEmpty(result.getReviewedEvidence()))
-                                .setReviewedAt(time(result.getReviewedAt()))
-                                .setReviewedBy(result.getReviewedBy() == null ? 0 : result.getReviewedBy())
-                                .build()).toList())
+                .setTask(jobAnalysisSummary(detail.task()))
+                .addAllCandidateIds(detail.candidateIds())
+                .addAllMajorCandidateIds(detail.majorCandidateIds())
+                .addAllResultIds(detail.resultIds())
+                .build();
+    }
+
+    private JobAnalysisCandidate jobAnalysisCandidate(
+            com.baigon.occupation.entity.jobanalysis.JobAnalysisCandidate candidate) {
+        return JobAnalysisCandidate.newBuilder()
+                .setId(candidate.getId())
+                .setOccupationId(candidate.getOccupationId())
+                .setRank(candidate.getRank() == null ? 0 : candidate.getRank())
+                .setSimilarity(candidate.getSimilarity() == null ? 0 : candidate.getSimilarity())
+                .build();
+    }
+
+    private JobAnalysisMajorCandidate jobAnalysisMajorCandidate(
+            com.baigon.occupation.entity.jobanalysis.JobAnalysisMajorCandidate candidate) {
+        return JobAnalysisMajorCandidate.newBuilder()
+                .setId(candidate.getId())
+                .setMajorId(candidate.getMajorId())
+                .setRank(candidate.getRank() == null ? 0 : candidate.getRank())
+                .setSimilarity(candidate.getSimilarity() == null ? 0 : candidate.getSimilarity())
+                .build();
+    }
+
+    private JobAnalysisResult jobAnalysisResult(
+            com.baigon.occupation.entity.jobanalysis.JobAnalysisResult result) {
+        return JobAnalysisResult.newBuilder()
+                .setId(result.getId())
+                .setJobId(result.getJobId())
+                .setSkillName(orEmpty(result.getSkillName()))
+                .setSkillProficiency(orEmpty(result.getSkillProficiency()))
+                .setEvidence(orEmpty(result.getEvidence()))
+                .setRank(result.getRank() == null ? 0 : result.getRank())
+                .setReviewStatus(result.getReviewStatus() == null
+                        ? "" : result.getReviewStatus().name())
+                .setReviewAction(result.getReviewAction() == null
+                        ? "" : result.getReviewAction().name())
+                .setReviewedSkillName(orEmpty(result.getReviewedSkillName()))
+                .setReviewedSkillProficiency(orEmpty(result.getReviewedSkillProficiency()))
+                .setReviewedEvidence(orEmpty(result.getReviewedEvidence()))
+                .setReviewedAt(time(result.getReviewedAt()))
+                .setReviewedBy(result.getReviewedBy() == null ? 0 : result.getReviewedBy())
                 .build();
     }
 
@@ -954,72 +1482,30 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                 .build();
     }
 
-    private SkillDetailData skillDetailData(SkillHierarchyService.SkillDetail detail) {
+    private SkillDetailData skillDetailData(Skill skill) {
         return SkillDetailData.newBuilder()
-                .setSkill(skillData(detail.skill()))
-                .addAllParentSkillIds(detail.relations().parentSkillIds())
-                .addAllChildSkillIds(detail.relations().childSkillIds())
+                .setSkill(skillData(skill))
                 .build();
     }
 
     private GetSkillGraphResponse skillGraphResponse(
             SkillGraphQueryService.SkillGraph graph) {
-        SkillGraphScope scope = SkillGraphScope.newBuilder()
-                .setType(graph.scope().type())
-                .setId(graph.scope().id())
-                .setCode(orEmpty(graph.scope().code()))
-                .setName(orEmpty(graph.scope().name()))
-                .build();
-        SkillGraphTimeline timeline = SkillGraphTimeline.newBuilder()
-                .setFromMonth(graph.timeline().fromMonth())
-                .setToMonth(graph.timeline().toMonth())
-                .setTimezone(graph.timeline().timezone())
-                .build();
         return GetSkillGraphResponse.newBuilder()
-                .setScope(scope)
-                .setTimeline(timeline)
-                .setTotalJobCount(graph.totalJobCount())
-                .addAllSkills(graph.skills().stream().map(node ->
-                        SkillGraphNode.newBuilder()
-                                .setSkillId(node.id())
-                                .setSkillName(orEmpty(node.name()))
-                                .setJobCount(node.jobCount())
-                                .setCoverage(node.coverage())
-                                .addAllParents(node.parents().stream().map(parent ->
-                                        SkillGraphParent.newBuilder()
-                                                .setId(parent.id())
-                                                .setName(orEmpty(parent.name()))
-                                                .build()).toList())
-                                .addAllEvidenceJobs(node.evidenceJobs().stream().map(evidence ->
-                                        SkillGraphEvidenceJob.newBuilder()
-                                                .setJobId(evidence.jobId())
-                                                .setJobName(orEmpty(evidence.jobName()))
-                                                .setCompanyName(orEmpty(evidence.companyName()))
-                                                .setSourcePlatform(orEmpty(evidence.sourcePlatform()))
-                                                .setSourceUrl(orEmpty(evidence.sourceUrl()))
-                                                .setPublishDate(time(evidence.publishDate()))
-                                                .build()).toList())
-                                .build()).toList())
+                .setScopeId(graph.scopeId())
+                .addAllDirectSkillIds(graph.directSkillIds())
                 .build();
     }
 
-    private JobSkillResolutionTaskSummary skillResolutionSummary(
-            JobSkillResolutionTask task,
-            Long jobId) {
+    private JobSkillResolutionTaskSummary skillResolutionSummary(JobSkillResolutionTask task) {
         return JobSkillResolutionTaskSummary.newBuilder()
                 .setId(task.getId())
                 .setJobSkillId(task.getJobSkillId())
-                .setJobId(jobId == null ? 0 : jobId)
-                .setTraceId(task.getTraceId() == null ? 0 : task.getTraceId())
-                .setSkillName(orEmpty(task.getSkillName()))
                 .setTaskStatus(task.getTaskStatus() == null ? "" : task.getTaskStatus().name())
                 .setReviewStatus(task.getReviewStatus() == null ? "" : task.getReviewStatus().name())
                 .setResolutionAction(task.getResolutionAction() == null
                         ? "" : task.getResolutionAction().name())
                 .setSelectedSkillId(task.getSelectedSkillId() == null
                         ? 0 : task.getSelectedSkillId())
-                .setModelName(orEmpty(task.getModelName()))
-                .setErrorMsg(orEmpty(task.getErrorMsg()))
                 .setAttempts(task.getAttempts() == null ? 0 : task.getAttempts())
                 .setCreatedAt(time(task.getCreatedAt()))
                 .setReviewedAt(time(task.getReviewedAt()))
@@ -1030,21 +1516,22 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
     private JobSkillResolutionTaskDetail skillResolutionDetail(
             SkillResolutionQueryService.Detail detail) {
         return JobSkillResolutionTaskDetail.newBuilder()
-                .setTask(skillResolutionSummary(
-                        detail.task(), detail.jobSkill().getJobId()))
-                .setJobSkill(jobSkillData(detail.jobSkill()))
-                .addAllCandidates(detail.candidates().stream().map(candidate ->
-                        com.baigon.occupation.JobSkillResolutionCandidate.newBuilder()
-                                .setSkillId(candidate.getSkillId())
-                                .setSkillName(orEmpty(candidate.getSkillName()))
-                                .setRank(candidate.getRank() == null ? 0 : candidate.getRank())
-                                .setSimilarity(candidate.getSimilarity() == null
-                                        ? 0 : candidate.getSimilarity())
-                                .build()).toList())
+                .setTask(skillResolutionSummary(detail.task()))
+                .addAllCandidateIds(detail.candidateIds())
                 .build();
     }
 
-    private JobData jobData(Job job) {
+    private com.baigon.occupation.JobSkillResolutionCandidate skillResolutionCandidate(
+            com.baigon.occupation.entity.skill.JobSkillResolutionCandidate candidate) {
+        return com.baigon.occupation.JobSkillResolutionCandidate.newBuilder()
+                .setId(candidate.getId())
+                .setSkillId(candidate.getSkillId())
+                .setRank(candidate.getRank() == null ? 0 : candidate.getRank())
+                .setSimilarity(candidate.getSimilarity() == null ? 0 : candidate.getSimilarity())
+                .build();
+    }
+
+    private JobData jobData(Job job, List<Long> jobSkillIds) {
         return JobData.newBuilder()
                 .setId(job.getId())
                 .setName(orEmpty(job.getName()))
@@ -1066,48 +1553,18 @@ public class OccupationGrpcService extends OccupationServiceGrpc.OccupationServi
                 .setJobDescription(orEmpty(job.getJobDescription()))
                 .setCreatedAt(time(job.getCreatedAt()))
                 .setUpdatedAt(time(job.getUpdatedAt()))
-                .build();
-    }
-
-    private JobMajorData jobMajorData(Major major) {
-        return JobMajorData.newBuilder()
-                .setId(major.getId())
-                .setCode(orEmpty(major.getCode()))
-                .setName(orEmpty(major.getName()))
-                .setMajorCategoryId(major.getMajorCategoryId())
-                .build();
-    }
-
-    private JobOccupationData jobOccupationData(Occupation occupation) {
-        return JobOccupationData.newBuilder()
-                .setId(occupation.getId())
-                .setCode(orEmpty(occupation.getCode()))
-                .setName(orEmpty(occupation.getName()))
-                .setOccupationCategoryId(occupation.getOccupationCategoryId())
-                .setDescription(orEmpty(occupation.getDescription()))
+                .addAllJobSkillIds(jobSkillIds)
                 .build();
     }
 
     private JobSkillData jobSkillData(JobSkill skill) {
-        return jobSkillData(skill, List.of(), List.of());
-    }
-
-    private JobSkillData jobSkillData(JobQueryService.JobSkillDetail detail) {
-        return jobSkillData(
-                detail.skill(), detail.parentSkillIds(), detail.childSkillIds());
-    }
-
-    private JobSkillData jobSkillData(JobSkill skill,
-                                      List<Long> parentSkillIds,
-                                      List<Long> childSkillIds) {
         return JobSkillData.newBuilder()
                 .setId(skill.getId())
                 .setSkillId(skill.getSkillId() == null ? 0 : skill.getSkillId())
                 .setSkillName(orEmpty(skill.getSkillName()))
                 .setSkillProficiency(orEmpty(skill.getSkillProficiency()))
                 .setEvidence(orEmpty(skill.getEvidence()))
-                .addAllParentSkillIds(parentSkillIds)
-                .addAllChildSkillIds(childSkillIds)
+                .setJobId(skill.getJobId() == null ? 0 : skill.getJobId())
                 .build();
     }
 

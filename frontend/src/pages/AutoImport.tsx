@@ -136,9 +136,9 @@ export default function AutoImportPage() {
       setTaskStatus("running");
       localStorage.setItem("crawl_start_time", String(Date.now()));
       setElapsedSeconds(0);
-      addLog(`爬虫任务已启动，trace_id: ${res.data.trace_id}，采集 ${res.data.count} 条`, "info");
+      addLog(`爬虫任务已启动，任务 ID：${res.data.id}`, "info");
       addLog("正在爬取数据...", "info");
-      toast.success(tt("crawlStart"), { description: `已采集 ${res.data.count} 条数据` });
+      toast.success(tt("crawlStart"), { description: `任务 ID：${res.data.id}` });
     } catch (err) {
       const msg = (err as Error)?.message || "未知错误";
       toast.error(msg);

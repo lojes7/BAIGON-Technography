@@ -13,16 +13,22 @@ import {
   addCanonicalSkillRelation,
   deleteCanonicalSkillRelation,
   getCanonicalSkillDetail,
+  listCanonicalSkillRelations,
+  loadCanonicalSkillPage,
   lookupCanonicalSkills,
-  searchCanonicalSkills,
 } from "../services/skill-resolution";
 import type {
-  CanonicalSkillDetail,
   CanonicalSkillItem,
   SkillRelationDirection,
 } from "../types/api";
 
 const PAGE_SIZE = 50;
+
+interface SkillDetailView {
+  skill: CanonicalSkillItem;
+  parentSkillIds: string[];
+  childSkillIds: string[];
+}
 
 function SkillDictionaryPage() {
   const { t } = useTranslation();
@@ -37,7 +43,7 @@ function SkillDictionaryPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [openingId, setOpeningId] = useState("");
   const detailRequestRef = useRef(0);
-  const [detail, setDetail] = useState<CanonicalSkillDetail | null>(null);
+  const [detail, setDetail] = useState<SkillDetailView | null>(null);
   const [relationNames, setRelationNames] = useState<Record<string, string>>({});
   const [relationDirection, setRelationDirection] = useState<SkillRelationDirection>("parents");
   const [pendingRelatedSkills, setPendingRelatedSkills] = useState<CanonicalSkillItem[]>([]);
@@ -50,7 +56,7 @@ function SkillDictionaryPage() {
 
   useEffect(() => {
     let active = true;
-    searchCanonicalSkills({
+    loadCanonicalSkillPage({
       page: page - 1,
       pageSize: PAGE_SIZE,
       keyword: appliedKeyword || undefined,
@@ -80,11 +86,15 @@ function SkillDictionaryPage() {
     skillId: string | number,
     requestId = detailRequestRef.current,
   ) => {
-    const response = await getCanonicalSkillDetail(skillId);
-    const nextDetail: CanonicalSkillDetail = {
-      ...response.data,
-      parentSkillIds: (response.data.parentSkillIds ?? []).map(String),
-      childSkillIds: (response.data.childSkillIds ?? []).map(String),
+    const [detailResponse, parentsResponse, childrenResponse] = await Promise.all([
+      getCanonicalSkillDetail(skillId),
+      listCanonicalSkillRelations(skillId, "parents"),
+      listCanonicalSkillRelations(skillId, "children"),
+    ]);
+    const nextDetail: SkillDetailView = {
+      skill: detailResponse.data,
+      parentSkillIds: parentsResponse.data.skillIds,
+      childSkillIds: childrenResponse.data.skillIds,
     };
     const relationIds = Array.from(new Set([
       ...nextDetail.parentSkillIds,
@@ -251,11 +261,11 @@ function SkillDictionaryPage() {
                       <span
                         className="rounded px-2 py-0.5 text-[11px]"
                         style={{
-                          background: skill.is_embed ? `${T.emerging}14` : `${T.pending}14`,
-                          color: skill.is_embed ? T.emerging : T.pending,
+                          background: skill.isEmbed ? `${T.emerging}14` : `${T.pending}14`,
+                          color: skill.isEmbed ? T.emerging : T.pending,
                         }}
                       >
-                        {skill.is_embed ? "已向量化" : "待向量化"}
+                        {skill.isEmbed ? "已向量化" : "待向量化"}
                       </span>
                     </td>
                     <td className="px-4 py-3">
@@ -302,7 +312,7 @@ function SkillDictionaryPage() {
                 <h2 className="text-[15px] font-medium" style={{ color: T.ink }}>{detail.skill.name}</h2>
                 <div className="mt-1 flex items-center gap-3 text-[11px]" style={{ color: T.info }}>
                   <span className="font-mono">技能 ID：{detail.skill.id}</span>
-                  <span>{detail.skill.is_embed ? "已向量化" : "待向量化"}</span>
+                  <span>{detail.skill.isEmbed ? "已向量化" : "待向量化"}</span>
                   <span>{isAdmin ? "可管理技能关系" : "关系只读"}</span>
                 </div>
               </div>

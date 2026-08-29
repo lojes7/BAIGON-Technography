@@ -5,8 +5,9 @@ package com.baigon.occupation.grpc.service.datasource;
 
 import com.baigon.crawler.GetJobSourceByTraceIdResponse;
 import com.baigon.datasource.DataSourceServiceGrpc;
+import com.baigon.datasource.BatchGetCleanedJobsRequest;
+import com.baigon.datasource.BatchGetCleanedJobsResponse;
 import com.baigon.datasource.CleanedJobDetail;
-import com.baigon.datasource.CleanedJobSummary;
 import com.baigon.datasource.GetCleanedJobRequest;
 import com.baigon.datasource.GetCleanedJobResponse;
 import com.baigon.datasource.GetSourceJobRequest;
@@ -17,7 +18,6 @@ import com.baigon.datasource.ReviewJobRequest;
 import com.baigon.datasource.ReviewJobResponse;
 import com.baigon.datasource.SourceJobDetail;
 import com.baigon.occupation.entity.datasource.CleanedJobSource;
-import com.baigon.occupation.entity.datasource.ReviewedCleanedJobSource;
 import com.baigon.occupation.error.ApiException;
 import com.baigon.occupation.grpc.client.crawler.CrawlerGrpcClient;
 import com.baigon.occupation.service.datasource.CleanedJobSourceService;
@@ -31,8 +31,6 @@ import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -67,22 +65,9 @@ public class DataSourceGrpcService extends DataSourceServiceGrpc.DataSourceServi
             Page<CleanedJobSource> result = cleanedJobSourceService.list(
                     page, pageSize, reviewStatus, from, to);
 
-            // 组装摘要（仅岗位名/公司名/来源/发布时间/获取时间/复核状态）
-            List<CleanedJobSummary> items = new ArrayList<>();
-            for (CleanedJobSource job : result.getContent()) {
-                items.add(CleanedJobSummary.newBuilder()
-                        .setId(job.getId())
-                        .setJobName(orEmpty(job.getJobName()))
-                        .setCompanyName(orEmpty(job.getCompanyName()))
-                        .setSourcePlatform(orEmpty(job.getSourcePlatform()))
-                        .setPublishDate(job.getPublishDate() != null ? job.getPublishDate().toString() : "")
-                        .setCreatedAt(job.getCreatedAt() != null ? job.getCreatedAt().toString() : "")
-                        .setReviewStatus(job.getReviewStatus() != null ? job.getReviewStatus().name() : "")
-                        .build());
-            }
-
             ListCleanedJobsResponse resp = ListCleanedJobsResponse.newBuilder()
-                    .addAllItems(items)
+                    .addAllCleanedJobIds(result.getContent().stream()
+                            .map(CleanedJobSource::getId).toList())
                     .setTotal(result.getTotalElements())
                     .setPage(page)
                     .setPageSize(pageSize)
@@ -102,6 +87,34 @@ public class DataSourceGrpcService extends DataSourceServiceGrpc.DataSourceServi
                     ApiException.ErrorCode.BAD_REQUEST, e.getMessage()));
         } catch (Exception e) {
             log.error("分页查询清洗数据失败", e);
+            responseObserver.onError(ApiException.grpcException(
+                    ApiException.ErrorCode.INTERNAL_ERROR, "server error"));
+        }
+    }
+
+    /** 按 ID 批量查询详情，供列表页按当前页引用补齐展示字段。 */
+    @Override
+    public void batchGetCleanedJobs(
+            BatchGetCleanedJobsRequest request,
+            StreamObserver<BatchGetCleanedJobsResponse> responseObserver) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            var jobs = cleanedJobSourceService.batchFindByIds(request.getIdsList());
+            responseObserver.onNext(BatchGetCleanedJobsResponse.newBuilder()
+                    .addAllJobs(jobs.stream().map(this::toDetail).toList())
+                    .addAllMissingIds(missingIds(
+                            request.getIdsList(),
+                            jobs.stream().map(CleanedJobSource::getId).toList()))
+                    .build());
+            responseObserver.onCompleted();
+            logService.info(audit, "batch get cleaned jobs: total=" + jobs.size());
+        } catch (IllegalArgumentException e) {
+            responseObserver.onError(ApiException.grpcException(
+                    ApiException.ErrorCode.BAD_REQUEST, e.getMessage()));
+        } catch (Exception e) {
+            log.error("批量查询清洗数据详情失败", e);
             responseObserver.onError(ApiException.grpcException(
                     ApiException.ErrorCode.INTERNAL_ERROR, "server error"));
         }
@@ -216,7 +229,7 @@ public class DataSourceGrpcService extends DataSourceServiceGrpc.DataSourceServi
             }
 
             responseObserver.onNext(ReviewJobResponse.newBuilder()
-                    .setJob(toDetail(opt.get()))
+                    .setCleanedJobId(opt.get().source().getId())
                     .build());
             responseObserver.onCompleted();
         } catch (ApiException e) {
@@ -256,33 +269,19 @@ public class DataSourceGrpcService extends DataSourceServiceGrpc.DataSourceServi
                 .setReviewStatus(job.getReviewStatus() != null ? job.getReviewStatus().name() : "")
                 .setReviewedAt(job.getReviewedAt() != null ? job.getReviewedAt().toString() : "")
                 .setReviewedBy(job.getReviewedBy() != null ? job.getReviewedBy() : 0)
+                .setCreatedAt(job.getCreatedAt() != null ? job.getCreatedAt().toString() : "")
                 .build();
     }
 
-    /** 审核响应：保留 cleaned_job_sources 的标识与审核状态，业务字段返回最终审核版本。 */
-    private CleanedJobDetail toDetail(CleanedJobSourceService.ReviewResult result) {
-        CleanedJobDetail.Builder builder = toDetail(result.source()).toBuilder();
-        ReviewedCleanedJobSource approved = result.approvedVersion();
-        if (approved == null) {
-            return builder.build();
-        }
-        return builder
-                .setPublishDate(approved.getPublishDate() != null ? approved.getPublishDate().toString() : "")
-                .setSourcePlatform(orEmpty(approved.getSourcePlatform()))
-                .setSourceUrl(orEmpty(approved.getSourceUrl()))
-                .setCity(orEmpty(approved.getCity()))
-                .setTags(orEmpty(approved.getTags()))
-                .setMajor(orEmpty(approved.getMajor()))
-                .setNature(orEmpty(approved.getNature()))
-                .setSalary(orEmpty(approved.getSalary()))
-                .setJobName(orEmpty(approved.getJobName()))
-                .setCompanyName(orEmpty(approved.getCompanyName()))
-                .setCompanySize(orEmpty(approved.getCompanySize()))
-                .setProvince(orEmpty(approved.getProvince()))
-                .setEducation(orEmpty(approved.getEducation()))
-                .setExperience(orEmpty(approved.getExperience()))
-                .setJobDescription(orEmpty(approved.getJobDescription()))
-                .build();
+    /** 批量详情允许部分命中；缺失 ID 去重并保持首次请求顺序。 */
+    private java.util.List<Long> missingIds(
+            java.util.List<Long> requested,
+            java.util.List<Long> found) {
+        java.util.Set<Long> foundIds = new java.util.HashSet<>(found);
+        return requested.stream()
+                .distinct()
+                .filter(id -> !foundIds.contains(id))
+                .toList();
     }
 
     /** gRPC 编辑字段 → 实体（仅业务字段） */

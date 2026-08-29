@@ -48,10 +48,21 @@ class SkillHierarchyServiceTest {
     }
 
     @Test
-    void getDetailShouldReturnDirectParentAndChildIdsInStableOrder() {
+    void getSkillShouldReturnOnlyTheActiveSkillBody() {
         Skill current = skill(10L, "RAG");
         when(skillRepository.findByIdAndDeletedAtIsNull(10L))
                 .thenReturn(Optional.of(current));
+
+        Skill result = service.getSkill(10L).orElseThrow();
+
+        assertEquals(current, result);
+        verify(relationRepository, never()).findDirectRelations(any());
+    }
+
+    @Test
+    void getDirectRelationsShouldReturnOnlyOneHopIdsInStableOrder() {
+        when(skillRepository.findByIdAndDeletedAtIsNull(10L))
+                .thenReturn(Optional.of(skill(10L, "RAG")));
         when(relationRepository.findDirectRelations(new TreeSet<>(List.of(10L))))
                 .thenReturn(List.of(
                         relation(10L, 50L),
@@ -59,11 +70,11 @@ class SkillHierarchyServiceTest {
                         relation(10L, 40L),
                         relation(20L, 10L)));
 
-        SkillHierarchyService.SkillDetail detail = service.getDetail(10L).orElseThrow();
+        SkillHierarchyService.DirectRelations relations =
+                service.getDirectRelations(10L).orElseThrow();
 
-        assertEquals(current, detail.skill());
-        assertEquals(List.of(20L, 30L), detail.relations().parentSkillIds());
-        assertEquals(List.of(40L, 50L), detail.relations().childSkillIds());
+        assertEquals(List.of(20L, 30L), relations.parentSkillIds());
+        assertEquals(List.of(40L, 50L), relations.childSkillIds());
     }
 
     @Test
@@ -72,9 +83,11 @@ class SkillHierarchyServiceTest {
                 new TreeSet<>(List.of(10L, 20L))))
                 .thenReturn(List.of(skill(10L, "Java")));
 
-        List<Skill> result = service.lookupSkills(List.of(20L, 10L, 20L));
+        SkillHierarchyService.SkillLookup result =
+                service.lookupSkills(List.of(20L, 10L, 20L));
 
-        assertEquals(List.of(10L), result.stream().map(Skill::getId).toList());
+        assertEquals(List.of(10L), result.skills().stream().map(Skill::getId).toList());
+        assertEquals(List.of(20L), result.missingSkillIds());
     }
 
     @Test

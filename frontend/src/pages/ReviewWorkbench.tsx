@@ -1,5 +1,5 @@
 // 岗位技能归一审核工作台：只暴露后端支持的三种互斥审核动作。
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { CheckCircle, Eye, Loader2, Plus, Search, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -8,21 +8,22 @@ import T from "../constants/tokens";
 import { isHttpErrorStatus } from "../services/http-error";
 import {
   getSkillResolutionTask,
+  loadCanonicalSkillPage,
   listSkillResolutionSimilarSkills,
   listSkillResolutionTasks,
+  lookupCanonicalSkills,
   reviewSkillResolutionTask,
-  searchCanonicalSkills,
 } from "../services/skill-resolution";
 import type {
   CanonicalSkillItem,
-  JobSkillResolutionCandidate,
+  JobSkillData,
+  JobSkillResolutionSimilarSkill,
   JobSkillResolutionTaskDetail,
   JobSkillResolutionTaskSummary,
   SkillResolutionAction,
 } from "../types/api";
 
 const PAGE_SIZE = 20;
-const MAX_PAGE_SIZE = 100;
 const SKILL_PAGE_SIZE = 50;
 
 const TASK_STATUS_LABEL: Record<string, string> = {
@@ -47,8 +48,10 @@ function ReviewWorkbenchPage() {
   const { t } = useTranslation();
   const [items, setItems] = useState<JobSkillResolutionTaskSummary[]>([]);
   const [page, setPage] = useState(1);
-  const [taskStatusFilter, setTaskStatusFilter] = useState<"success" | "failed" | "processing">("success");
-  const [reviewFilter, setReviewFilter] = useState<"all" | "pending" | "reviewed">("all");
+  const [total, setTotal] = useState(0);
+  const [jobSkills, setJobSkills] = useState<Record<string, JobSkillData>>({});
+  const [taskStatusFilter, setTaskStatusFilter] = useState<"SUCCESS" | "FAILED" | "RUNNING" | "PENDING">("SUCCESS");
+  const [reviewFilter, setReviewFilter] = useState<"all" | "PENDING" | "PASSED">("all");
   const [loading, setLoading] = useState(true);
   const [openingId, setOpeningId] = useState("");
 
@@ -58,7 +61,8 @@ function ReviewWorkbenchPage() {
   const [newSkillName, setNewSkillName] = useState("");
   const [keyword, setKeyword] = useState("");
   const [appliedKeyword, setAppliedKeyword] = useState("");
-  const [similarSkills, setSimilarSkills] = useState<JobSkillResolutionCandidate[]>([]);
+  const [similarSkills, setSimilarSkills] = useState<JobSkillResolutionSimilarSkill[]>([]);
+  const [skillNames, setSkillNames] = useState<Record<string, string>>({});
   const [skillResults, setSkillResults] = useState<CanonicalSkillItem[]>([]);
   const [skillTotal, setSkillTotal] = useState(0);
   const [skillPage, setSkillPage] = useState(1);
@@ -67,46 +71,37 @@ function ReviewWorkbenchPage() {
   const [searching, setSearching] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // 后端 task_status 是单值筛选（PENDING/RUNNING/SUCCESS/FAILED），无法表达「处理中=PENDING+RUNNING」，
-  // 因此与岗位分析页一致：拉全量后在本地按三分类 + 审核状态过滤。
-  const fetchList = async () => {
+  // 任务索引、任务摘要与岗位技能正文分别批量解析，但只处理当前服务端页。
+  const fetchList = useCallback(async () => {
     setLoading(true);
     try {
-      const firstPage = await listSkillResolutionTasks({ page: 0, pageSize: MAX_PAGE_SIZE });
-      const allItems = [...(firstPage.data.items ?? [])];
-      const pageCount = Math.ceil((firstPage.data.total ?? 0) / MAX_PAGE_SIZE);
-      for (let p = 1; p < pageCount; p += 1) {
-        const response = await listSkillResolutionTasks({ page: p, pageSize: MAX_PAGE_SIZE });
-        allItems.push(...(response.data.items ?? []));
-      }
-      setItems(allItems);
+      const response = await listSkillResolutionTasks({
+        page: page - 1,
+        pageSize: PAGE_SIZE,
+        taskStatus: taskStatusFilter,
+        reviewStatus: reviewFilter === "all" ? undefined : reviewFilter,
+      });
+      setItems(response.data.items ?? []);
+      setTotal(response.data.total ?? 0);
+      setJobSkills(Object.fromEntries(
+        (response.data.jobSkills ?? []).map((jobSkill) => [jobSkill.id, jobSkill]),
+      ));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "归一任务加载失败");
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, reviewFilter, taskStatusFilter]);
 
-  useEffect(() => { void fetchList(); }, []);
-
-  const visibleItems = items.filter((item) => {
-    if (taskStatusFilter === "processing") {
-      if (item.taskStatus !== "PENDING" && item.taskStatus !== "RUNNING") return false;
-    } else if (item.taskStatus !== (taskStatusFilter === "success" ? "SUCCESS" : "FAILED")) {
-      return false;
-    }
-    if (reviewFilter === "pending") return item.reviewStatus === "PENDING";
-    if (reviewFilter === "reviewed") return item.reviewStatus === "PASSED";
-    return true;
-  });
-
-  const pagedItems = visibleItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  // eslint-disable-next-line react/set-state-in-effect -- 筛选与页码变化时需要同步发起当前服务端页请求。
+  useEffect(() => { void fetchList(); }, [fetchList]);
 
   const initializeDetail = (nextDetail: JobSkillResolutionTaskDetail) => {
     setDetail(nextDetail);
     setKeyword("");
     setAppliedKeyword("");
     setSimilarSkills([]);
+    setSkillNames(Object.fromEntries(nextDetail.canonicalSkills.map((skill) => [skill.id, skill.name])));
     setSkillResults([]);
     setSkillTotal(0);
     setSkillPage(1);
@@ -138,7 +133,7 @@ function ReviewWorkbenchPage() {
     setOpeningId(String(id));
     try {
       const response = await getSkillResolutionTask(id);
-      initializeDetail(response.data.resolution);
+      initializeDetail(response.data);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "归一任务详情加载失败");
     } finally {
@@ -151,8 +146,16 @@ function ReviewWorkbenchPage() {
     if (!detail || action !== "SELECT_EXISTING") return;
     let active = true;
     listSkillResolutionSimilarSkills(detail.task.id)
-      .then((response) => {
-        if (active) setSimilarSkills(response.data.items ?? []);
+      .then(async (response) => {
+        const nextSimilarSkills = response.data.items ?? [];
+        if (!active) return;
+        setSimilarSkills(nextSimilarSkills);
+        const details = await lookupCanonicalSkills(nextSimilarSkills.map((skill) => skill.skillId));
+        if (!active) return;
+        setSkillNames((current) => ({
+          ...current,
+          ...Object.fromEntries(details.data.items.map((skill) => [skill.id, skill.name])),
+        }));
       })
       .catch((error) => {
         if (active) toast.error(error instanceof Error ? error.message : "相似技能加载失败");
@@ -167,7 +170,7 @@ function ReviewWorkbenchPage() {
   useEffect(() => {
     if (!detail || action !== "SELECT_EXISTING") return;
     let active = true;
-    searchCanonicalSkills({
+    loadCanonicalSkillPage({
       page: skillPage - 1,
       pageSize: SKILL_PAGE_SIZE,
       keyword: appliedKeyword || undefined,
@@ -223,9 +226,9 @@ function ReviewWorkbenchPage() {
       const body = effectiveAction === "CREATE_NEW"
         ? { resolutionAction: effectiveAction, newSkillName: newSkillName.trim() } as const
         : { resolutionAction: effectiveAction, skillId: selectedSkillId } as const;
-      const response = await reviewSkillResolutionTask(detail.task.id, body);
-      initializeDetail(response.data.resolution);
+      await reviewSkillResolutionTask(detail.task.id, body);
       toast.success("技能归一审核已提交");
+      await openDetail(detail.task.id);
       await fetchList();
     } catch (error) {
       if (isHttpErrorStatus(error, 409)) {
@@ -243,6 +246,7 @@ function ReviewWorkbenchPage() {
   const closeDetail = () => {
     setDetail(null);
     setSimilarSkills([]);
+    setSkillNames({});
     setSkillResults([]);
     setSkillTotal(0);
   };
@@ -250,7 +254,7 @@ function ReviewWorkbenchPage() {
   const canReview = detail?.task.reviewStatus === "PENDING"
     && (detail.task.taskStatus === "SUCCESS" || detail.task.taskStatus === "FAILED");
   const canSelectCandidate = detail?.task.taskStatus === "SUCCESS" && detail.candidates.length > 0;
-  const pageCount = Math.max(1, Math.ceil(visibleItems.length / PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const skillPageCount = Math.max(1, Math.ceil(skillTotal / SKILL_PAGE_SIZE));
 
   return (
@@ -259,7 +263,7 @@ function ReviewWorkbenchPage() {
         breadcrumbs={[t("nav.aiProcessing"), t("nav.reviewQueue")]}
         title="技能归一审核"
         description="将岗位分析产出的原始技能映射为规范技能，或创建新的规范技能"
-        actions={<span className="font-mono text-[13px]" style={{ color: T.info }}>共 {visibleItems.length} 项</span>}
+        actions={<span className="font-mono text-[13px]" style={{ color: T.info }}>共 {total} 项</span>}
       />
 
       <UnderlineTabs
@@ -267,27 +271,28 @@ function ReviewWorkbenchPage() {
           {
             value: taskStatusFilter,
             onChange: (value) => {
-              setTaskStatusFilter(value as "success" | "failed" | "processing");
+              setTaskStatusFilter(value as "SUCCESS" | "FAILED" | "RUNNING" | "PENDING");
               setReviewFilter("all");
               setPage(1);
             },
             options: [
-              { value: "success", label: `成功 ${items.filter((item) => item.taskStatus === "SUCCESS").length}` },
-              { value: "failed", label: `失败 ${items.filter((item) => item.taskStatus === "FAILED").length}` },
-              { value: "processing", label: `处理中 ${items.filter((item) => item.taskStatus === "PENDING" || item.taskStatus === "RUNNING").length}` },
+              { value: "SUCCESS", label: "成功" },
+              { value: "FAILED", label: "失败" },
+              { value: "RUNNING", label: "处理中" },
+              { value: "PENDING", label: "等待中" },
             ],
           },
-          // 处理中任务还不能审核；成功与失败任务都支持按审核状态查看。
-          ...(taskStatusFilter !== "processing" ? [{
+          // 成功与失败任务可审核；运行中与等待中任务只展示执行状态。
+          ...((taskStatusFilter === "SUCCESS" || taskStatusFilter === "FAILED") ? [{
             value: reviewFilter,
             onChange: (value: string) => {
-              setReviewFilter(value as "all" | "pending" | "reviewed");
+              setReviewFilter(value as "all" | "PENDING" | "PASSED");
               setPage(1);
             },
             options: [
               { value: "all", label: "全部" },
-              { value: "pending", label: "待复核" },
-              { value: "reviewed", label: "已复核" },
+              { value: "PENDING", label: "待复核" },
+              { value: "PASSED", label: "已复核" },
             ],
           }] : []),
         ]}
@@ -296,7 +301,7 @@ function ReviewWorkbenchPage() {
       <Card>
         {loading ? (
           <div className="px-4 py-12 text-center text-[13px]" style={{ color: T.info }}>加载中…</div>
-        ) : visibleItems.length === 0 ? (
+        ) : items.length === 0 ? (
           <div className="px-4 py-12 text-center text-[13px]" style={{ color: T.info }}>暂无符合条件的技能归一任务</div>
         ) : (
           <div className="overflow-x-auto">
@@ -309,11 +314,13 @@ function ReviewWorkbenchPage() {
                 </tr>
               </thead>
               <tbody>
-                {pagedItems.map((item) => (
-                  <tr key={item.id} className="transition-colors hover:bg-gray-50" style={{ borderTop: `1px solid ${T.cloud}` }}>
+                {items.map((item) => {
+                  const jobSkill = jobSkills[item.jobSkillId];
+                  return (
+                    <tr key={item.id} className="transition-colors hover:bg-gray-50" style={{ borderTop: `1px solid ${T.cloud}` }}>
                     <td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{item.id}</td>
-                    <td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{item.jobId}</td>
-                    <td className="px-4 py-3 font-medium" style={{ color: T.ink }}>{item.skillName || "—"}</td>
+                    <td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{jobSkill?.jobId || "—"}</td>
+                    <td className="px-4 py-3 font-medium" style={{ color: T.ink }}>{jobSkill?.skillName || `岗位技能 #${item.jobSkillId}`}</td>
                     <td className="px-4 py-3"><TaskStatus status={item.taskStatus} /></td>
                     <td className="px-4 py-3"><ReviewStatus status={item.reviewStatus} /></td>
                     <td className="px-4 py-3 text-[12px]" style={{ color: T.info }}>
@@ -332,16 +339,17 @@ function ReviewWorkbenchPage() {
                         {item.reviewStatus === "PENDING" ? "审核" : "查看"}
                       </button>
                     </td>
-                  </tr>
-                ))}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </Card>
 
-      {visibleItems.length > PAGE_SIZE && (
-        <Pagination page={page} totalPages={pageCount} onChange={setPage} total={visibleItems.length} />
+      {total > PAGE_SIZE && (
+        <Pagination page={page} totalPages={pageCount} onChange={setPage} total={total} disabled={loading} />
       )}
 
       {detail && (
@@ -358,11 +366,10 @@ function ReviewWorkbenchPage() {
             <div className="flex-1 space-y-5 px-5 py-4">
               <Card title="岗位技能原始信息">
                 <div className="space-y-3 px-4 py-3">
-                  <InfoRow label="技能名称" value={detail.jobSkill.skillName || detail.task.skillName || "—"} />
+                  <InfoRow label="技能名称" value={detail.jobSkill.skillName || "—"} />
                   <InfoRow label="熟练度" value={detail.jobSkill.skillProficiency || "—"} />
                   <InfoRow label="证据" value={detail.jobSkill.evidence || "—"} />
-                  <InfoRow label="岗位 ID" value={detail.task.jobId || "—"} mono />
-                  {detail.task.errorMsg && <InfoRow label="AI 错误" value={detail.task.errorMsg} danger />}
+                  <InfoRow label="岗位 ID" value={detail.jobSkill.jobId || "—"} mono />
                 </div>
               </Card>
 
@@ -423,7 +430,7 @@ function ReviewWorkbenchPage() {
                   ) : detail.candidates.map((candidate) => (
                     <button
                       type="button"
-                      key={candidate.skillId}
+                      key={candidate.id}
                       className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left disabled:cursor-not-allowed"
                       style={{
                         border: `1px solid ${String(selectedSkillId) === String(candidate.skillId) ? T.teal : T.border}`,
@@ -435,7 +442,7 @@ function ReviewWorkbenchPage() {
                       }}
                     >
                       <span className="font-mono text-[11px]" style={{ color: T.info }}>#{candidate.rank}</span>
-                      <span className="flex-1 text-[13px] font-medium" style={{ color: T.ink }}>{candidate.skillName}</span>
+                      <span className="flex-1 text-[13px] font-medium" style={{ color: T.ink }}>{skillNames[candidate.skillId] || `技能 #${candidate.skillId}`}</span>
                       <span className="font-mono text-[12px]" style={{ color: T.info }}>{(candidate.similarity * 100).toFixed(1)}%</span>
                     </button>
                   ))}
@@ -479,7 +486,7 @@ function ReviewWorkbenchPage() {
                           onClick={() => setSelectedSkillId(String(skill.skillId))}
                         >
                           <span className="w-6 font-mono text-[11px]" style={{ color: T.info }}>#{skill.rank}</span>
-                          <span className="flex-1 text-[13px] font-medium" style={{ color: T.ink }}>{skill.skillName}</span>
+                          <span className="flex-1 text-[13px] font-medium" style={{ color: T.ink }}>{skillNames[skill.skillId] || `技能 #${skill.skillId}`}</span>
                           {detail.candidates.some((candidate) => String(candidate.skillId) === String(skill.skillId)) && (
                             <span className="rounded px-1.5 py-0.5 text-[10px]" style={{ background: `${T.teal}12`, color: T.teal }}>
                               AI 候选
@@ -545,10 +552,10 @@ function ReviewWorkbenchPage() {
                             )}
                             <span className="font-mono text-[10px]" style={{ color: T.info }}>ID {skill.id}</span>
                             <span className="rounded px-1.5 py-0.5 text-[10px]" style={{
-                              background: skill.is_embed ? `${T.emerging}12` : `${T.pending}12`,
-                              color: skill.is_embed ? T.emerging : T.pending,
+                              background: skill.isEmbed ? `${T.emerging}12` : `${T.pending}12`,
+                              color: skill.isEmbed ? T.emerging : T.pending,
                             }}>
-                              {skill.is_embed ? "已向量化" : "未向量化"}
+                              {skill.isEmbed ? "已向量化" : "未向量化"}
                             </span>
                           </button>
                         ))}

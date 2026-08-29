@@ -7,10 +7,12 @@ import { useNav } from "../context/NavContext";
 import SkillGraphCanvas from "../components/skill-graph/SkillGraphCanvas";
 import SkillGraphScopeSelector from "../components/skill-graph/SkillGraphScopeSelector";
 import { Btn, Card, MetricCard, PageHeader } from "../components/ui";
-import { getSkillGraph } from "../services/occupation";
-import type { SkillGraphData, SkillGraphSkill } from "../types/api";
+import { getSkillGraph, lookupSkillGraphMetrics } from "../services/occupation";
+import { lookupCanonicalSkills } from "../services/skill-resolution";
+import type { SkillGraphViewData } from "../types/api";
 import {
   buildComparisonBounds,
+  buildSkillGraphView,
   type GraphMatchMode,
   type GraphScopeSelection,
   type TimelineGranularity,
@@ -25,15 +27,14 @@ interface ChangeRow {
   baseCoverage: number;
   compareCoverage: number;
   delta: number;
-  baseSkill?: SkillGraphSkill;
-  compareSkill?: SkillGraphSkill;
 }
 
 interface MatchResult {
-  base: SkillGraphData;
-  compare: SkillGraphData;
+  base: SkillGraphViewData;
+  compare: SkillGraphViewData;
   baseLabel: string;
   compareLabel: string;
+  scopeName: string;
   mode: GraphMatchMode;
 }
 
@@ -55,9 +56,12 @@ function buildChanges(result: MatchResult | null): ChangeRow[] {
     const baseSkill = baseMap.get(skillId);
     if (!baseSkill) {
       rows.push({
-        type: "added", skillId, skillName: skill.skillName,
-        baseCoverage: 0, compareCoverage: skill.coverage,
-        delta: skill.coverage * 100, compareSkill: skill,
+        type: "added",
+        skillId,
+        skillName: skill.skillName,
+        baseCoverage: 0,
+        compareCoverage: skill.coverage,
+        delta: skill.coverage * 100,
       });
       return;
     }
@@ -71,21 +75,23 @@ function buildChanges(result: MatchResult | null): ChangeRow[] {
         baseCoverage: baseSkill.coverage,
         compareCoverage: skill.coverage,
         delta,
-        baseSkill,
-        compareSkill: skill,
       });
     }
   });
-  if (result.mode === "adjacent") baseMap.forEach((skill, skillId) => {
-    if (!compareMap.has(skillId)) {
-      rows.push({
-        type: "removed", skillId, skillName: skill.skillName,
-        baseCoverage: skill.coverage, compareCoverage: 0,
-        delta: -skill.coverage * 100,
-        baseSkill: skill,
-      });
-    }
-  });
+  if (result.mode === "adjacent") {
+    baseMap.forEach((skill, skillId) => {
+      if (!compareMap.has(skillId)) {
+        rows.push({
+          type: "removed",
+          skillId,
+          skillName: skill.skillName,
+          baseCoverage: skill.coverage,
+          compareCoverage: 0,
+          delta: -skill.coverage * 100,
+        });
+      }
+    });
+  }
 
   const order: Record<ChangeType, number> = { added: 0, removed: 1, increased: 2, decreased: 3 };
   return rows.sort((left, right) => order[left.type] - order[right.type] || Math.abs(right.delta) - Math.abs(left.delta));
@@ -139,15 +145,26 @@ export default function GraphSnapshotsPage() {
     setLoading(true);
     try {
       const [baseResponse, compareResponse] = await Promise.all([
-        getSkillGraph(scope.type, scope.id, { ...bounds.base, evidenceLimit: 3 }),
-        getSkillGraph(scope.type, scope.id, { ...bounds.compare, evidenceLimit: 3 }),
+        getSkillGraph(scope.type, scope.id, bounds.base),
+        getSkillGraph(scope.type, scope.id, bounds.compare),
+      ]);
+      const allSkillIds = Array.from(new Set([
+        ...baseResponse.data.directSkillIds,
+        ...compareResponse.data.directSkillIds,
+      ]));
+      // 两个快照共用一次名称批量查询；关系指标仍按各自时间窗口批量读取。
+      const [details, baseMetrics, compareMetrics] = await Promise.all([
+        lookupCanonicalSkills(allSkillIds),
+        lookupSkillGraphMetrics(scope.type, scope.id, baseResponse.data.directSkillIds, bounds.base),
+        lookupSkillGraphMetrics(scope.type, scope.id, compareResponse.data.directSkillIds, bounds.compare),
       ]);
       if (requestVersion.current !== currentRequest) return;
       setResult({
-        base: baseResponse.data,
-        compare: compareResponse.data,
+        base: buildSkillGraphView(baseResponse.data, details.data.items, baseMetrics.data.items),
+        compare: buildSkillGraphView(compareResponse.data, details.data.items, compareMetrics.data.items),
         baseLabel: bounds.baseLabel,
         compareLabel: bounds.compareLabel,
+        scopeName: scope.name,
         mode: matchMode,
       });
     } catch (error) {
@@ -172,7 +189,7 @@ export default function GraphSnapshotsPage() {
       <PageHeader
         breadcrumbs={[t("nav.graph"), t("nav.graphSnapshots")]}
         title="技能图谱 Graph Match"
-        description="默认通过累计截止快照识别目标自然月/年内首次出现的直接技能；也可切换为相邻周期变化。"
+        description="对两个时间窗口的一跳直接技能 ID 与覆盖指标进行比较；技能名称按 ID 并集一次批量解析。"
         actions={<Btn variant="secondary" size="sm" icon={ArrowLeft} onClick={() => nav("graph-browser")}>返回图谱浏览</Btn>}
       />
 
@@ -243,11 +260,10 @@ export default function GraphSnapshotsPage() {
           </div>
 
           {result.mode === "firstSeen" ? (
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <MetricCard title="本周期首次出现" value={addedIds.size} sub="排除历史技能重新出现" />
               <MetricCard title="基准累计技能" value={result.base.skills.length} sub={result.baseLabel} />
               <MetricCard title="目标累计技能" value={result.compare.skills.length} sub={result.compareLabel} />
-              <MetricCard title="目标累计岗位" value={Number(result.compare.totalJobCount)} sub="用于计算覆盖度" />
             </div>
           ) : (
             <div className="grid grid-cols-4 gap-4">
@@ -260,15 +276,15 @@ export default function GraphSnapshotsPage() {
 
           <div className="grid grid-cols-2 gap-4">
             <Card title={`基准图谱 · ${result.baseLabel}`}>
-              <SkillGraphCanvas data={result.base} removedSkillIds={removedIds} maxHeight={430} />
+              <SkillGraphCanvas data={result.base} scopeName={result.scopeName} removedSkillIds={removedIds} maxHeight={430} />
               <div className="px-4 py-3 text-[11px]" style={{ borderTop: `1px solid ${T.cloud}`, color: T.info }}>
-                岗位 {Number(result.base.totalJobCount)} · 直接技能 {result.base.skills.length}{result.mode === "adjacent" ? " · 红色为下一周期消失" : ""}
+                直接技能 {result.base.skills.length}{result.mode === "adjacent" ? " · 红色为下一周期消失" : ""}
               </div>
             </Card>
             <Card title={`目标图谱 · ${result.compareLabel}`}>
-              <SkillGraphCanvas data={result.compare} addedSkillIds={addedIds} maxHeight={430} />
+              <SkillGraphCanvas data={result.compare} scopeName={result.scopeName} addedSkillIds={addedIds} maxHeight={430} />
               <div className="px-4 py-3 text-[11px]" style={{ borderTop: `1px solid ${T.cloud}`, color: T.info }}>
-                岗位 {Number(result.compare.totalJobCount)} · 直接技能 {result.compare.skills.length} · 绿色为本周期新增
+                直接技能 {result.compare.skills.length} · 绿色为本周期新增
               </div>
             </Card>
           </div>
@@ -282,7 +298,7 @@ export default function GraphSnapshotsPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-[13px]">
                   <thead><tr style={{ background: T.cloud }}>
-                    {["变化", "技能", `${result.baseLabel} 覆盖度`, `${result.compareLabel} 覆盖度`, "变化值", "岗位证据"].map((heading) => (
+                    {["变化", "技能", "技能 ID", `${result.baseLabel} 覆盖度`, `${result.compareLabel} 覆盖度`, "变化值"].map((heading) => (
                       <th key={heading} className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: T.info }}>{heading}</th>
                     ))}
                   </tr></thead>
@@ -297,12 +313,10 @@ export default function GraphSnapshotsPage() {
                             </span>
                           </td>
                           <td className="px-4 py-3 font-medium" style={{ color: T.ink }}>{row.skillName}</td>
+                          <td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{row.skillId}</td>
                           <td className="px-4 py-3 font-mono" style={{ color: T.info }}>{(row.baseCoverage * 100).toFixed(1)}%</td>
                           <td className="px-4 py-3 font-mono" style={{ color: T.info }}>{(row.compareCoverage * 100).toFixed(1)}%</td>
                           <td className="px-4 py-3 font-mono" style={{ color: config.color }}>{row.delta > 0 ? "+" : ""}{row.delta.toFixed(1)}pp</td>
-                          <td className="px-4 py-3" style={{ color: T.info }}>
-                            {(row.compareSkill ?? row.baseSkill)?.evidenceJobs.map((job) => job.jobName).filter(Boolean).join("、") || "—"}
-                          </td>
                         </tr>
                       );
                     })}

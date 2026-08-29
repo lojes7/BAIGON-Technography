@@ -34,6 +34,10 @@ type listJobsRequest struct {
 	CompanySize  string `json:"companySize" example:"100-499人"`
 }
 
+type lookupIDsRequest struct {
+	IDs []int64 `json:"ids"`
+}
+
 // ListJobsHandler 分页查询 jobs，并按请求体中的岗位字段组合筛选。
 // @Summary      分页查询岗位
 // @Description  文本条件忽略大小写并执行包含匹配，majorId、occupationId 执行精确匹配
@@ -42,7 +46,7 @@ type listJobsRequest struct {
 // @Produce      json
 // @Security     Bearer
 // @Param        request body listJobsRequest true "分页与岗位筛选条件"
-// @Success      200 {object} response.SuccessBody "data 内含 items/total/page/pageSize"
+// @Success      200 {object} response.SuccessBody{data=response.IDPageData} "data 内含 ids/total/page/pageSize"
 // @Failure      400 {object} response.ErrorBody
 // @Failure      401 {object} response.ErrorBody
 // @Failure      503 {object} response.ErrorBody
@@ -92,24 +96,20 @@ func ListJobsHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			return
 		}
 
-		items := make([]gin.H, 0, len(result.GetItems()))
-		for _, item := range result.GetItems() {
-			items = append(items, jobData(item))
-		}
 		response.Success(c, gin.H{
-			"items": items, "total": result.GetTotal(),
+			"ids": nonNilIDs(result.GetIds()), "total": result.GetTotal(),
 			"page": result.GetPage(), "pageSize": result.GetPageSize(),
 		})
 	}
 }
 
-// GetJobHandler 聚合查询单个岗位、对应专业、职业和正式岗位技能。
+// GetJobHandler 查询单个岗位本体及其外键、岗位技能关系 ID。
 // @Summary      查询岗位详情
 // @Tags         岗位
 // @Produce      json
 // @Security     Bearer
 // @Param        id path int true "jobs.id"
-// @Success      200 {object} response.SuccessBody "data 内含 job/major/occupation/jobSkills"
+// @Success      200 {object} response.SuccessBody{data=job.JobData} "data 为扁平岗位详情与 jobSkillIds"
 // @Failure      400 {object} response.ErrorBody
 // @Failure      401 {object} response.ErrorBody
 // @Failure      404 {object} response.ErrorBody
@@ -146,23 +146,147 @@ func GetJobHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			return
 		}
 
-		var major any
-		if result.GetMajor() != nil {
-			major = majorData(result.GetMajor())
+		response.Success(c, jobData(result.GetJob()))
+	}
+}
+
+// LookupJobsHandler 批量解析岗位详情，最多 200 个去重 ID。
+// @Summary      批量查询岗位详情
+// @Tags         岗位
+// @Accept       json
+// @Produce      json
+// @Security     Bearer
+// @Param        request body lookupIDsRequest true "岗位 ID"
+// @Success      200 {object} response.SuccessBody{data=job.JobLookupData} "data 含 items/missingIds"
+// @Router       /api/jobs/lookup [post]
+func LookupJobsHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var body lookupIDsRequest
+		if err := c.ShouldBindJSON(&body); err != nil {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
 		}
-		var occupation any
-		if result.GetOccupation() != nil {
-			occupation = occupationData(result.GetOccupation())
+		ids, ok := normalizeLookupIDs(body.IDs)
+		if !ok {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
 		}
-		skills := make([]gin.H, 0, len(result.GetJobSkills()))
-		for _, skill := range result.GetJobSkills() {
-			skills = append(skills, jobSkillData(skill))
+		conn, err := pool.GetConn("occupation-service")
+		if err != nil {
+			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+		var trailer metadata.MD
+		result, err := occupationpb.NewOccupationServiceClient(conn).LookupJobs(
+			ctx, &occupationpb.CatalogLookupRequest{
+				Ids: ids, TraceId: c.GetString("trace_id"),
+				UserId: commonhandler.UserIDFromContext(c), UserName: c.GetString("uid"),
+				UserIp: c.ClientIP(), RequestMethod: c.Request.Method,
+				RequestUrl: c.Request.URL.Path,
+			}, grpc.Trailer(&trailer))
+		if err != nil {
+			httpCode, errorCode := commonhandler.GRPCErrorCodes(err, trailer)
+			response.Error(c, httpCode, errorCode)
+			return
+		}
+		items := make([]gin.H, 0, len(result.GetItems()))
+		for _, item := range result.GetItems() {
+			items = append(items, jobData(item))
 		}
 		response.Success(c, gin.H{
-			"job":        jobData(result.GetJob()),
-			"major":      major,
-			"occupation": occupation,
-			"jobSkills":  skills,
+			"items": items, "missingIds": nonNilIDs(result.GetMissingIds()),
+		})
+	}
+}
+
+// GetJobSkillHandler 查询单个正式岗位技能关系本体。
+// @Summary      查询岗位技能详情
+// @Tags         岗位
+// @Produce      json
+// @Security     Bearer
+// @Param        id path int true "job_skills.id"
+// @Success      200 {object} response.SuccessBody{data=job.JobSkillData}
+// @Router       /api/job-skills/{id} [get]
+func GetJobSkillHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, ok := parsePositiveID(c.Param("id"))
+		if !ok {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+		conn, err := pool.GetConn("occupation-service")
+		if err != nil {
+			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+		var trailer metadata.MD
+		result, err := occupationpb.NewOccupationServiceClient(conn).GetJobSkill(
+			ctx, &occupationpb.GetJobRequest{
+				Id: id, TraceId: c.GetString("trace_id"),
+				UserId: commonhandler.UserIDFromContext(c), UserName: c.GetString("uid"),
+				UserIp: c.ClientIP(), RequestMethod: c.Request.Method,
+				RequestUrl: c.Request.URL.Path,
+			}, grpc.Trailer(&trailer))
+		if err != nil {
+			httpCode, errorCode := commonhandler.GRPCErrorCodes(err, trailer)
+			response.Error(c, httpCode, errorCode)
+			return
+		}
+		response.Success(c, jobSkillData(result.GetJobSkill()))
+	}
+}
+
+// LookupJobSkillsHandler 批量解析正式岗位技能关系详情。
+// @Summary      批量查询岗位技能详情
+// @Tags         岗位
+// @Accept       json
+// @Produce      json
+// @Security     Bearer
+// @Param        request body lookupIDsRequest true "岗位技能 ID"
+// @Success      200 {object} response.SuccessBody{data=job.JobSkillLookupData} "data 含 items/missingIds"
+// @Router       /api/job-skills/lookup [post]
+func LookupJobSkillsHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var body lookupIDsRequest
+		if err := c.ShouldBindJSON(&body); err != nil {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+		ids, ok := normalizeLookupIDs(body.IDs)
+		if !ok {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+		conn, err := pool.GetConn("occupation-service")
+		if err != nil {
+			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+		var trailer metadata.MD
+		result, err := occupationpb.NewOccupationServiceClient(conn).LookupJobSkills(
+			ctx, &occupationpb.CatalogLookupRequest{
+				Ids: ids, TraceId: c.GetString("trace_id"),
+				UserId: commonhandler.UserIDFromContext(c), UserName: c.GetString("uid"),
+				UserIp: c.ClientIP(), RequestMethod: c.Request.Method,
+				RequestUrl: c.Request.URL.Path,
+			}, grpc.Trailer(&trailer))
+		if err != nil {
+			httpCode, errorCode := commonhandler.GRPCErrorCodes(err, trailer)
+			response.Error(c, httpCode, errorCode)
+			return
+		}
+		items := make([]gin.H, 0, len(result.GetItems()))
+		for _, item := range result.GetItems() {
+			items = append(items, jobSkillData(item))
+		}
+		response.Success(c, gin.H{
+			"items": items, "missingIds": nonNilIDs(result.GetMissingIds()),
 		})
 	}
 }
@@ -173,6 +297,32 @@ func validListRequest(request listJobsRequest) bool {
 	}
 	return (request.OccupationID == nil || *request.OccupationID > 0) &&
 		(request.MajorID == nil || *request.MajorID > 0)
+}
+
+func normalizeLookupIDs(values []int64) ([]int64, bool) {
+	// 先限制原始请求数量，避免大量重复 ID 绕过 200 条上限。
+	if len(values) == 0 || len(values) > 200 {
+		return nil, false
+	}
+	seen := make(map[int64]struct{}, len(values))
+	ids := make([]int64, 0, len(values))
+	for _, id := range values {
+		if id <= 0 {
+			return nil, false
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	return ids, true
+}
+
+func nonNilIDs(values []int64) []int64 {
+	ids := make([]int64, len(values))
+	copy(ids, values)
+	return ids
 }
 
 func jobData(job *occupationpb.JobData) gin.H {
@@ -197,21 +347,7 @@ func jobData(job *occupationpb.JobData) gin.H {
 		"province": job.GetProvince(), "education": job.GetEducation(),
 		"experience": job.GetExperience(), "jobDescription": job.GetJobDescription(),
 		"createdAt": job.GetCreatedAt(), "updatedAt": job.GetUpdatedAt(),
-	}
-}
-
-func majorData(major *occupationpb.JobMajorData) gin.H {
-	return gin.H{
-		"id": major.GetId(), "code": major.GetCode(), "name": major.GetName(),
-		"majorCategoryId": major.GetMajorCategoryId(),
-	}
-}
-
-func occupationData(occupation *occupationpb.JobOccupationData) gin.H {
-	return gin.H{
-		"id": occupation.GetId(), "code": occupation.GetCode(), "name": occupation.GetName(),
-		"occupationCategoryId": occupation.GetOccupationCategoryId(),
-		"description":          occupation.GetDescription(),
+		"jobSkillIds": nonNilIDs(job.GetJobSkillIds()),
 	}
 }
 
@@ -221,18 +357,10 @@ func jobSkillData(skill *occupationpb.JobSkillData) gin.H {
 		skillID = skill.GetSkillId()
 	}
 	return gin.H{
-		"id": skill.GetId(), "skillId": skillID, "skillName": skill.GetSkillName(),
+		"id": skill.GetId(), "jobId": skill.GetJobId(),
+		"skillId": skillID, "skillName": skill.GetSkillName(),
 		"skillProficiency": skill.GetSkillProficiency(), "evidence": skill.GetEvidence(),
-		"parentSkillIds": nonNilSkillIDs(skill.GetParentSkillIds()),
-		"childSkillIds":  nonNilSkillIDs(skill.GetChildSkillIds()),
 	}
-}
-
-// nonNilSkillIDs 保证空关系在 JSON 中稳定编码为 []，而不是 null。
-func nonNilSkillIDs(ids []int64) []int64 {
-	result := make([]int64, len(ids))
-	copy(result, ids)
-	return result
 }
 
 // MatchMyResumeToJobHandler 使用当前用户最新简历与指定 jobs 记录进行匹配。
@@ -242,7 +370,7 @@ func nonNilSkillIDs(ids []int64) []int64 {
 // @Produce      json
 // @Security     Bearer
 // @Param        id path int true "jobs.id"
-// @Success      200 {object} response.SuccessBody "data 内含匹配结果 ID、分数、摘要、待学习技能和行动建议"
+// @Success      200 {object} response.SuccessBody{data=response.IDData} "data 仅含匹配结果 id"
 // @Failure      400 {object} response.ErrorBody
 // @Failure      401 {object} response.ErrorBody
 // @Failure      403 {object} response.ErrorBody
@@ -292,7 +420,7 @@ func MatchMyResumeToJobHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc
 			return
 		}
 
-		response.Success(c, matchResponseData(result))
+		response.Success(c, gin.H{"id": result.GetId()})
 	}
 }
 
@@ -303,7 +431,7 @@ func MatchMyResumeToJobHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc
 // @Produce      json
 // @Security     Bearer
 // @Param        id path int true "jobs.id"
-// @Success      200 {object} response.SuccessBody "data 内含匹配结果 ID、分数、摘要、待学习技能和行动建议"
+// @Success      200 {object} response.SuccessBody{data=job.MatchResultData} "data 内含匹配结果 ID、分数、摘要、待学习技能和行动建议"
 // @Failure      400 {object} response.ErrorBody
 // @Failure      401 {object} response.ErrorBody
 // @Failure      404 {object} response.ErrorBody

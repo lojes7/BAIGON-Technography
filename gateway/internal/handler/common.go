@@ -17,56 +17,28 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// embeddableCatalogItems 显式保留 is_embed=false，避免 protobuf 的 omitempty 丢字段。
-func embeddableCatalogItems(items []*occupationpb.EmbeddableCatalogItem) []gin.H {
-	result := make([]gin.H, 0, len(items))
-	for _, item := range items {
-		result = append(result, gin.H{
-			"id": item.GetId(), "code": item.GetCode(), "name": item.GetName(),
-			"is_embed": item.GetIsEmbed(),
-		})
-	}
-	return result
-}
-
-// canonicalSkillItems 显式保留 is_embed=false，供人工选择尚未向量化的规范技能。
-func canonicalSkillItems(items []*occupationpb.SkillData) []gin.H {
-	result := make([]gin.H, 0, len(items))
-	for _, item := range items {
-		result = append(result, CanonicalSkillData(item))
-	}
-	return result
-}
-
 // CanonicalSkillData 将单个规范技能映射为技能列表与详情共用的稳定字段。
 func CanonicalSkillData(item *occupationpb.SkillData) gin.H {
 	if item == nil {
 		return nil
 	}
 	return gin.H{
-		"id": item.GetId(), "name": item.GetName(), "is_embed": item.GetIsEmbed(),
+		"id": item.GetId(), "name": item.GetName(), "isEmbed": item.GetIsEmbed(),
 	}
-}
-
-// skillResolutionCandidateItems 将 Top 5 相似技能映射为稳定的前端字段。
-func skillResolutionCandidateItems(items []*occupationpb.JobSkillResolutionCandidate) []gin.H {
-	result := make([]gin.H, 0, len(items))
-	for _, item := range items {
-		result = append(result, gin.H{
-			"skill_id": item.GetSkillId(), "skill_name": item.GetSkillName(),
-			"rank": item.GetRank(), "similarity": item.GetSimilarity(),
-		})
-	}
-	return result
 }
 
 // embeddingTaskData 将三类任务的统一状态映射成稳定的前端字段。
 func embeddingTaskData(status *occupationpb.EmbeddingTaskStatus) gin.H {
 	return gin.H{
-		"status": status.GetStatus(), "traceId": status.GetTraceId(), "total": status.GetTotal(),
+		"id": status.GetTraceId(), "status": status.GetStatus(), "total": status.GetTotal(),
 		"processed": status.GetProcessed(), "succeeded": status.GetSucceeded(), "failed": status.GetFailed(),
 		"message": status.GetMessage(), "startedAt": status.GetStartedAt(), "finishedAt": status.GetFinishedAt(),
 	}
+}
+
+// embeddingCommandData 仅返回本次启动或停止命令关联的追踪 ID。
+func embeddingCommandData(status *occupationpb.EmbeddingTaskStatus) gin.H {
+	return gin.H{"id": status.GetTraceId()}
 }
 
 // CatalogPageQuery 目录列表统一分页搜索参数。
@@ -133,12 +105,11 @@ func PositivePathID(c *gin.Context, name string) (int64, error) {
 
 // SkillGraphQuery 技能图谱按自然月过滤；toMonth 是不包含的上界。
 type SkillGraphQuery struct {
-	FromMonth     string
-	ToMonth       string
-	EvidenceLimit int32
+	FromMonth string
+	ToMonth   string
 }
 
-// ParseSkillGraphQuery 校验 YYYY-MM 边界及每个技能的代表岗位上限。
+// ParseSkillGraphQuery 校验技能图谱的 YYYY-MM 半开时间窗。
 func ParseSkillGraphQuery(c *gin.Context) (SkillGraphQuery, error) {
 	fromMonth := c.Query("fromMonth")
 	toMonth := c.Query("toMonth")
@@ -154,15 +125,8 @@ func ParseSkillGraphQuery(c *gin.Context) (SkillGraphQuery, error) {
 		return SkillGraphQuery{}, fmt.Errorf("fromMonth must be before toMonth")
 	}
 
-	evidenceLimit := 10
-	if value := c.Query("evidenceLimit"); value != "" {
-		evidenceLimit, err = strconv.Atoi(value)
-		if err != nil || evidenceLimit < 1 || evidenceLimit > 50 {
-			return SkillGraphQuery{}, fmt.Errorf("invalid evidenceLimit")
-		}
-	}
 	return SkillGraphQuery{
-		FromMonth: fromMonth, ToMonth: toMonth, EvidenceLimit: int32(evidenceLimit),
+		FromMonth: fromMonth, ToMonth: toMonth,
 	}, nil
 }
 

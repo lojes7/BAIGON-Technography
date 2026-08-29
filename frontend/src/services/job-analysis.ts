@@ -5,10 +5,12 @@ import type {
   JobAnalysisResult,
   JobAnalysisTaskDetail,
   JobAnalysisTaskSummary,
+  JobData,
   PaginatedData,
   ReviewJobAnalysisParams,
 } from "../types/api";
 import { HttpError } from "./http-error";
+import { lookupJobs } from "./jobs";
 import { parseJson, stringifyNumericIdBody } from "./lossless";
 
 const BASE = "/api/auth/occupation/job-analysis";
@@ -21,62 +23,59 @@ type JsonId = string | number;
 
 interface RawTaskSummary {
   id?: JsonId;
-  job_id?: JsonId;
-  trace_id?: JsonId;
-  job_name?: string;
-  task_status?: string;
-  review_status?: string;
-  selected_occupation_id?: JsonId;
-  selected_occupation_name?: string;
-  model_name?: string;
-  error_msg?: string;
+  jobId?: JsonId;
+  taskStatus?: string;
+  reviewStatus?: string;
+  selectedOccupationId?: JsonId;
   attempts?: number;
-  created_at?: string;
-  reviewed_at?: string;
-  reviewed_by?: JsonId;
-  occupation_analysis_status?: string;
-  jd_analysis_status?: string;
-  job_major?: string;
-  selected_major_id?: JsonId;
-  selected_major_name?: string;
-  major_analysis_status?: string;
+  createdAt?: string;
+  reviewedAt?: string;
+  reviewedBy?: JsonId;
+  occupationAnalysisStatus?: string;
+  jdAnalysisStatus?: string;
+  selectedMajorId?: JsonId;
+  majorAnalysisStatus?: string;
+}
+
+interface RawTaskDetail extends RawTaskSummary {
+  candidateIds?: JsonId[];
+  majorCandidateIds?: JsonId[];
+  resultIds?: JsonId[];
 }
 
 interface RawCandidate {
-  occupation_id?: JsonId;
-  occupation_name?: string;
+  id?: JsonId;
+  occupationId?: JsonId;
   rank?: number;
   similarity?: number;
 }
 
 interface RawMajorCandidate {
-  major_id?: JsonId;
-  major_name?: string;
+  id?: JsonId;
+  majorId?: JsonId;
   rank?: number;
   similarity?: number;
 }
 
 interface RawResult {
   id?: JsonId;
-  job_id?: JsonId;
-  skill_name?: string;
-  skill_proficiency?: string;
+  jobId?: JsonId;
+  skillName?: string;
+  skillProficiency?: string;
   evidence?: string;
   rank?: number;
-  review_status?: string;
-  review_action?: string;
-  reviewed_skill_name?: string;
-  reviewed_skill_proficiency?: string;
-  reviewed_evidence?: string;
-  reviewed_at?: string;
-  reviewed_by?: JsonId;
+  reviewStatus?: string;
+  reviewAction?: string;
+  reviewedSkillName?: string;
+  reviewedSkillProficiency?: string;
+  reviewedEvidence?: string;
+  reviewedAt?: string;
+  reviewedBy?: JsonId;
 }
 
-interface RawTaskDetail {
-  task?: RawTaskSummary;
-  candidates?: RawCandidate[];
-  major_candidates?: RawMajorCandidate[];
-  results?: RawResult[];
+interface RawLookupData<T> {
+  items?: T[];
+  missingIds?: JsonId[];
 }
 
 async function request<T>(url: string, init?: RequestInit): Promise<ApiResponse<T>> {
@@ -87,51 +86,44 @@ async function request<T>(url: string, init?: RequestInit): Promise<ApiResponse<
     window.location.href = "/login";
     throw new Error("登录已过期，请重新登录");
   }
-  if (!res.ok) {
-    throw new HttpError(res.status);
-  }
-  const text = await res.text();
-  return parseJson(text) as ApiResponse<T>;
+  if (!res.ok) throw new HttpError(res.status);
+  return parseJson(await res.text()) as ApiResponse<T>;
 }
 
-function nullableId(value: JsonId | undefined): JsonId | null {
-  return value === undefined || value === 0 || value === "0" ? null : value;
+function nullableId(value: JsonId | undefined): string | null {
+  return value === undefined || value === 0 || value === "0" ? null : String(value);
 }
 
 function nullableText(value: string | undefined): string | null {
-  return value ? value : null;
+  return value || null;
 }
 
-// Gateway 当前直接序列化 protobuf 详情，内部字段为 snake_case；在 service 边界统一转为页面使用的 camelCase。
+function uniqueIds(ids: Array<string | number>) {
+  return Array.from(new Set(ids.map(String).filter(Boolean)));
+}
+
 function normalizeTask(raw: RawTaskSummary = {}): JobAnalysisTaskSummary {
   return {
     id: String(raw.id ?? ""),
-    jobId: String(raw.job_id ?? ""),
-    traceId: String(raw.trace_id ?? ""),
-    jobName: raw.job_name ?? "",
-    taskStatus: raw.task_status ?? "",
-    reviewStatus: raw.review_status ?? "",
-    selectedOccupationId: nullableId(raw.selected_occupation_id),
-    selectedOccupationName: raw.selected_occupation_name ?? "",
-    modelName: raw.model_name ?? "",
-    errorMsg: raw.error_msg ?? "",
+    jobId: String(raw.jobId ?? ""),
+    taskStatus: raw.taskStatus ?? "",
+    reviewStatus: raw.reviewStatus ?? "",
+    selectedOccupationId: nullableId(raw.selectedOccupationId),
     attempts: raw.attempts ?? 0,
-    createdAt: raw.created_at ?? "",
-    reviewedAt: nullableText(raw.reviewed_at),
-    reviewedBy: nullableId(raw.reviewed_by),
-    occupationAnalysisStatus: raw.occupation_analysis_status ?? "",
-    jdAnalysisStatus: raw.jd_analysis_status ?? "",
-    jobMajor: raw.job_major ?? "",
-    selectedMajorId: nullableId(raw.selected_major_id),
-    selectedMajorName: raw.selected_major_name ?? "",
-    majorAnalysisStatus: raw.major_analysis_status ?? "",
+    createdAt: raw.createdAt ?? "",
+    reviewedAt: nullableText(raw.reviewedAt),
+    reviewedBy: nullableId(raw.reviewedBy),
+    occupationAnalysisStatus: raw.occupationAnalysisStatus ?? "",
+    jdAnalysisStatus: raw.jdAnalysisStatus ?? "",
+    selectedMajorId: nullableId(raw.selectedMajorId),
+    majorAnalysisStatus: raw.majorAnalysisStatus ?? "",
   };
 }
 
 function normalizeCandidate(raw: RawCandidate): JobAnalysisCandidate {
   return {
-    occupationId: String(raw.occupation_id ?? ""),
-    occupationName: raw.occupation_name ?? "",
+    id: String(raw.id ?? ""),
+    occupationId: String(raw.occupationId ?? ""),
     rank: raw.rank ?? 0,
     similarity: raw.similarity ?? 0,
   };
@@ -139,8 +131,8 @@ function normalizeCandidate(raw: RawCandidate): JobAnalysisCandidate {
 
 function normalizeMajorCandidate(raw: RawMajorCandidate): JobAnalysisMajorCandidate {
   return {
-    majorId: String(raw.major_id ?? ""),
-    majorName: raw.major_name ?? "",
+    id: String(raw.id ?? ""),
+    majorId: String(raw.majorId ?? ""),
     rank: raw.rank ?? 0,
     similarity: raw.similarity ?? 0,
   };
@@ -149,74 +141,116 @@ function normalizeMajorCandidate(raw: RawMajorCandidate): JobAnalysisMajorCandid
 function normalizeResult(raw: RawResult): JobAnalysisResult {
   return {
     id: String(raw.id ?? ""),
-    jobId: String(raw.job_id ?? ""),
-    skillName: raw.skill_name ?? "",
-    skillProficiency: raw.skill_proficiency ?? "",
+    jobId: String(raw.jobId ?? ""),
+    skillName: raw.skillName ?? "",
+    skillProficiency: raw.skillProficiency ?? "",
     evidence: raw.evidence ?? "",
     rank: raw.rank ?? 0,
-    reviewStatus: raw.review_status ?? "",
-    reviewAction: raw.review_action ?? "",
-    reviewedSkillName: raw.reviewed_skill_name ?? "",
-    reviewedSkillProficiency: raw.reviewed_skill_proficiency ?? "",
-    reviewedEvidence: raw.reviewed_evidence ?? "",
-    reviewedAt: nullableText(raw.reviewed_at),
-    reviewedBy: nullableId(raw.reviewed_by),
+    reviewStatus: raw.reviewStatus ?? "",
+    reviewAction: raw.reviewAction ?? "",
+    reviewedSkillName: raw.reviewedSkillName ?? "",
+    reviewedSkillProficiency: raw.reviewedSkillProficiency ?? "",
+    reviewedEvidence: raw.reviewedEvidence ?? "",
+    reviewedAt: nullableText(raw.reviewedAt),
+    reviewedBy: nullableId(raw.reviewedBy),
   };
 }
 
-function normalizeDetail(raw: RawTaskDetail = {}): JobAnalysisTaskDetail {
+async function lookupResource<R, T extends { id: string }>(
+  path: string,
+  ids: Array<string | number>,
+  normalize: (raw: R) => T,
+) {
+  const requestedIds = uniqueIds(ids);
+  if (requestedIds.length === 0) return [];
+  const suffix = path ? `/${path}` : "";
+  const response = await request<RawLookupData<R>>(`${BASE}${suffix}/lookup`, {
+    method: "POST",
+    headers: hdrs(true),
+    body: stringifyNumericIdBody({ ids: requestedIds }, [], ["ids"]),
+  });
+  const items = (response.data.items ?? []).map(normalize);
+  const itemById = new Map(items.map((item) => [item.id, item]));
+  return requestedIds.flatMap((id) => itemById.get(id) ?? []);
+}
+
+export async function lookupJobAnalysisTasks(ids: Array<string | number>) {
+  return lookupResource("", ids, normalizeTask);
+}
+
+export async function lookupJobAnalysisOccupationCandidates(ids: Array<string | number>) {
+  return lookupResource("occupation-candidates", ids, normalizeCandidate);
+}
+
+export async function lookupJobAnalysisMajorCandidates(ids: Array<string | number>) {
+  return lookupResource("major-candidates", ids, normalizeMajorCandidate);
+}
+
+export async function lookupJobAnalysisResults(ids: Array<string | number>) {
+  return lookupResource("results", ids, normalizeResult);
+}
+
+// 列表只取当前服务端页，再按 ID 批量补齐任务摘要，禁止前端扫描全部分页。
+export async function listJobAnalysisTasks(params?: {
+  page?: number;
+  pageSize?: number;
+  taskStatus?: string;
+  reviewStatus?: string;
+}) {
+  const query = new URLSearchParams({
+    page: String(params?.page ?? 0),
+    pageSize: String(params?.pageSize ?? 20),
+  });
+  if (params?.taskStatus) query.set("taskStatus", params.taskStatus);
+  if (params?.reviewStatus) query.set("reviewStatus", params.reviewStatus);
+
+  const index = await request<{ ids?: JsonId[]; total?: number; page?: number; pageSize?: number }>(
+    `${BASE}?${query}`,
+    { headers: hdrs() },
+  );
+  const ids = (index.data.ids ?? []).map(String);
+  const items = await lookupJobAnalysisTasks(ids);
+  const jobs = await lookupJobs(items.map((item) => item.jobId));
   return {
-    task: normalizeTask(raw.task),
-    candidates: (raw.candidates ?? []).map(normalizeCandidate),
-    majorCandidates: (raw.major_candidates ?? []).map(normalizeMajorCandidate),
-    results: (raw.results ?? []).map(normalizeResult),
-  };
+    code: index.code,
+    data: {
+      items,
+      jobs: jobs.data.items,
+      total: Number(index.data.total ?? 0),
+      page: Number(index.data.page ?? 0),
+      pageSize: Number(index.data.pageSize ?? 20),
+    },
+  } as ApiResponse<PaginatedData<JobAnalysisTaskSummary> & { jobs: JobData[] }>;
 }
 
-// 分页查询岗位分析任务（page 从 0 开始；reviewStatus 可选 PENDING / PASSED / REJECTED）。
-export async function listJobAnalysisTasks(params?: { page?: number; pageSize?: number; reviewStatus?: string }) {
-  const q = new URLSearchParams();
-  q.set("page", String(params?.page ?? 0));
-  q.set("pageSize", String(params?.pageSize ?? 20));
-  if (params?.reviewStatus) q.set("reviewStatus", params.reviewStatus);
-
-  const response = await request<{
-    items?: RawTaskSummary[];
-    total?: number;
-    page?: number;
-    pageSize?: number;
-  }>(`${BASE}?${q}`, { headers: hdrs() });
-  const data = response.data;
+// 任务详情只携带资源 ID；候选与结果分别通过批量详情接口解析。
+export async function getJobAnalysisTask(id: string | number) {
+  const response = await request<RawTaskDetail>(`${BASE}/${id}`, { headers: hdrs() });
+  const raw = response.data;
+  const [candidates, majorCandidates, results, jobs] = await Promise.all([
+    lookupJobAnalysisOccupationCandidates((raw.candidateIds ?? []).map(String)),
+    lookupJobAnalysisMajorCandidates((raw.majorCandidateIds ?? []).map(String)),
+    lookupJobAnalysisResults((raw.resultIds ?? []).map(String)),
+    lookupJobs(raw.jobId ? [raw.jobId] : []),
+  ]);
   return {
     ...response,
     data: {
-      items: (data.items ?? []).map(normalizeTask),
-      total: Number(data.total ?? 0),
-      page: data.page ?? 0,
-      pageSize: data.pageSize ?? 20,
+      task: normalizeTask(raw),
+      job: jobs.data.items[0] ?? null,
+      candidates,
+      majorCandidates,
+      results,
     },
-  } as ApiResponse<PaginatedData<JobAnalysisTaskSummary>>;
+  } as ApiResponse<JobAnalysisTaskDetail>;
 }
 
-// 查询岗位分析任务详情（任务 + 专业候选 + 职业候选 + 技能结果）。
-export async function getJobAnalysisTask(id: string | number) {
-  const response = await request<{ analysis?: RawTaskDetail }>(`${BASE}/${id}`, { headers: hdrs() });
-  return {
-    ...response,
-    data: { analysis: normalizeDetail(response.data.analysis) },
-  } as ApiResponse<{ analysis: JobAnalysisTaskDetail }>;
-}
-
-// 审核岗位专业、职业与技能分析。
+// 写接口只返回任务引用；页面在成功后显式刷新所需详情或当前列表页。
 export async function reviewJobAnalysisTask(id: string | number, body: ReviewJobAnalysisParams) {
-  const response = await request<{ analysis?: RawTaskDetail }>(`${BASE}/${id}/review`, {
+  const response = await request<{ id?: JsonId }>(`${BASE}/${id}/review`, {
     method: "PUT",
     headers: hdrs(true),
-    // 雪花 ID 必须作为 JSON 数字回传，不能直接用 Number 转换。
     body: stringifyNumericIdBody(body, ["majorId", "occupationId", "resultId"]),
   });
-  return {
-    ...response,
-    data: { analysis: normalizeDetail(response.data.analysis) },
-  } as ApiResponse<{ analysis: JobAnalysisTaskDetail }>;
+  return { ...response, data: { id: String(response.data.id ?? "") } } as ApiResponse<{ id: string }>;
 }

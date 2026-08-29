@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -15,7 +16,12 @@ public interface JobSkillRepository extends JpaRepository<JobSkill, Long> {
 
     List<JobSkill> findByJobIdAndDeletedAtIsNullOrderByIdAsc(Long jobId);
 
+    List<JobSkill> findByJobIdInAndDeletedAtIsNullOrderByJobIdAscIdAsc(
+            Collection<Long> jobIds);
+
     Optional<JobSkill> findByIdAndDeletedAtIsNull(Long id);
+
+    List<JobSkill> findByIdInAndDeletedAtIsNullOrderByIdAsc(Collection<Long> ids);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT skill FROM JobSkill skill WHERE skill.id = :id AND skill.deletedAt IS NULL")

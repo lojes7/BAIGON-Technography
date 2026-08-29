@@ -1,18 +1,12 @@
 // 百工谱 — 职业/专业技能时间图谱查询业务层
 package com.baigon.occupation.service.skill.graph;
 
-import com.baigon.occupation.entity.major.Major;
-import com.baigon.occupation.entity.occupation.Occupation;
-import com.baigon.occupation.entity.skill.Skill;
 import com.baigon.occupation.error.ApiException;
 import com.baigon.occupation.repository.major.MajorRepository;
 import com.baigon.occupation.repository.occupation.OccupationRepository;
-import com.baigon.occupation.repository.skill.SkillRepository;
 import com.baigon.occupation.repository.skill.graph.SkillGraphQueryRepository;
-import com.baigon.occupation.repository.skill.graph.SkillGraphQueryRepository.JobEvidence;
 import com.baigon.occupation.repository.skill.graph.SkillGraphQueryRepository.ScopeType;
-import com.baigon.occupation.repository.skill.graph.SkillGraphQueryRepository.SkillAggregate;
-import com.baigon.occupation.service.skill.SkillHierarchyService;
+import com.baigon.occupation.repository.skill.graph.SkillGraphQueryRepository.SkillMetricAggregate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,115 +14,116 @@ import java.time.OffsetDateTime;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 @Service
 @Transactional(readOnly = true)
 public class SkillGraphQueryService {
 
     private static final ZoneId TIMELINE_ZONE = ZoneId.of("Asia/Shanghai");
-    private static final int DEFAULT_EVIDENCE_LIMIT = 10;
-    private static final int MAX_EVIDENCE_LIMIT = 50;
+    private static final int DEFAULT_PAGE_SIZE = 20;
+    private static final int MAX_PAGE_SIZE = 100;
+    private static final int MAX_LOOKUP_SKILLS = 200;
 
     private final SkillGraphQueryRepository graphRepository;
     private final OccupationRepository occupationRepository;
     private final MajorRepository majorRepository;
-    private final SkillRepository skillRepository;
-    private final SkillHierarchyService hierarchyService;
 
     public SkillGraphQueryService(SkillGraphQueryRepository graphRepository,
                                   OccupationRepository occupationRepository,
-                                  MajorRepository majorRepository,
-                                  SkillRepository skillRepository,
-                                  SkillHierarchyService hierarchyService) {
+                                  MajorRepository majorRepository) {
         this.graphRepository = graphRepository;
         this.occupationRepository = occupationRepository;
         this.majorRepository = majorRepository;
-        this.skillRepository = skillRepository;
-        this.hierarchyService = hierarchyService;
     }
 
     public SkillGraph getGraph(String scopeType,
                                Long scopeId,
                                String fromMonth,
-                               String toMonth,
-                               Integer evidenceLimit) {
+                               String toMonth) {
         ScopeType scope = scope(scopeType);
         long id = positiveId(scopeId);
         Timeline timeline = timeline(fromMonth, toMonth);
-        int normalizedEvidenceLimit = evidenceLimit(evidenceLimit);
-        ScopeDescriptor descriptor = descriptor(scope, id);
+        validateScope(scope, id);
+
+        List<Long> directSkillIds = graphRepository.findDirectSkillIds(
+                scope, id, timeline.publishedFrom(), timeline.publishedTo());
+        return new SkillGraph(id, List.copyOf(directSkillIds));
+    }
+
+    public MetricLookup lookupMetrics(String scopeType,
+                                      Long scopeId,
+                                      Collection<Long> skillIds,
+                                      String fromMonth,
+                                      String toMonth) {
+        ScopeType scope = scope(scopeType);
+        long id = positiveId(scopeId);
+        LinkedHashSet<Long> ids = normalizedSkillIds(skillIds);
+        Timeline timeline = timeline(fromMonth, toMonth);
+        validateScope(scope, id);
 
         long totalJobCount = graphRepository.countJobs(
                 scope, id, timeline.publishedFrom(), timeline.publishedTo());
-        List<SkillAggregate> aggregates = graphRepository.findSkills(
-                scope, id, timeline.publishedFrom(), timeline.publishedTo());
-        if (aggregates.isEmpty()) {
-            return new SkillGraph(descriptor, timeline, totalJobCount, List.of());
-        }
-
-        List<Long> skillIds = aggregates.stream().map(SkillAggregate::skillId).toList();
-        Map<Long, SkillHierarchyService.DirectRelations> relations =
-                hierarchyService.directRelations(skillIds);
-        Map<Long, Skill> parentSkills = parentSkills(relations.values());
-        Map<Long, List<JobEvidence>> evidenceBySkill = graphRepository.findEvidence(
-                        scope, id, timeline.publishedFrom(), timeline.publishedTo(),
-                        normalizedEvidenceLimit)
+        Map<Long, SkillMetric> metricsById = new LinkedHashMap<>();
+        graphRepository.findMetrics(
+                        scope, id, ids, timeline.publishedFrom(), timeline.publishedTo())
                 .stream()
-                .collect(Collectors.groupingBy(
-                        JobEvidence::skillId, LinkedHashMap::new, Collectors.toList()));
-
-        List<SkillNode> nodes = new ArrayList<>();
-        for (SkillAggregate aggregate : aggregates) {
-            SkillHierarchyService.DirectRelations direct = relations.getOrDefault(
-                    aggregate.skillId(), SkillHierarchyService.DirectRelations.empty());
-            List<ParentSkill> parents = direct.parentSkillIds().stream()
-                    .map(parentSkills::get)
-                    .filter(java.util.Objects::nonNull)
-                    .map(skill -> new ParentSkill(skill.getId(), skill.getName()))
-                    .toList();
-            double coverage = totalJobCount == 0
-                    ? 0 : (double) aggregate.jobCount() / totalJobCount;
-            nodes.add(new SkillNode(
-                    aggregate.skillId(), aggregate.skillName(), aggregate.jobCount(),
-                    coverage, parents,
-                    List.copyOf(evidenceBySkill.getOrDefault(aggregate.skillId(), List.of()))));
-        }
-        return new SkillGraph(descriptor, timeline, totalJobCount, List.copyOf(nodes));
+                .map(aggregate -> metric(aggregate, totalJobCount))
+                .forEach(metric -> metricsById.put(metric.skillId(), metric));
+        List<SkillMetric> items = ids.stream()
+                .map(metricsById::get)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        List<Long> missingIds = ids.stream()
+                .filter(skillId -> !metricsById.containsKey(skillId))
+                .toList();
+        return new MetricLookup(List.copyOf(items), List.copyOf(missingIds));
     }
 
-    private ScopeDescriptor descriptor(ScopeType scope, long scopeId) {
+    public EvidencePage listEvidenceJobs(String scopeType,
+                                         Long scopeId,
+                                         Long skillId,
+                                         String fromMonth,
+                                         String toMonth,
+                                         int page,
+                                         int pageSize) {
+        ScopeType scope = scope(scopeType);
+        long id = positiveId(scopeId);
+        long normalizedSkillId = positiveSkillId(skillId);
+        Timeline timeline = timeline(fromMonth, toMonth);
+        int size = normalizedPageSize(page, pageSize);
+        validateScope(scope, id);
+
+        long total = graphRepository.countEvidenceJobs(
+                scope, id, normalizedSkillId,
+                timeline.publishedFrom(), timeline.publishedTo());
+        List<Long> jobIds = total == 0 ? List.of() : graphRepository.findEvidenceJobIds(
+                scope, id, normalizedSkillId,
+                timeline.publishedFrom(), timeline.publishedTo(), page, size);
+        return new EvidencePage(List.copyOf(jobIds), total, page, size);
+    }
+
+    private SkillMetric metric(SkillMetricAggregate aggregate, long totalJobCount) {
+        double coverage = totalJobCount == 0
+                ? 0 : (double) aggregate.jobCount() / totalJobCount;
+        return new SkillMetric(aggregate.skillId(), aggregate.jobCount(), coverage);
+    }
+
+    private void validateScope(ScopeType scope, long scopeId) {
         if (scope == ScopeType.OCCUPATION) {
-            Occupation occupation = occupationRepository.findByIdAndDeletedAtIsNull(scopeId)
-                    .orElseThrow(() -> new ApiException(
-                            ApiException.ErrorCode.NOT_FOUND, "occupation not found"));
-            return new ScopeDescriptor(scope.name(), occupation.getId(),
-                    occupation.getCode(), occupation.getName());
+            if (occupationRepository.findByIdAndDeletedAtIsNull(scopeId).isEmpty()) {
+                throw new ApiException(ApiException.ErrorCode.NOT_FOUND, "occupation not found");
+            }
+            return;
         }
-        Major major = majorRepository.findByIdAndDeletedAtIsNull(scopeId)
-                .orElseThrow(() -> new ApiException(
-                        ApiException.ErrorCode.NOT_FOUND, "major not found"));
-        return new ScopeDescriptor(scope.name(), major.getId(), major.getCode(), major.getName());
-    }
-
-    private Map<Long, Skill> parentSkills(
-            Collection<SkillHierarchyService.DirectRelations> relations) {
-        Set<Long> ids = relations.stream()
-                .flatMap(relation -> relation.parentSkillIds().stream())
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-        if (ids.isEmpty()) return Map.of();
-        return skillRepository.findByIdInAndDeletedAtIsNullOrderByIdAsc(ids).stream()
-                .collect(Collectors.toMap(
-                        Skill::getId, Function.identity(), (left, right) -> left, LinkedHashMap::new));
+        if (majorRepository.findByIdAndDeletedAtIsNull(scopeId).isEmpty()) {
+            throw new ApiException(ApiException.ErrorCode.NOT_FOUND, "major not found");
+        }
     }
 
     private Timeline timeline(String fromMonth, String toMonth) {
@@ -137,10 +132,7 @@ public class SkillGraphQueryService {
         if (from != null && to != null && !from.isBefore(to)) {
             throw new IllegalArgumentException("from_month must be before to_month");
         }
-        return new Timeline(
-                from == null ? "" : from.toString(),
-                to == null ? "" : to.toString(),
-                monthStart(from), monthStart(to), TIMELINE_ZONE.getId());
+        return new Timeline(monthStart(from), monthStart(to));
     }
 
     private OffsetDateTime monthStart(YearMonth month) {
@@ -173,38 +165,48 @@ public class SkillGraphQueryService {
         return value;
     }
 
-    private int evidenceLimit(Integer value) {
-        int limit = value == null || value == 0 ? DEFAULT_EVIDENCE_LIMIT : value;
-        if (limit < 1 || limit > MAX_EVIDENCE_LIMIT) {
-            throw new IllegalArgumentException("evidence_limit must be between 1 and 50");
+    private LinkedHashSet<Long> normalizedSkillIds(Collection<Long> values) {
+        if (values == null || values.isEmpty() || values.size() > MAX_LOOKUP_SKILLS) {
+            throw new IllegalArgumentException("skill_ids must contain between 1 and 200 ids");
         }
-        return limit;
+        LinkedHashSet<Long> ids = new LinkedHashSet<>();
+        for (Long value : values) ids.add(positiveSkillId(value));
+        return ids;
     }
 
-    public record ScopeDescriptor(String type, long id, String code, String name) {
+    private long positiveSkillId(Long value) {
+        if (value == null || value <= 0) {
+            throw new IllegalArgumentException("skill_id must be > 0");
+        }
+        return value;
     }
 
-    public record Timeline(String fromMonth,
-                           String toMonth,
-                           OffsetDateTime publishedFrom,
-                           OffsetDateTime publishedTo,
-                           String timezone) {
+    private int normalizedPageSize(int page, int pageSize) {
+        if (page < 0) {
+            throw new IllegalArgumentException("page must be >= 0");
+        }
+        int size = pageSize == 0 ? DEFAULT_PAGE_SIZE : pageSize;
+        if (size < 1 || size > MAX_PAGE_SIZE) {
+            throw new IllegalArgumentException("page_size must be between 1 and 100");
+        }
+        return size;
     }
 
-    public record ParentSkill(long id, String name) {
+    private record Timeline(OffsetDateTime publishedFrom, OffsetDateTime publishedTo) {
     }
 
-    public record SkillNode(long id,
-                            String name,
-                            long jobCount,
-                            double coverage,
-                            List<ParentSkill> parents,
-                            List<JobEvidence> evidenceJobs) {
+    public record SkillGraph(long scopeId, List<Long> directSkillIds) {
     }
 
-    public record SkillGraph(ScopeDescriptor scope,
-                             Timeline timeline,
-                             long totalJobCount,
-                             List<SkillNode> skills) {
+    public record SkillMetric(long skillId, long jobCount, double coverage) {
+    }
+
+    public record MetricLookup(List<SkillMetric> items, List<Long> missingIds) {
+    }
+
+    public record EvidencePage(List<Long> jobIds,
+                               long total,
+                               int page,
+                               int pageSize) {
     }
 }

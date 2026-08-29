@@ -27,15 +27,19 @@ type listUsersRequest struct {
 	DepartmentID int64  `json:"departmentId" example:"1"`
 }
 
+type batchIDsRequest struct {
+	IDs []int64 `json:"ids" binding:"required"`
+}
+
 // ListUsersHandler 分页查询用户基础信息。
 // @Summary      ADMIN 分页查询用户
-// @Description  name 为包含匹配，role 和三个组织 ID 为精确匹配；列表只返回用户基础字段
+// @Description  name 为包含匹配，role 和三个组织 ID 为精确匹配；分页结果仅返回 ids，详情通过 lookup 获取
 // @Tags         用户管理
 // @Accept       json
 // @Produce      json
 // @Security     Bearer
 // @Param        request body listUsersRequest true "分页与用户筛选条件"
-// @Success      200 {object} response.SuccessBody "data 内含 items/total/page/pageSize"
+// @Success      200 {object} response.SuccessBody{data=response.IDPageData} "data 内含 ids/total/page/pageSize"
 // @Failure      400 {object} response.ErrorBody
 // @Failure      401 {object} response.ErrorBody
 // @Failure      403 {object} response.ErrorBody
@@ -82,13 +86,64 @@ func ListUsersHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			return
 		}
 
+		response.Success(c, gin.H{
+			"ids": nonNilBatchIDs(result.GetUserIds()), "total": result.GetTotal(),
+			"page": result.GetPage(), "pageSize": result.GetPageSize(),
+		})
+	}
+}
+
+// BatchGetUsersHandler 按 ID 批量查询用户详情。
+// @Summary ADMIN 批量查询用户详情
+// @Tags 用户管理
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param body body batchIDsRequest true "1 至 200 个用户 ID"
+// @Success 200 {object} response.SuccessBody{data=user.UserLookupData}
+// @Failure 400 {object} response.ErrorBody
+// @Router /api/auth/users/lookup [post]
+func BatchGetUsersHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var body batchIDsRequest
+		if err := c.ShouldBindJSON(&body); err != nil {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+		ids, ok := normalizeBatchIDs(body.IDs)
+		if !ok {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+		conn, err := pool.GetConn("occupation-service")
+		if err != nil {
+			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+		var trailer metadata.MD
+		result, err := userpb.NewUserServiceClient(conn).BatchGetUsers(
+			ctx,
+			&userpb.BatchGetUsersRequest{
+				Ids: ids, TraceId: c.GetString("trace_id"),
+				UserId: commonhandler.UserIDFromContext(c), UserName: c.GetString("uid"),
+				UserIp: c.ClientIP(), RequestMethod: c.Request.Method,
+				RequestUrl: c.Request.URL.Path,
+			},
+			grpc.Trailer(&trailer),
+		)
+		if err != nil {
+			httpCode, errorCode := commonhandler.GRPCErrorCodes(err, trailer)
+			response.Error(c, httpCode, errorCode)
+			return
+		}
 		items := make([]gin.H, 0, len(result.GetItems()))
 		for _, item := range result.GetItems() {
 			items = append(items, userData(item))
 		}
 		response.Success(c, gin.H{
-			"items": items, "total": result.GetTotal(),
-			"page": result.GetPage(), "pageSize": result.GetPageSize(),
+			"items": items, "missingIds": nonNilBatchIDs(result.GetMissingIds()),
 		})
 	}
 }
@@ -99,7 +154,7 @@ func ListUsersHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 // @Produce      json
 // @Security     Bearer
 // @Param        id path int true "用户 ID"
-// @Success      200 {object} response.SuccessBody "data 内含 user/university/school/department"
+// @Success      200 {object} response.SuccessBody{data=user.UserData} "data 为用户自身字段及三个组织 ID，不嵌入组织对象或名称"
 // @Failure      400 {object} response.ErrorBody
 // @Failure      401 {object} response.ErrorBody
 // @Failure      403 {object} response.ErrorBody
@@ -153,7 +208,7 @@ func GetUserHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 // @Produce      json
 // @Security     Bearer
 // @Param        id path int true "用户 ID"
-// @Success      200 {object} response.SuccessBody "data 为封禁后的用户基础信息"
+// @Success      200 {object} response.SuccessBody{data=response.IDData} "data 仅含用户 id"
 // @Failure      400 {object} response.ErrorBody
 // @Failure      401 {object} response.ErrorBody
 // @Failure      403 {object} response.ErrorBody
@@ -192,11 +247,11 @@ func BlockUserHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			return
 		}
 
-		if result.GetUser() == nil {
+		if result.GetUserId() <= 0 {
 			response.Error(c, http.StatusInternalServerError, http.StatusInternalServerError)
 			return
 		}
-		response.Success(c, userData(result.GetUser()))
+		response.Success(c, gin.H{"id": result.GetUserId()})
 	}
 }
 
@@ -206,7 +261,7 @@ func BlockUserHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 // @Produce      json
 // @Security     Bearer
 // @Param        id path int true "用户 ID"
-// @Success      200 {object} response.SuccessBody "data 为解封后的完整用户信息"
+// @Success      200 {object} response.SuccessBody{data=response.IDData} "data 仅含用户 id"
 // @Failure      400 {object} response.ErrorBody
 // @Failure      401 {object} response.ErrorBody
 // @Failure      403 {object} response.ErrorBody
@@ -245,11 +300,11 @@ func UnlockUserHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			return
 		}
 
-		if result.GetUser() == nil {
+		if result.GetUserId() <= 0 {
 			response.Error(c, http.StatusInternalServerError, http.StatusInternalServerError)
 			return
 		}
-		response.Success(c, userData(result.GetUser()))
+		response.Success(c, gin.H{"id": result.GetUserId()})
 	}
 }
 
@@ -261,7 +316,7 @@ func UnlockUserHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 // @Param        page query int false "页码，从 0 开始"
 // @Param        pageSize query int false "每页条数，默认 20，最大 100"
 // @Param        keyword query string false "高校名称关键词"
-// @Success      200 {object} response.SuccessBody
+// @Success      200 {object} response.SuccessBody{data=response.IDPageData}
 // @Failure      400 {object} response.ErrorBody
 // @Failure      401 {object} response.ErrorBody
 // @Failure      403 {object} response.ErrorBody
@@ -286,7 +341,7 @@ func ListUniversitiesHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 // @Param        pageSize query int false "每页条数，默认 20，最大 100"
 // @Param        keyword query string false "学院名称关键词"
 // @Param        universityId query int false "高校 ID；不传返回全部学院"
-// @Success      200 {object} response.SuccessBody
+// @Success      200 {object} response.SuccessBody{data=response.IDPageData}
 // @Failure      400 {object} response.ErrorBody
 // @Failure      401 {object} response.ErrorBody
 // @Failure      403 {object} response.ErrorBody
@@ -311,7 +366,7 @@ func ListSchoolsHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 // @Param        pageSize query int false "每页条数，默认 20，最大 100"
 // @Param        keyword query string false "系部名称关键词"
 // @Param        schoolId query int false "学院 ID；不传返回全部系部"
-// @Success      200 {object} response.SuccessBody
+// @Success      200 {object} response.SuccessBody{data=response.IDPageData}
 // @Failure      400 {object} response.ErrorBody
 // @Failure      401 {object} response.ErrorBody
 // @Failure      403 {object} response.ErrorBody
@@ -324,6 +379,69 @@ func ListDepartmentsHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 		options ...grpc.CallOption,
 	) (*userpb.OrganizationListResponse, error) {
 		return client.ListDepartments(ctx, request, options...)
+	})
+}
+
+// BatchGetUniversitiesHandler 按 ID 批量查询高校详情。
+// @Summary ADMIN 批量查询高校详情
+// @Tags 用户管理
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param body body batchIDsRequest true "1 至 200 个高校 ID"
+// @Success 200 {object} response.SuccessBody{data=user.OrganizationLookupData}
+// @Failure 400 {object} response.ErrorBody
+// @Router /api/auth/users/universities/lookup [post]
+func BatchGetUniversitiesHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
+	return organizationBatchHandler(pool, func(
+		client userpb.UserServiceClient,
+		ctx context.Context,
+		request *userpb.OrganizationBatchRequest,
+		options ...grpc.CallOption,
+	) (*userpb.OrganizationBatchResponse, error) {
+		return client.BatchGetUniversities(ctx, request, options...)
+	})
+}
+
+// BatchGetSchoolsHandler 按 ID 批量查询学院详情。
+// @Summary ADMIN 批量查询学院详情
+// @Tags 用户管理
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param body body batchIDsRequest true "1 至 200 个学院 ID"
+// @Success 200 {object} response.SuccessBody{data=user.OrganizationLookupData}
+// @Failure 400 {object} response.ErrorBody
+// @Router /api/auth/users/schools/lookup [post]
+func BatchGetSchoolsHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
+	return organizationBatchHandler(pool, func(
+		client userpb.UserServiceClient,
+		ctx context.Context,
+		request *userpb.OrganizationBatchRequest,
+		options ...grpc.CallOption,
+	) (*userpb.OrganizationBatchResponse, error) {
+		return client.BatchGetSchools(ctx, request, options...)
+	})
+}
+
+// BatchGetDepartmentsHandler 按 ID 批量查询系部详情。
+// @Summary ADMIN 批量查询系部详情
+// @Tags 用户管理
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param body body batchIDsRequest true "1 至 200 个系部 ID"
+// @Success 200 {object} response.SuccessBody{data=user.OrganizationLookupData}
+// @Failure 400 {object} response.ErrorBody
+// @Router /api/auth/users/departments/lookup [post]
+func BatchGetDepartmentsHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
+	return organizationBatchHandler(pool, func(
+		client userpb.UserServiceClient,
+		ctx context.Context,
+		request *userpb.OrganizationBatchRequest,
+		options ...grpc.CallOption,
+	) (*userpb.OrganizationBatchResponse, error) {
+		return client.BatchGetDepartments(ctx, request, options...)
 	})
 }
 
@@ -378,13 +496,65 @@ func organizationListHandler(pool *grpcpool.GrpcClientPool,
 			return
 		}
 
+		response.Success(c, gin.H{
+			"ids": nonNilBatchIDs(result.GetOrganizationIds()), "total": result.GetTotal(),
+			"page": result.GetPage(), "pageSize": result.GetPageSize(),
+		})
+	}
+}
+
+type organizationBatchRPC func(
+	client userpb.UserServiceClient,
+	ctx context.Context,
+	request *userpb.OrganizationBatchRequest,
+	options ...grpc.CallOption,
+) (*userpb.OrganizationBatchResponse, error)
+
+func organizationBatchHandler(
+	pool *grpcpool.GrpcClientPool,
+	call organizationBatchRPC,
+) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var body batchIDsRequest
+		if err := c.ShouldBindJSON(&body); err != nil {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+		ids, ok := normalizeBatchIDs(body.IDs)
+		if !ok {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+		conn, err := pool.GetConn("occupation-service")
+		if err != nil {
+			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+		var trailer metadata.MD
+		result, err := call(
+			userpb.NewUserServiceClient(conn),
+			ctx,
+			&userpb.OrganizationBatchRequest{
+				Ids: ids, TraceId: c.GetString("trace_id"),
+				UserId: commonhandler.UserIDFromContext(c), UserName: c.GetString("uid"),
+				UserIp: c.ClientIP(), RequestMethod: c.Request.Method,
+				RequestUrl: c.Request.URL.Path,
+			},
+			grpc.Trailer(&trailer),
+		)
+		if err != nil {
+			httpCode, errorCode := commonhandler.GRPCErrorCodes(err, trailer)
+			response.Error(c, httpCode, errorCode)
+			return
+		}
 		items := make([]gin.H, 0, len(result.GetItems()))
 		for _, item := range result.GetItems() {
 			items = append(items, organizationData(item))
 		}
 		response.Success(c, gin.H{
-			"items": items, "total": result.GetTotal(),
-			"page": result.GetPage(), "pageSize": result.GetPageSize(),
+			"items": items, "missingIds": nonNilBatchIDs(result.GetMissingIds()),
 		})
 	}
 }
@@ -401,12 +571,39 @@ func userData(user *userpb.UserData) gin.H {
 	return gin.H{
 		"id": user.GetId(), "uid": user.GetUid(), "name": user.GetName(),
 		"role": user.GetRole(), "status": user.GetStatus(),
-		"university_id": user.GetUniversityId(), "university_name": user.GetUniversityName(),
-		"school_id": user.GetSchoolId(), "school_name": user.GetSchoolName(),
-		"department_id": user.GetDepartmentId(), "department_name": user.GetDepartmentName(),
+		"universityId": user.GetUniversityId(), "schoolId": user.GetSchoolId(),
+		"departmentId": user.GetDepartmentId(),
 	}
 }
 
+func normalizeBatchIDs(ids []int64) ([]int64, bool) {
+	if len(ids) == 0 || len(ids) > 200 {
+		return nil, false
+	}
+	seen := make(map[int64]struct{}, len(ids))
+	normalized := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			return nil, false
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		normalized = append(normalized, id)
+	}
+	return normalized, true
+}
+
+// nonNilBatchIDs 保证空 missingIds 稳定编码为 []。
+func nonNilBatchIDs(ids []int64) []int64 {
+	result := make([]int64, len(ids))
+	copy(result, ids)
+	return result
+}
+
 func organizationData(item *userpb.OrganizationData) gin.H {
-	return gin.H{"id": item.GetId(), "name": item.GetName()}
+	return gin.H{
+		"id": item.GetId(), "name": item.GetName(), "parentId": item.GetParentId(),
+	}
 }

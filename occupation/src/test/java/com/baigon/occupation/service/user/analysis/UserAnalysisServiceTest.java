@@ -23,6 +23,11 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.transaction.support.TransactionOperations;
 
 import java.time.OffsetDateTime;
@@ -332,27 +337,62 @@ class UserAnalysisServiceTest {
     }
 
     @Test
-    void listSkillsShouldUseOnlyCurrentUserTimelineQuery() {
-        UserGraph graph = new UserGraph();
-        graph.setId(501L);
-        graph.setUserId(7L);
-        graph.setResumeId(101L);
-        graph.setSkillName("Java");
-        graph.setProficiency(
-                com.baigon.occupation.entity.user.analysis.UserSkillProficiency.ADVANCED);
-        graph.setEvidence("Java 开发经验");
-        graph.setCreatedAt(OffsetDateTime.parse("2026-08-20T10:00:00+08:00"));
-        when(graphRepository
-                .findByUserIdAndDeletedAtIsNullOrderByCreatedAtAscRankAscIdAsc(7L))
-                .thenReturn(List.of(graph));
+    void listSkillsShouldUseServerPaginationForCurrentUserOnly() {
+        UserGraph graph = userGraph(501L, "Java");
+        when(graphRepository.findByUserIdAndDeletedAtIsNull(eq(7L), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(graph), PageRequest.of(1, 20), 21));
 
-        List<UserAnalysisService.UserSkillData> result = service.listMySkills(7L);
+        Page<UserAnalysisService.UserSkillData> result = service.listMySkills(7L, 1, 20);
 
-        assertEquals(1, result.size());
-        assertEquals(501L, result.get(0).id());
-        assertEquals("ADVANCED", result.get(0).proficiency());
-        verify(graphRepository)
-                .findByUserIdAndDeletedAtIsNullOrderByCreatedAtAscRankAscIdAsc(7L);
+        assertEquals(1, result.getContent().size());
+        assertEquals(501L, result.getContent().getFirst().id());
+        assertEquals("ADVANCED", result.getContent().getFirst().proficiency());
+        assertEquals(21L, result.getTotalElements());
+        ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
+        verify(graphRepository).findByUserIdAndDeletedAtIsNull(eq(7L), pageable.capture());
+        assertEquals(1, pageable.getValue().getPageNumber());
+        assertEquals(20, pageable.getValue().getPageSize());
+        assertEquals(Sort.Direction.ASC,
+                pageable.getValue().getSort().getOrderFor("createdAt").getDirection());
+    }
+
+    @Test
+    void getSkillShouldEnforceCurrentUserOwnership() {
+        UserGraph graph = userGraph(501L, "Java");
+        when(graphRepository.findByIdAndUserIdAndDeletedAtIsNull(501L, 7L))
+                .thenReturn(Optional.of(graph));
+        when(graphRepository.findByIdAndUserIdAndDeletedAtIsNull(501L, 8L))
+                .thenReturn(Optional.empty());
+
+        assertEquals(501L, service.getMySkill(7L, 501L).id());
+        ApiException exception = assertThrows(ApiException.class,
+                () -> service.getMySkill(8L, 501L));
+        assertEquals(ApiException.ErrorCode.NOT_FOUND, exception.getErrorCode());
+    }
+
+    @Test
+    void batchSkillsShouldDeduplicateAndKeepRequestOrderWithinCurrentUser() {
+        UserGraph first = userGraph(502L, "Go");
+        UserGraph second = userGraph(501L, "Java");
+        when(graphRepository.findByUserIdAndIdInAndDeletedAtIsNull(
+                7L, List.of(502L, 501L, 999L)))
+                .thenReturn(List.of(second, first));
+
+        List<UserAnalysisService.UserSkillData> result =
+                service.batchGetMySkills(7L, List.of(502L, 501L, 502L, 999L));
+
+        assertEquals(List.of(502L, 501L), result.stream()
+                .map(UserAnalysisService.UserSkillData::id).toList());
+        verify(graphRepository).findByUserIdAndIdInAndDeletedAtIsNull(
+                7L, List.of(502L, 501L, 999L));
+    }
+
+    @Test
+    void batchSkillsShouldRequireOneToTwoHundredRawIds() {
+        assertThrows(IllegalArgumentException.class,
+                () -> service.batchGetMySkills(7L, List.of()));
+        assertThrows(IllegalArgumentException.class, () ->
+                service.batchGetMySkills(7L, java.util.Collections.nCopies(201, 1L)));
     }
 
     @Test
@@ -522,6 +562,19 @@ class UserAnalysisServiceTest {
         pending.setCreatedAt(createdAt);
         pending.setUpdatedAt(createdAt);
         return pending;
+    }
+
+    private UserGraph userGraph(long id, String skillName) {
+        UserGraph graph = new UserGraph();
+        graph.setId(id);
+        graph.setUserId(7L);
+        graph.setResumeId(101L);
+        graph.setSkillName(skillName);
+        graph.setProficiency(
+                com.baigon.occupation.entity.user.analysis.UserSkillProficiency.ADVANCED);
+        graph.setEvidence(skillName + " 开发经验");
+        graph.setCreatedAt(OffsetDateTime.parse("2026-08-20T10:00:00+08:00"));
+        return graph;
     }
 
     private Resume resume(long id, String content) {

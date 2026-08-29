@@ -10,6 +10,8 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 public interface JobRepository extends JpaRepository<Job, Long> {
@@ -49,6 +51,8 @@ public interface JobRepository extends JpaRepository<Job, Long> {
     Optional<Job> findByTraceIdAndDeletedAtIsNull(Long traceId);
 
     Optional<Job> findByIdAndDeletedAtIsNull(Long id);
+
+    List<Job> findByIdInAndDeletedAtIsNullOrderByIdAsc(Collection<Long> ids);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT job FROM Job job WHERE job.id = :id AND job.deletedAt IS NULL")

@@ -94,6 +94,12 @@ class LogRepository:
             total = int(session.scalar(count_query) or 0)
         return items, total
 
+    def batch_get(self, ids: list[int]) -> list[Log]:
+        """批量读取未软删除日志，顺序由业务层按请求 ID 恢复。"""
+        query = select(Log).where(Log.deleted_at.is_(None), Log.id.in_(ids))
+        with self._session_factory() as session:
+            return list(session.scalars(query).all())
+
     def close(self) -> None:
         self._engine.dispose()
         logger.info("日志表引擎已关闭")

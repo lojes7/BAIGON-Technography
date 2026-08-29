@@ -33,7 +33,7 @@ type crawlRequest struct {
 // @Produce      json
 // @Security     Bearer
 // @Param        request body crawlRequest true "采集请求"
-// @Success      200  {object}  response.SuccessBody  "采集完成，data 内含 count 与 trace_id"
+// @Success      200  {object}  response.SuccessBody{data=response.IDData}  "采集任务已启动，data 内仅含任务 id"
 // @Failure      400  {object}  response.ErrorBody    "请求体格式错误或 type 不支持"
 // @Failure      401  {object}  response.ErrorBody    "未认证"
 // @Failure      403  {object}  response.ErrorBody    "非 ADMIN 或无权限；已有采集任务在运行"
@@ -85,13 +85,8 @@ func StartCrawlHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			return
 		}
 
-		// 统一响应格式: {"code": 200, "data": {...}}
-		// 异步任务：立即返回 running 状态，进度用 GET /crawl 查询
-		response.Success(c, gin.H{
-			"count":    resp.GetCount(), // string，proto 定义如此，原样透出
-			"trace_id": resp.GetTraceId(),
-			"status":   resp.GetStatus(),
-		})
+		// 启动命令只返回资源身份，进度与状态统一由 GET /crawl 查询。
+		response.Success(c, gin.H{"id": resp.GetId()})
 	}
 }
 
@@ -101,7 +96,7 @@ func StartCrawlHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 // @Tags         数据获取
 // @Produce      json
 // @Security     Bearer
-// @Success      200  {object}  response.SuccessBody  "采集状态，data 内含 status/count/message"
+// @Success      200  {object}  response.SuccessBody{data=crawler.StatusData}  "采集状态详情，data 内含任务 id 与运行状态"
 // @Failure      401  {object}  response.ErrorBody    "未认证"
 // @Failure      403  {object}  response.ErrorBody    "非 ADMIN"
 // @Failure      503  {object}  response.ErrorBody    "crawler 服务不可用"
@@ -133,6 +128,7 @@ func GetCrawlStatusHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 		}
 
 		response.Success(c, gin.H{
+			"id":              resp.GetId(),
 			"status":          resp.GetStatus(),
 			"count":           resp.GetCount(),
 			"message":         resp.GetMessage(),
@@ -149,7 +145,7 @@ func GetCrawlStatusHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 // @Tags         数据获取
 // @Produce      json
 // @Security     Bearer
-// @Success      200  {object}  response.SuccessBody  "已停止，data 内含 status"
+// @Success      200  {object}  response.SuccessBody{data=response.IDData}  "停止命令已接收，data 内仅含任务 id"
 // @Failure      401  {object}  response.ErrorBody    "未认证"
 // @Failure      403  {object}  response.ErrorBody    "非 ADMIN"
 // @Failure      503  {object}  response.ErrorBody    "crawler 服务不可用"
@@ -180,9 +176,7 @@ func StopCrawlHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			return
 		}
 
-		response.Success(c, gin.H{
-			"status": resp.GetStatus(),
-		})
+		response.Success(c, gin.H{"id": resp.GetId()})
 	}
 }
 
@@ -290,7 +284,7 @@ type ingestDataRequest struct {
 // @Produce      json
 // @Security     Bearer
 // @Param        request body ingestDataRequest true "注入的岗位数据"
-// @Success      200  {object}  response.SuccessBody  "任务已启动，data 内含 count/trace_id/status"
+// @Success      200  {object}  response.SuccessBody{data=response.IDData}  "注入任务已启动，data 内仅含任务 id"
 // @Failure      400  {object}  response.ErrorBody    "请求体格式错误、jobs 为空/超过 1000 条或岗位字段不符合约束"
 // @Failure      401  {object}  response.ErrorBody    "未认证"
 // @Failure      403  {object}  response.ErrorBody    "非 ADMIN；已有采集或注入任务运行"
@@ -364,10 +358,7 @@ func IngestDataHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 		}
 
 		// 统一响应格式；后台任务通过 GET /crawl 查询进度。
-		response.Success(c, gin.H{
-			"count":    resp.GetCount(),
-			"trace_id": resp.GetTraceId(),
-			"status":   resp.GetStatus(),
-		})
+		// 注入同样是异步命令；条数与状态由统一状态接口读取。
+		response.Success(c, gin.H{"id": resp.GetId()})
 	}
 }

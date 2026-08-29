@@ -16,6 +16,9 @@ service DataSourceService {
   // 查询某条清洗后岗位详情（全字段）
   rpc GetCleanedJob (GetCleanedJobRequest) returns (GetCleanedJobResponse) {}
 
+  // 按 ID 批量查询清洗后岗位详情，供 ID-only 列表按需补齐。
+  rpc BatchGetCleanedJobs (BatchGetCleanedJobsRequest) returns (BatchGetCleanedJobsResponse) {}
+
   // 查询某条清洗后岗位的原始记录（内部调 crawler-service 查 job_sources）
   rpc GetSourceJob (GetSourceJobRequest) returns (GetSourceJobResponse) {}
 
@@ -52,16 +55,29 @@ message CleanedJobSummary {
 }
 
 message ListCleanedJobsResponse {
-  repeated CleanedJobSummary items = 1;
+  reserved 1;
+  reserved "items";
   int64 total = 2; // 总数
   int32 page = 3;
   int32 page_size = 4;
+  repeated int64 cleaned_job_ids = 5;
 }
 
 // ==================== 详情 ====================
 
 message GetCleanedJobRequest {
   int64 id = 1; // cleaned_job_sources.id
+  // 审计字段
+  string trace_id = 2;
+  int64 user_id = 3;
+  string user_name = 4;
+  string user_ip = 5;
+  string request_method = 6;
+  string request_url = 7;
+}
+
+message BatchGetCleanedJobsRequest {
+  repeated int64 ids = 1;
   // 审计字段
   string trace_id = 2;
   int64 user_id = 3;
@@ -92,10 +108,16 @@ message CleanedJobDetail {
   string review_status = 18; // PENDING / PASSED / REJECTED
   string reviewed_at = 19; // 复核时间 ISO8601（未复核为空）
   int64 reviewed_by = 20; // 复核人 ID
+  string created_at = 21; // 获取时间（入库时间）
 }
 
 message GetCleanedJobResponse {
   CleanedJobDetail job = 1;
+}
+
+message BatchGetCleanedJobsResponse {
+  repeated CleanedJobDetail jobs = 1;
+  repeated int64 missing_ids = 2;
 }
 
 // ==================== 原始记录 ====================
@@ -159,5 +181,7 @@ message ReviewJobRequest {
 }
 
 message ReviewJobResponse {
-  CleanedJobDetail job = 1;
+  reserved 1;
+  reserved "job";
+  int64 cleaned_job_id = 2;
 }

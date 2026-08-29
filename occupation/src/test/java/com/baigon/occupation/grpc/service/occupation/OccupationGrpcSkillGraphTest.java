@@ -3,7 +3,10 @@ package com.baigon.occupation.grpc.service.occupation;
 
 import com.baigon.occupation.GetSkillGraphRequest;
 import com.baigon.occupation.GetSkillGraphResponse;
-import com.baigon.occupation.repository.skill.graph.SkillGraphQueryRepository.JobEvidence;
+import com.baigon.occupation.ListSkillGraphEvidenceJobsRequest;
+import com.baigon.occupation.ListSkillGraphEvidenceJobsResponse;
+import com.baigon.occupation.LookupSkillGraphMetricsRequest;
+import com.baigon.occupation.LookupSkillGraphMetricsResponse;
 import com.baigon.occupation.service.EmbeddingTaskManager;
 import com.baigon.occupation.service.LogService;
 import com.baigon.occupation.service.audit.AuditLogQueryService;
@@ -17,10 +20,10 @@ import com.baigon.occupation.service.skill.SkillResolutionQueryService;
 import com.baigon.occupation.service.skill.SkillResolutionReviewService;
 import com.baigon.occupation.service.skill.graph.SkillGraphQueryService;
 import io.grpc.stub.StreamObserver;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
-import java.time.OffsetDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -32,10 +35,13 @@ import static org.mockito.Mockito.when;
 
 class OccupationGrpcSkillGraphTest {
 
-    @Test
-    void graphShouldExposeScopeTimelineCoverageParentsAndJobEvidence() {
-        SkillGraphQueryService graphService = mock(SkillGraphQueryService.class);
-        OccupationGrpcService service = new OccupationGrpcService(
+    private SkillGraphQueryService graphService;
+    private OccupationGrpcService service;
+
+    @BeforeEach
+    void setUp() {
+        graphService = mock(SkillGraphQueryService.class);
+        service = new OccupationGrpcService(
                 mock(MajorCatalogService.class),
                 mock(OccupationCatalogService.class),
                 mock(EmbeddingTaskManager.class),
@@ -48,21 +54,13 @@ class OccupationGrpcSkillGraphTest {
                 mock(JobQueryService.class),
                 mock(AuditLogQueryService.class),
                 mock(LogService.class));
-        OffsetDateTime from = OffsetDateTime.parse("2026-05-01T00:00:00+08:00");
-        OffsetDateTime to = OffsetDateTime.parse("2026-06-01T00:00:00+08:00");
-        when(graphService.getGraph("OCCUPATION", 100L, "2026-05", "2026-06", 10))
+    }
+
+    @Test
+    void graphShouldExposeOnlyScopeAndDirectSkillIds() {
+        when(graphService.getGraph("OCCUPATION", 100L, "2026-05", "2026-06"))
                 .thenReturn(new SkillGraphQueryService.SkillGraph(
-                        new SkillGraphQueryService.ScopeDescriptor(
-                                "OCCUPATION", 100L, "2-02-10-09", "软件工程技术人员"),
-                        new SkillGraphQueryService.Timeline(
-                                "2026-05", "2026-06", from, to, "Asia/Shanghai"),
-                        4L,
-                        List.of(new SkillGraphQueryService.SkillNode(
-                                200L, "Spring Boot", 3L, 0.75,
-                                List.of(new SkillGraphQueryService.ParentSkill(201L, "Java")),
-                                List.of(new JobEvidence(
-                                        200L, 300L, "Java 开发工程师", "示例企业",
-                                        "智联招聘", "https://example.test/job/300", from))))));
+                        100L, List.of(200L, 300L)));
         @SuppressWarnings("unchecked")
         StreamObserver<GetSkillGraphResponse> observer = mock(StreamObserver.class);
 
@@ -71,7 +69,6 @@ class OccupationGrpcSkillGraphTest {
                 .setScopeId(100L)
                 .setFromMonth("2026-05")
                 .setToMonth("2026-06")
-                .setEvidenceLimit(10)
                 .build(), observer);
 
         ArgumentCaptor<GetSkillGraphResponse> response =
@@ -79,12 +76,60 @@ class OccupationGrpcSkillGraphTest {
         verify(observer).onNext(response.capture());
         verify(observer).onCompleted();
         verify(observer, never()).onError(any());
-        assertEquals("软件工程技术人员", response.getValue().getScope().getName());
-        assertEquals("Asia/Shanghai", response.getValue().getTimeline().getTimezone());
-        assertEquals(4L, response.getValue().getTotalJobCount());
-        assertEquals(0.75, response.getValue().getSkills(0).getCoverage());
-        assertEquals("Java", response.getValue().getSkills(0).getParents(0).getName());
-        assertEquals("Java 开发工程师",
-                response.getValue().getSkills(0).getEvidenceJobs(0).getJobName());
+        assertEquals(100L, response.getValue().getScopeId());
+        assertEquals(List.of(200L, 300L), response.getValue().getDirectSkillIdsList());
+    }
+
+    @Test
+    void metricLookupShouldExposeOnlyRelationMetrics() {
+        when(graphService.lookupMetrics(
+                "MAJOR", 100L, List.of(200L), "2026-05", "2026-06"))
+                .thenReturn(new SkillGraphQueryService.MetricLookup(
+                        List.of(new SkillGraphQueryService.SkillMetric(200L, 3L, 0.75)),
+                        List.of(999L)));
+        @SuppressWarnings("unchecked")
+        StreamObserver<LookupSkillGraphMetricsResponse> observer = mock(StreamObserver.class);
+
+        service.lookupSkillGraphMetrics(LookupSkillGraphMetricsRequest.newBuilder()
+                .setScopeType("MAJOR")
+                .setScopeId(100L)
+                .addSkillIds(200L)
+                .setFromMonth("2026-05")
+                .setToMonth("2026-06")
+                .build(), observer);
+
+        ArgumentCaptor<LookupSkillGraphMetricsResponse> response =
+                ArgumentCaptor.forClass(LookupSkillGraphMetricsResponse.class);
+        verify(observer).onNext(response.capture());
+        assertEquals(200L, response.getValue().getItems(0).getSkillId());
+        assertEquals(3L, response.getValue().getItems(0).getJobCount());
+        assertEquals(0.75, response.getValue().getItems(0).getCoverage());
+        assertEquals(List.of(999L), response.getValue().getMissingIdsList());
+    }
+
+    @Test
+    void evidenceShouldExposeOnlyPagedJobIds() {
+        when(graphService.listEvidenceJobs(
+                "OCCUPATION", 100L, 200L, "", "", 1, 20))
+                .thenReturn(new SkillGraphQueryService.EvidencePage(
+                        List.of(501L, 500L), 22L, 1, 20));
+        @SuppressWarnings("unchecked")
+        StreamObserver<ListSkillGraphEvidenceJobsResponse> observer = mock(StreamObserver.class);
+
+        service.listSkillGraphEvidenceJobs(ListSkillGraphEvidenceJobsRequest.newBuilder()
+                .setScopeType("OCCUPATION")
+                .setScopeId(100L)
+                .setSkillId(200L)
+                .setPage(1)
+                .setPageSize(20)
+                .build(), observer);
+
+        ArgumentCaptor<ListSkillGraphEvidenceJobsResponse> response =
+                ArgumentCaptor.forClass(ListSkillGraphEvidenceJobsResponse.class);
+        verify(observer).onNext(response.capture());
+        assertEquals(List.of(501L, 500L), response.getValue().getJobIdsList());
+        assertEquals(22L, response.getValue().getTotal());
+        assertEquals(1, response.getValue().getPage());
+        assertEquals(20, response.getValue().getPageSize());
     }
 }

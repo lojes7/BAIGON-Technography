@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -21,8 +22,7 @@ import (
 )
 
 const (
-	maxResumeFileSize         = 10 << 20
-	skillTimelineMaxRecvBytes = 50 * 1024 * 1024
+	maxResumeFileSize = 10 << 20
 )
 
 type createResumeUploadRequest struct {
@@ -54,7 +54,7 @@ type editMyResumeRequestDoc struct {
 // @Produce      json
 // @Security     Bearer
 // @Param        body body createResumeUploadRequest true "文件名及文件大小（最大 10 MiB）"
-// @Success      200 {object} response.SuccessBody "data 内含 uploadId/uploadUrl/method/contentType/expiresAt"
+// @Success      200 {object} response.SuccessBody{data=user.ResumeUploadData} "data 内含 uploadId/uploadUrl/method/contentType/expiresAt"
 // @Failure      400 {object} response.ErrorBody
 // @Failure      401 {object} response.ErrorBody
 // @Failure      413 {object} response.ErrorBody
@@ -122,7 +122,7 @@ func CreateResumeUploadHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 // @Produce      json
 // @Security     Bearer
 // @Param        body body completeResumeUploadRequest true "上传 ID 及原文件名"
-// @Success      200 {object} response.SuccessBody "data 为文件信息、OCR content 及五类结构化字段"
+// @Success      200 {object} response.SuccessBody{data=response.IDData} "data 仅含简历 id；详情通过 GET /api/auth/resumes 获取"
 // @Failure      400 {object} response.ErrorBody
 // @Failure      401 {object} response.ErrorBody
 // @Failure      404 {object} response.ErrorBody
@@ -171,16 +171,11 @@ func CompleteResumeUploadHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc 
 			response.Error(c, httpCode, errorCode)
 			return
 		}
-		if result.GetResume() == nil {
+		if result.GetResumeId() <= 0 {
 			response.Error(c, http.StatusInternalServerError, http.StatusInternalServerError)
 			return
 		}
-		data, ok := resumeResponseData(result.GetResume())
-		if !ok {
-			response.Error(c, http.StatusInternalServerError, http.StatusInternalServerError)
-			return
-		}
-		response.Success(c, data)
+		response.Success(c, gin.H{"id": result.GetResumeId()})
 	}
 }
 
@@ -190,7 +185,7 @@ func CompleteResumeUploadHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc 
 // @Tags         用户简历
 // @Produce      json
 // @Security     Bearer
-// @Success      200 {object} response.SuccessBody "data 为简历对象，无简历时为空对象"
+// @Success      200 {object} response.SuccessBody{data=user.ResumeData} "data 为简历对象，无简历时为空对象"
 // @Failure      401 {object} response.ErrorBody
 // @Failure      503 {object} response.ErrorBody
 // @Router       /api/auth/resumes [get]
@@ -247,7 +242,7 @@ func GetMyResumeHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 // @Produce      json
 // @Security     Bearer
 // @Param        body body editMyResumeRequestDoc true "人工编辑的简历正文与结构化字段"
-// @Success      200 {object} response.SuccessBody "data 为保存后的完整简历对象"
+// @Success      200 {object} response.SuccessBody{data=response.IDData} "data 仅含简历 id；详情通过 GET /api/auth/resumes 获取"
 // @Failure      400 {object} response.ErrorBody
 // @Failure      401 {object} response.ErrorBody
 // @Failure      404 {object} response.ErrorBody
@@ -292,16 +287,11 @@ func EditMyResumeHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			response.Error(c, httpCode, errorCode)
 			return
 		}
-		if result.GetResume() == nil {
+		if result.GetResumeId() <= 0 {
 			response.Error(c, http.StatusInternalServerError, http.StatusInternalServerError)
 			return
 		}
-		data, ok := resumeResponseData(result.GetResume())
-		if !ok {
-			response.Error(c, http.StatusInternalServerError, http.StatusInternalServerError)
-			return
-		}
-		response.Success(c, data)
+		response.Success(c, gin.H{"id": result.GetResumeId()})
 	}
 }
 
@@ -341,7 +331,7 @@ func resumeResponseData(resume *userpb.ResumeData) (gin.H, bool) {
 // @Tags         用户技能
 // @Produce      json
 // @Security     Bearer
-// @Success      200 {object} response.SuccessBody "data 内含 resumeId 与本次识别的 skills"
+// @Success      200 {object} response.SuccessBody{data=user.ResumeAnalysisData} "data 仅含 resumeId 与 userSkillRecordIds；技能详情按 ID 查询"
 // @Failure      400 {object} response.ErrorBody
 // @Failure      401 {object} response.ErrorBody
 // @Failure      403 {object} response.ErrorBody
@@ -386,19 +376,19 @@ func AnalyzeMyResumeSkillsHandler(pool grpcpool.ConnectionProvider) gin.HandlerF
 		}
 
 		response.Success(c, gin.H{
-			"resumeId": result.GetResumeId(),
-			"skills":   userSkillItems(result.GetSkills()),
+			"resumeId":           result.GetResumeId(),
+			"userSkillRecordIds": nonNilBatchIDs(result.GetUserSkillRecordIds()),
 		})
 	}
 }
 
-// ListMySkillsHandler 返回当前用户按识别时间保留的全部技能记录。
+// ListMySkillsHandler 分页返回当前用户技能记录 ID。
 // @Summary      查询我的技能时间线
-// @Description  返回历次简历技能分析产生的记录；无记录时 items 固定为空数组。
+// @Description  服务端分页返回历次简历技能记录 ID；无记录时 ids 固定为空数组，详情通过 single/lookup 获取。
 // @Tags         用户技能
 // @Produce      json
 // @Security     Bearer
-// @Success      200 {object} response.SuccessBody "data 内含 items"
+// @Success      200 {object} response.SuccessBody{data=response.IDPageData} "data 内含 ids/total/page/pageSize"
 // @Failure      401 {object} response.ErrorBody
 // @Failure      500 {object} response.ErrorBody
 // @Failure      503 {object} response.ErrorBody
@@ -416,19 +406,23 @@ func ListMySkillsHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc {
 			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
 			return
 		}
+		page, pageSize, ok := skillPageQuery(c)
+		if !ok {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 		defer cancel()
 		var trailer metadata.MD
 		result, err := userpb.NewUserServiceClient(conn).ListMySkills(
 			ctx,
 			&userpb.ListMySkillsRequest{
+				Page: int32(page), PageSize: int32(pageSize),
 				TraceId: c.GetString("trace_id"), UserId: userID,
 				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
 				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
 			},
 			grpc.Trailer(&trailer),
-			// proposal 要求返回全部历史；显式放宽默认 4 MiB 接收上限。
-			grpc.MaxCallRecvMsgSize(skillTimelineMaxRecvBytes),
 		)
 		if err != nil {
 			httpCode, errorCode := commonhandler.GRPCErrorCodes(err, trailer)
@@ -440,7 +434,138 @@ func ListMySkillsHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc {
 			return
 		}
 
-		response.Success(c, gin.H{"items": userSkillItems(result.GetItems())})
+		response.Success(c, gin.H{
+			"ids": nonNilBatchIDs(result.GetUserSkillRecordIds()), "total": result.GetTotal(),
+			"page": result.GetPage(), "pageSize": result.GetPageSize(),
+		})
+	}
+}
+
+// GetMySkillHandler 查询当前用户拥有的单条技能记录详情。
+// @Summary 查询我的单条技能记录
+// @Tags 用户技能
+// @Produce json
+// @Security Bearer
+// @Param id path int true "用户技能记录 ID"
+// @Success 200 {object} response.SuccessBody{data=user.UserSkillData}
+// @Failure 400 {object} response.ErrorBody
+// @Failure 404 {object} response.ErrorBody
+// @Router /api/auth/me/skills/{id} [get]
+func GetMySkillHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+		if err != nil || id <= 0 {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+		userID := commonhandler.UserIDFromContext(c)
+		if userID <= 0 {
+			response.Error(c, http.StatusUnauthorized, http.StatusUnauthorized)
+			return
+		}
+		conn, err := pool.GetConn("occupation-service")
+		if err != nil {
+			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+		defer cancel()
+		var trailer metadata.MD
+		result, err := userpb.NewUserServiceClient(conn).GetMySkill(
+			ctx,
+			&userpb.GetMySkillRequest{
+				Id: id, TraceId: c.GetString("trace_id"), UserId: userID,
+				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
+				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
+			},
+			grpc.Trailer(&trailer),
+		)
+		if err != nil {
+			httpCode, errorCode := commonhandler.GRPCErrorCodes(err, trailer)
+			response.Error(c, httpCode, errorCode)
+			return
+		}
+		if result.GetSkill() == nil {
+			response.Error(c, http.StatusInternalServerError, http.StatusInternalServerError)
+			return
+		}
+		response.Success(c, userSkillData(result.GetSkill()))
+	}
+}
+
+// BatchGetMySkillsHandler 批量查询当前用户拥有的技能记录详情。
+// @Summary 批量查询我的技能记录
+// @Tags 用户技能
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param body body batchIDsRequest true "1 至 200 个用户技能记录 ID"
+// @Success 200 {object} response.SuccessBody{data=user.UserSkillLookupData}
+// @Failure 400 {object} response.ErrorBody
+// @Router /api/auth/me/skills/lookup [post]
+func BatchGetMySkillsHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var body batchIDsRequest
+		if err := c.ShouldBindJSON(&body); err != nil {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+		ids, ok := normalizeBatchIDs(body.IDs)
+		if !ok {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+		userID := commonhandler.UserIDFromContext(c)
+		if userID <= 0 {
+			response.Error(c, http.StatusUnauthorized, http.StatusUnauthorized)
+			return
+		}
+		conn, err := pool.GetConn("occupation-service")
+		if err != nil {
+			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+		defer cancel()
+		var trailer metadata.MD
+		result, err := userpb.NewUserServiceClient(conn).BatchGetMySkills(
+			ctx,
+			&userpb.BatchGetMySkillsRequest{
+				Ids: ids, TraceId: c.GetString("trace_id"), UserId: userID,
+				UserName: c.GetString("uid"), UserIp: c.ClientIP(),
+				RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
+			},
+			grpc.Trailer(&trailer),
+		)
+		if err != nil {
+			httpCode, errorCode := commonhandler.GRPCErrorCodes(err, trailer)
+			response.Error(c, httpCode, errorCode)
+			return
+		}
+		response.Success(c, gin.H{
+			"items":      userSkillItems(result.GetItems()),
+			"missingIds": nonNilBatchIDs(result.GetMissingIds()),
+		})
+	}
+}
+
+func skillPageQuery(c *gin.Context) (int, int, bool) {
+	page, err := strconv.Atoi(c.DefaultQuery("page", "0"))
+	if err != nil || page < 0 {
+		return 0, 0, false
+	}
+	pageSize, err := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+	if err != nil || pageSize <= 0 || pageSize > 100 {
+		return 0, 0, false
+	}
+	return page, pageSize, true
+}
+
+func userSkillData(skill *userpb.UserSkillData) gin.H {
+	return gin.H{
+		"id": skill.GetId(), "resumeId": skill.GetResumeId(),
+		"skillName": skill.GetSkillName(), "proficiency": skill.GetProficiency(),
+		"evidence": skill.GetEvidence(), "createdAt": skill.GetCreatedAt(),
 	}
 }
 
@@ -451,11 +576,7 @@ func userSkillItems(skills []*userpb.UserSkillData) []gin.H {
 		if skill == nil {
 			continue
 		}
-		items = append(items, gin.H{
-			"id": skill.GetId(), "resumeId": skill.GetResumeId(),
-			"skillName": skill.GetSkillName(), "proficiency": skill.GetProficiency(),
-			"evidence": skill.GetEvidence(), "createdAt": skill.GetCreatedAt(),
-		})
+		items = append(items, userSkillData(skill))
 	}
 	return items
 }

@@ -150,7 +150,7 @@ function UserProfilePage() {
   const [me, setMe] = useState<CurrentUser | null>(null);
   const [recentLogs, setRecentLogs] = useState<AuditLogItem[]>([]);
 
-  // 接入 GET /api/auth/me，获取真实的校园归属（大学/学院/系部）
+  // 接入 GET /api/auth/me，获取账号资料与校园组织引用。
   useEffect(() => {
     getMe().then((res) => setMe(res.data)).catch(() => {});
   }, []);
@@ -170,9 +170,14 @@ function UserProfilePage() {
   const roleLabel = ROLES.find(r => r.key === role)?.labelKey ?? "未知角色";
   const profile = PROFILE[role] ?? PROFILE.admin;
 
-  // 组织归属：优先真实数据（me），缺省回退 mock
-  const institution = me?.university_name || profile.institution;
-  const department = [me?.school_name, me?.department_name].filter(Boolean).join(" · ") || profile.department;
+  // /me 不再嵌入组织名称；个人页只展示引用，组织名称由有权限的目录详情接口查询。
+  const institution = me?.universityId && String(me.universityId) !== "0"
+    ? `高校 #${me.universityId}`
+    : profile.institution;
+  const departmentRefs = [me?.schoolId, me?.departmentId]
+    .filter((id) => id && String(id) !== "0")
+    .map((id) => `#${id}`);
+  const department = departmentRefs.length > 0 ? departmentRefs.join(" · ") : profile.department;
 
   // 从权限表生成模块访问列表
   const moduleAccess = (PAGE_PERMISSIONS[role] ?? [])

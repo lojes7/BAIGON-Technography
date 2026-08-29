@@ -1,4 +1,11 @@
-import type { SkillGraphScopeType } from "../types/api";
+import type {
+  CanonicalSkillItem,
+  SkillGraphData,
+  SkillGraphMetric,
+  SkillGraphMetricsData,
+  SkillGraphScopeType,
+  SkillGraphViewData,
+} from "../types/api";
 
 export type TimelineMode = "all" | "before" | "in" | "from";
 export type TimelineGranularity = "month" | "year";
@@ -14,6 +21,53 @@ export interface GraphScopeSelection {
   id: string;
   code: string;
   name: string;
+}
+
+interface SkillGraphMetricBatch {
+  items?: SkillGraphMetric[];
+  missingIds?: Array<string | number>;
+}
+
+/** 合并多个指标批次，并恢复调用方的技能 ID 顺序。 */
+export function mergeSkillGraphMetricBatches(
+  skillIds: Array<string | number>,
+  batches: SkillGraphMetricBatch[],
+): SkillGraphMetricsData {
+  const uniqueIds = Array.from(new Set(skillIds.map(String)));
+  const items = batches.flatMap((batch) => batch.items ?? []);
+  const itemById = new Map(items.map((item) => [String(item.skillId), item]));
+  const responseMissingIds = batches.flatMap((batch) => batch.missingIds ?? []).map(String);
+  const missingIdSet = new Set([
+    ...responseMissingIds,
+    ...uniqueIds.filter((id) => !itemById.has(id)),
+  ]);
+  return {
+    items: uniqueIds.flatMap((id) => itemById.get(id) ?? []),
+    missingIds: uniqueIds.filter((id) => missingIdSet.has(id)),
+  };
+}
+
+/** 将三个瘦 API 的结果按 directSkillIds 顺序拼成纯前端展示模型。 */
+export function buildSkillGraphView(
+  graph: SkillGraphData,
+  details: CanonicalSkillItem[],
+  metrics: SkillGraphMetric[],
+): SkillGraphViewData {
+  const detailById = new Map(details.map((skill) => [String(skill.id), skill]));
+  const metricById = new Map(metrics.map((metric) => [String(metric.skillId), metric]));
+  return {
+    scopeId: graph.scopeId,
+    skills: graph.directSkillIds.map((skillId) => {
+      const id = String(skillId);
+      const metric = metricById.get(id);
+      return {
+        skillId: id,
+        skillName: detailById.get(id)?.name || `技能 #${id}`,
+        jobCount: metric?.jobCount ?? 0,
+        coverage: metric?.coverage ?? 0,
+      };
+    }),
+  };
 }
 
 function parseMonth(value: string): { year: number; month: number } {

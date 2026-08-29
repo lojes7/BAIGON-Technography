@@ -34,14 +34,20 @@ func RegisterUserRoutes(api *gin.RouterGroup, pool *grpcpool.GrpcClientPool, jwt
 	auth.PUT("/resumes", userhandler.EditMyResumeHandler(pool))
 	auth.POST("/resumes/analyze-skills", userhandler.AnalyzeMyResumeSkillsHandler(pool))
 	auth.GET("/me/skills", userhandler.ListMySkillsHandler(pool))
+	auth.POST("/me/skills/lookup", userhandler.BatchGetMySkillsHandler(pool))
+	auth.GET("/me/skills/:id", userhandler.GetMySkillHandler(pool))
 
 	// 管理员接口。
 	admin := auth.Group("/users")
 	admin.Use(middleware.RoleAuth("ADMIN"))
 	admin.POST("", userhandler.ListUsersHandler(pool))
 	admin.GET("/universities", userhandler.ListUniversitiesHandler(pool))
+	admin.POST("/universities/lookup", userhandler.BatchGetUniversitiesHandler(pool))
 	admin.GET("/schools", userhandler.ListSchoolsHandler(pool))
+	admin.POST("/schools/lookup", userhandler.BatchGetSchoolsHandler(pool))
 	admin.GET("/departments", userhandler.ListDepartmentsHandler(pool))
+	admin.POST("/departments/lookup", userhandler.BatchGetDepartmentsHandler(pool))
+	admin.POST("/lookup", userhandler.BatchGetUsersHandler(pool))
 	admin.GET("/:id", userhandler.GetUserHandler(pool))
 	admin.POST("/:id/block", userhandler.BlockUserHandler(pool))
 	admin.POST("/:id/unlock", userhandler.UnlockUserHandler(pool))
@@ -49,18 +55,18 @@ func RegisterUserRoutes(api *gin.RouterGroup, pool *grpcpool.GrpcClientPool, jwt
 
 // PingHandler 网关心跳探测。
 // @Summary      网关 Ping
-// @Description  返回网关运行状态和 trace_id（免鉴权）。
+// @Description  返回网关运行状态和 traceId（免鉴权）。
 // @Description  统一响应格式：成功 {"code":200,"data":{...}}
 // @Tags         系统
 // @Produce      json
-// @Success      200  {object}  response.SuccessBody  "网关运行正常，data 内含 message 与 trace_id"
+// @Success      200  {object}  response.SuccessBody{data=response.PingData}  "网关运行正常，data 内含 message 与 traceId"
 // @Router       /api/ping [get]
 func PingHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 统一响应格式: {"code": 200, "data": {...}}
 		response.Success(c, gin.H{
-			"message":  "baigon gateway is running",
-			"trace_id": c.GetString("trace_id"),
+			"message": "baigon gateway is running",
+			"traceId": c.GetString("trace_id"),
 		})
 	}
 }

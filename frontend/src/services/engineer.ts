@@ -5,12 +5,12 @@
 //         POST/DELETE/PUT /api/auth/data-source/{id}/review（复核通过/拒绝/修改后通过）
 
 import type {
-  ApiResponse, PaginatedData,
+  ApiResponse, PaginatedData, PaginatedIds,
   CrawlerResult, CrawlerStatus,
-  DataSourceItem, DataSourceDetail, SourceJobDetail,
+  DataSourceItem, DataSourceDetail, DataSourceReviewResult, SourceJobDetail,
   DataSourceListParams, IngestJob, IngestResult,
 } from "../types/api";
-import { parseJson } from "./lossless";
+import { parseJson, stringifyNumericIdBody } from "./lossless";
 
 const BASE = "/api/auth";
 const hdrs = () => ({
@@ -55,7 +55,7 @@ export async function getCrawlerStatus() {
 
 // 停止采集
 export async function stopCrawler() {
-  return request<{ status: string }>(`${BASE}/crawl`, {
+  return request<{ id: string }>(`${BASE}/crawl`, {
     method: "DELETE",
     headers: hdrs(),
   });
@@ -93,7 +93,7 @@ export async function ingestData(jobs: IngestJob[]) {
 
 // 分页查询清洗后岗位列表（POST + body）
 export async function getDataSourceList(params?: DataSourceListParams) {
-  return request<PaginatedData<DataSourceItem>>(`${BASE}/data-source`, {
+  const page = await request<PaginatedIds>(`${BASE}/data-source`, {
     method: "POST",
     headers: hdrs(),
     body: JSON.stringify({
@@ -104,25 +104,45 @@ export async function getDataSourceList(params?: DataSourceListParams) {
       publishDateTo: params?.publishDateTo ?? "",
     }),
   });
+  const details = page.data.ids.length > 0
+    ? await batchGetDataSourceDetails(page.data.ids)
+    : { code: 200, data: { items: [] } } as ApiResponse<{ items: DataSourceItem[] }>;
+  return {
+    ...page,
+    data: {
+      items: details.data.items,
+      total: page.data.total,
+      page: page.data.page,
+      pageSize: page.data.pageSize,
+    },
+  } as ApiResponse<PaginatedData<DataSourceItem>>;
+}
+
+export async function batchGetDataSourceDetails(ids: Array<string | number>) {
+  return request<{ items: DataSourceItem[]; missingIds: string[] }>(`${BASE}/data-source/lookup`, {
+    method: "POST",
+    headers: hdrs(),
+    body: stringifyNumericIdBody({ ids }, [], ["ids"]),
+  });
 }
 
 // 查看清洗后岗位详情
 export async function getDataSourceDetail(id: string) {
-  return request<{ job: DataSourceDetail }>(`${BASE}/data-source/${id}`, {
+  return request<DataSourceDetail>(`${BASE}/data-source/${id}`, {
     headers: hdrs(),
   });
 }
 
 // 查看原始记录追溯
 export async function getSourceRecord(id: string) {
-  return request<{ source: SourceJobDetail }>(`${BASE}/data-source/${id}/source`, {
+  return request<SourceJobDetail>(`${BASE}/data-source/${id}/source`, {
     headers: hdrs(),
   });
 }
 
 // 复核通过
 export async function approveReview(id: string) {
-  return request<{ job: DataSourceDetail }>(`${BASE}/data-source/${id}/review`, {
+  return request<DataSourceReviewResult>(`${BASE}/data-source/${id}/review`, {
     method: "POST",
     headers: hdrs(),
   });
@@ -130,7 +150,7 @@ export async function approveReview(id: string) {
 
 // 复核拒绝
 export async function rejectReview(id: string) {
-  return request<{ job: DataSourceDetail }>(`${BASE}/data-source/${id}/review`, {
+  return request<DataSourceReviewResult>(`${BASE}/data-source/${id}/review`, {
     method: "DELETE",
     headers: hdrs(),
   });
@@ -147,7 +167,7 @@ export async function editAndApproveReview(id: string, edits: {
   experience?: string;
   jobDescription?: string;
 }) {
-  return request<{ job: DataSourceDetail }>(`${BASE}/data-source/${id}/review`, {
+  return request<DataSourceReviewResult>(`${BASE}/data-source/${id}/review`, {
     method: "PUT",
     headers: hdrs(),
     body: JSON.stringify(edits),
@@ -155,7 +175,7 @@ export async function editAndApproveReview(id: string, edits: {
 }
 
 export async function reviewDataSource(dsId: string, reviewStatus: string) {
-  if (reviewStatus === "REVIEW_PASSED" || reviewStatus === "PASSED") {
+  if (reviewStatus === "PASSED") {
     return approveReview(dsId);
   }
   return rejectReview(dsId);

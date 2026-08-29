@@ -8,7 +8,15 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
+
 public interface DisciplineCategoryRepository extends JpaRepository<DisciplineCategory, Long> {
+
+    Optional<DisciplineCategory> findByIdAndDeletedAtIsNull(Long id);
+
+    List<DisciplineCategory> findByIdInAndDeletedAtIsNullOrderByIdAsc(Collection<Long> ids);
 
     @Query("""
             SELECT item FROM DisciplineCategory item

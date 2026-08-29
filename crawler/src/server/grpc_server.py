@@ -54,7 +54,7 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
         self._worker: threading.Thread | None = None
         # 进程内任务状态机（idle / running / stopping / success / failed / stopped）
         self._status = {
-            "status": "idle", "count": "0", "message": "",
+            "id": 0, "status": "idle", "count": "0", "message": "",
             "current_category": "", "progress": 0, "total_cleaned": 0,
         }
 
@@ -74,6 +74,29 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
             context.abort(grpc.StatusCode.UNAVAILABLE, "audit log query unavailable")
 
         try:
+            if request.target_log_ids:
+                items = self._audit_log_query_service.batch_get(
+                    requester_role=request.user_role,
+                    ids=list(request.target_log_ids),
+                )
+                found_ids = {item.id for item in items}
+                response = audit_pb2.PagedSearchAuditLogsResponse(
+                    detail_items=[self._audit_log_item(item) for item in items],
+                    # 允许批次部分命中；缺失 ID 去重并保持首次请求顺序。
+                    missing_audit_log_ids=[
+                        item_id
+                        for item_id in dict.fromkeys(request.target_log_ids)
+                        if item_id not in found_ids
+                    ],
+                    total=len(items),
+                    page=0,
+                    page_size=len(items),
+                )
+                self._log.info(
+                    detail=f"batch get crawler audit logs: total={len(items)}",
+                    **log_ctx,
+                )
+                return response
             page = self._audit_log_query_service.paged_search(
                 requester_role=request.user_role,
                 page=request.page,
@@ -84,7 +107,7 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
                 target_user_id=request.target_user_id,
             )
             response = audit_pb2.PagedSearchAuditLogsResponse(
-                items=[self._audit_log_item(item) for item in page.items],
+                audit_log_ids=[item.id for item in page.items],
                 total=page.total,
                 page=page.page,
                 page_size=page.page_size,
@@ -128,16 +151,26 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
         if request.type and request.type != "JOB":
             context.abort(grpc.StatusCode.INVALID_ARGUMENT, f"unsupported crawl type: {request.type}")
 
-        # 2) 互斥：已有任务在跑则拒绝（gateway 映射 403）
+        # 2) 先校验任务参数，避免拒绝请求污染当前状态机。
+        categories = list(request.categories) if request.categories else None
+        max_documents = request.max_documents or self._max_documents
+        if max_documents > self._max_documents:
+            context.abort(
+                grpc.StatusCode.INVALID_ARGUMENT,
+                f"max_documents must be <= {self._max_documents}",
+            )
+
+        # 3) 任务 ID 当前复用全链路雪花 trace_id；REST 只以资源 ID 名义返回。
+        trace_id = int(request.trace_id) if request.trace_id else snowflake.next_id()
+
+        # 4) 互斥：已有任务在跑则拒绝（gateway 映射 403）
         with self._lock:
             if self._status["status"] in ("running", "stopping"):
                 context.abort(grpc.StatusCode.FAILED_PRECONDITION, "a crawl task is already running")
-            self._status = {"status": "running", "count": "0", "message": "",
+            self._status = {"id": trace_id, "status": "running", "count": "0", "message": "",
                             "current_category": "", "progress": 0, "total_cleaned": 0}
             self._stop_event = threading.Event()
 
-        # 3) trace_id：gateway 透传或本服务生成
-        trace_id = int(request.trace_id) if request.trace_id else snowflake.next_id()
         # 日志上下文（gateway 透传的用户信息）
         log_ctx = {
             "trace_id": trace_id,
@@ -148,15 +181,7 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
             "request_url": request.request_url,
         }
 
-        # 4) 启动后台爬取线程（爬取参数由 ADMIN 前端传参）
-        categories = list(request.categories) if request.categories else None
-        max_documents = request.max_documents or self._max_documents
-        # 使用服务内部配置限制单次任务规模，防止一次性爬取过多。
-        if max_documents > self._max_documents:
-            context.abort(
-                grpc.StatusCode.INVALID_ARGUMENT,
-                f"max_documents must be <= {self._max_documents}",
-            )
+        # 5) 启动后台爬取线程（爬取参数由 ADMIN 前端传参）
         self._worker = threading.Thread(
             target=self._crawl_worker,
             args=(trace_id, log_ctx, categories, max_documents, self._stop_event),
@@ -165,8 +190,8 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
         self._worker.start()
         logger.info("后台爬取已启动: trace_id=%d, categories=%s", trace_id, categories or "全部")
 
-        # 5) 立即返回（异步）
-        return crawler_pb2.CrawlResponse(count="0", trace_id=str(trace_id), status="running")
+        # 6) 启动命令只返回任务身份，详情由状态接口读取。
+        return crawler_pb2.CrawlResponse(id=trace_id)
 
     # ============================================================
     # 后台爬取 worker
@@ -214,11 +239,15 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
             # 4) 更新状态
             with self._lock:
                 if stop_event.is_set():
-                    self._status = {"status": "stopped", "count": str(inserted_count), "message": "stopped by user",
-                                    "current_category": "", "progress": 0, "total_cleaned": cleaned_count}
+                    self._status.update(
+                        status="stopped", count=str(inserted_count), message="stopped by user",
+                        current_category="", progress=0, total_cleaned=cleaned_count,
+                    )
                 else:
-                    self._status = {"status": "success", "count": str(inserted_count), "message": "",
-                                    "current_category": "", "progress": 0, "total_cleaned": cleaned_count}
+                    self._status.update(
+                        status="success", count=str(inserted_count), message="",
+                        current_category="", progress=0, total_cleaned=cleaned_count,
+                    )
             logger.info("采集任务完成: 入库 %d 条（trace_id=%d）", inserted_count, trace_id)
 
             # 5) 写业务日志
@@ -366,6 +395,7 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
             detail=f"get crawl status: {s['status']}",
         )
         return crawler_pb2.GetCrawlStatusResponse(
+            id=s["id"],
             status=s["status"],
             count=s["count"],
             message=s["message"],
@@ -437,6 +467,7 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
     def StopCrawl(self, request, context):
         """停止采集：设置停止信号，后台线程立即中断"""
         with self._lock:
+            task_id = self._status["id"]
             if self._status["status"] in ("running",):
                 self._status["status"] = "stopping"
                 if self._stop_event:
@@ -457,7 +488,7 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
             request_url=request.request_url,
             detail="crawl stop requested",
         )
-        return crawler_pb2.StopCrawlResponse(status="stopping")
+        return crawler_pb2.StopCrawlResponse(id=task_id)
 
     # ============================================================
     # 模拟采集：注入配置数据走完整链路（不真爬）
@@ -521,6 +552,7 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
                     "a crawl or ingest task is already running",
                 )
             self._status = {
+                "id": trace_id,
                 "status": "running",
                 "count": "0",
                 "message": "",
@@ -543,8 +575,4 @@ class CrawlerServicer(crawler_pb2_grpc.CrawlerServiceServicer):
             detail=f"ingest started: {len(records)} records",
             **log_ctx,
         )
-        return crawler_pb2.IngestDataResponse(
-            count="0",
-            trace_id=str(trace_id),
-            status="running",
-        )
+        return crawler_pb2.IngestDataResponse(id=trace_id)

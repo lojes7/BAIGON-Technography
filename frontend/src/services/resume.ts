@@ -1,6 +1,6 @@
 import type {
   ApiResponse, ResumeData, CreateResumeUploadParams, ResumeUploadUrlResult, CompleteResumeUploadParams, EditMyResumeParams,
-  AnalyzeResumeSkillsResult,
+  AnalyzeResumeSkillsResult, ResumeMutationResult,
 } from "../types/api";
 import { parseJson, stringifyNumericIdBody } from "./lossless";
 
@@ -43,7 +43,7 @@ export function createResumeUploadUrl(params: CreateResumeUploadParams) {
 
 // 完成上传并结构化分析（前端直传 MinIO 后调用；同步 OCR + 结构化 + 校验五类字段）
 export function completeResumeUpload(params: CompleteResumeUploadParams) {
-  return request<ResumeData>(`${BASE}/upload-complete`, {
+  return request<ResumeMutationResult>(`${BASE}/upload-complete`, {
     method: "POST",
     headers: hdrs(true),
     // uploadId 为雪花 ID，必须作为 JSON 数字回传（int64 不接受字符串）
@@ -53,7 +53,7 @@ export function completeResumeUpload(params: CompleteResumeUploadParams) {
 
 // 编辑我的简历
 export function editMyResume(params: EditMyResumeParams) {
-  return request<ResumeData>(BASE, {
+  return request<ResumeMutationResult>(BASE, {
     method: "PUT",
     headers: hdrs(true),
     body: JSON.stringify(params),

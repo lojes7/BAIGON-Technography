@@ -2,10 +2,11 @@
 package com.baigon.occupation.grpc.service.occupation;
 
 import com.baigon.occupation.GetJobSkillResolutionTaskRequest;
-import com.baigon.occupation.GetJobSkillResolutionTaskResponse;
 import com.baigon.occupation.GetJobRequest;
 import com.baigon.occupation.GetJobResponse;
 import com.baigon.occupation.GetSkillRequest;
+import com.baigon.occupation.GetSkillRelationsRequest;
+import com.baigon.occupation.GetSkillRelationsResponse;
 import com.baigon.occupation.GetSkillResponse;
 import com.baigon.occupation.ListSkillsRequest;
 import com.baigon.occupation.ListSkillsResponse;
@@ -13,13 +14,12 @@ import com.baigon.occupation.ListJobSkillResolutionSimilarSkillsResponse;
 import com.baigon.occupation.LookupSkillsRequest;
 import com.baigon.occupation.LookupSkillsResponse;
 import com.baigon.occupation.ReviewJobSkillResolutionTaskRequest;
+import com.baigon.occupation.ResourceIdResponse;
 import com.baigon.occupation.SkillRelationMutationRequest;
 import com.baigon.occupation.SkillRelationMutationResponse;
 import com.baigon.occupation.entity.ReviewStatus;
 import com.baigon.occupation.entity.TaskStatus;
-import com.baigon.occupation.entity.job.JobSkill;
 import com.baigon.occupation.entity.job.Job;
-import com.baigon.occupation.entity.skill.JobSkillResolutionCandidate;
 import com.baigon.occupation.entity.skill.JobSkillResolutionTask;
 import com.baigon.occupation.entity.skill.Skill;
 import com.baigon.occupation.entity.skill.SkillResolutionAction;
@@ -86,7 +86,7 @@ class OccupationGrpcSkillResolutionTest {
     }
 
     @Test
-    void listSkillsShouldExposeEmbeddingStateAndPagination() {
+    void listSkillsShouldExposeOnlyIdsAndPagination() {
         Skill skill = new Skill();
         skill.setId(300L);
         skill.setName("检索增强生成（RAG）");
@@ -109,19 +109,16 @@ class OccupationGrpcSkillResolutionTest {
         verify(observer).onCompleted();
         verify(observer, never()).onError(any());
         assertEquals(21, response.getValue().getTotal());
-        assertEquals(300L, response.getValue().getItems(0).getId());
-        assertEquals(true, response.getValue().getItems(0).getIsEmbed());
+        assertEquals(List.of(300L), response.getValue().getIdsList());
     }
 
     @Test
-    void getSkillShouldExposeStableDirectRelationIds() {
+    void getSkillShouldExposeOnlyTheSkillBody() {
         Skill skill = new Skill();
         skill.setId(300L);
         skill.setName("检索增强生成（RAG）");
-        when(hierarchyService.getDetail(300L)).thenReturn(Optional.of(
-                new SkillHierarchyService.SkillDetail(skill,
-                        new SkillHierarchyService.DirectRelations(
-                                List.of(100L, 200L), List.of(400L)))));
+        skill.setEmbeddingStatus(TaskStatus.SUCCESS);
+        when(hierarchyService.getSkill(300L)).thenReturn(Optional.of(skill));
         @SuppressWarnings("unchecked")
         StreamObserver<GetSkillResponse> observer = mock(StreamObserver.class);
 
@@ -130,19 +127,21 @@ class OccupationGrpcSkillResolutionTest {
         ArgumentCaptor<GetSkillResponse> response =
                 ArgumentCaptor.forClass(GetSkillResponse.class);
         verify(observer).onNext(response.capture());
-        assertEquals(List.of(100L, 200L),
-                response.getValue().getSkill().getParentSkillIdsList());
-        assertEquals(List.of(400L),
-                response.getValue().getSkill().getChildSkillIdsList());
+        assertEquals(300L, response.getValue().getSkill().getSkill().getId());
+        assertEquals("检索增强生成（RAG）",
+                response.getValue().getSkill().getSkill().getName());
+        assertEquals(true, response.getValue().getSkill().getSkill().getIsEmbed());
     }
 
     @Test
-    void lookupSkillsShouldExposeOnlyIdAndName() {
+    void lookupSkillsShouldExposeBatchDetailsAndMissingIds() {
         Skill first = new Skill();
         first.setId(100L);
         first.setName("机器学习");
+        first.setEmbeddingStatus(TaskStatus.SUCCESS);
         when(hierarchyService.lookupSkills(List.of(100L, 999L)))
-                .thenReturn(List.of(first));
+                .thenReturn(new SkillHierarchyService.SkillLookup(
+                        List.of(first), List.of(999L)));
         @SuppressWarnings("unchecked")
         StreamObserver<LookupSkillsResponse> observer = mock(StreamObserver.class);
 
@@ -155,6 +154,27 @@ class OccupationGrpcSkillResolutionTest {
         verify(observer).onNext(response.capture());
         assertEquals(100L, response.getValue().getItems(0).getId());
         assertEquals("机器学习", response.getValue().getItems(0).getName());
+        assertEquals(true, response.getValue().getItems(0).getIsEmbed());
+        assertEquals(List.of(999L), response.getValue().getMissingSkillIdsList());
+    }
+
+    @Test
+    void getSkillRelationsShouldExposeOnlyTheRequestedOneHopDirection() {
+        when(hierarchyService.getDirectRelations(300L)).thenReturn(Optional.of(
+                new SkillHierarchyService.DirectRelations(
+                        List.of(100L, 200L), List.of(400L))));
+        @SuppressWarnings("unchecked")
+        StreamObserver<GetSkillRelationsResponse> observer = mock(StreamObserver.class);
+
+        service.getSkillRelations(GetSkillRelationsRequest.newBuilder()
+                .setId(300L)
+                .setDirection("parents")
+                .build(), observer);
+
+        ArgumentCaptor<GetSkillRelationsResponse> response =
+                ArgumentCaptor.forClass(GetSkillRelationsResponse.class);
+        verify(observer).onNext(response.capture());
+        assertEquals(List.of(100L, 200L), response.getValue().getSkillIdsList());
     }
 
     @Test
@@ -176,20 +196,12 @@ class OccupationGrpcSkillResolutionTest {
     }
 
     @Test
-    void getJobShouldExposeDirectRelationsForEachCanonicalJobSkill() {
+    void getJobShouldExposeJobSkillsWithoutCanonicalHierarchy() {
         Job job = new Job();
         job.setId(10L);
         job.setName("大模型应用工程师");
-        JobSkill skill = new JobSkill();
-        skill.setId(20L);
-        skill.setSkillId(300L);
-        skill.setSkillName("RAG");
-        skill.setSkillProficiency("ADVANCED");
-        skill.setEvidence("负责检索增强链路");
-        JobQueryService.JobSkillDetail skillDetail = new JobQueryService.JobSkillDetail(
-                skill, List.of(100L, 200L), List.of(400L));
         when(jobQueryService.detail(10L)).thenReturn(Optional.of(
-                new JobQueryService.JobDetail(job, null, null, List.of(skillDetail))));
+                new JobQueryService.JobDetail(job, List.of(20L))));
         @SuppressWarnings("unchecked")
         StreamObserver<GetJobResponse> observer = mock(StreamObserver.class);
 
@@ -197,10 +209,7 @@ class OccupationGrpcSkillResolutionTest {
 
         ArgumentCaptor<GetJobResponse> response = ArgumentCaptor.forClass(GetJobResponse.class);
         verify(observer).onNext(response.capture());
-        assertEquals(List.of(100L, 200L),
-                response.getValue().getJobSkills(0).getParentSkillIdsList());
-        assertEquals(List.of(400L),
-                response.getValue().getJobSkills(0).getChildSkillIdsList());
+        assertEquals(List.of(20L), response.getValue().getJob().getJobSkillIdsList());
     }
 
     @Test
@@ -229,7 +238,7 @@ class OccupationGrpcSkillResolutionTest {
     }
 
     @Test
-    void createNewReviewShouldPassNullSkillIdAndReturnLatestDetail() {
+    void createNewReviewShouldPassNullSkillIdAndReturnOnlyTaskId() {
         JobSkillResolutionTask task = new JobSkillResolutionTask();
         task.setId(10L);
         task.setTraceId(9001L);
@@ -239,22 +248,11 @@ class OccupationGrpcSkillResolutionTest {
         task.setReviewStatus(ReviewStatus.PASSED);
         task.setResolutionAction(SkillResolutionAction.CREATE_NEW);
         task.setSelectedSkillId(300L);
-        JobSkill jobSkill = new JobSkill();
-        jobSkill.setId(100L);
-        jobSkill.setJobId(200L);
-        jobSkill.setSkillId(300L);
-        jobSkill.setSkillName("检索增强生成");
-        jobSkill.setSkillProficiency("ADVANCED");
-        jobSkill.setEvidence("负责 RAG 检索链路");
-        SkillResolutionQueryService.Detail detail =
-                new SkillResolutionQueryService.Detail(
-                        task, jobSkill, List.<JobSkillResolutionCandidate>of());
         when(reviewService.review(eq(10L), eq(SkillResolutionAction.CREATE_NEW),
                 isNull(), eq("检索增强生成（RAG）"), eq(List.of(400L, 500L)), any()))
                 .thenReturn(Optional.of(task));
-        when(queryService.getDetail(10L)).thenReturn(Optional.of(detail));
         @SuppressWarnings("unchecked")
-        StreamObserver<GetJobSkillResolutionTaskResponse> observer = mock(StreamObserver.class);
+        StreamObserver<ResourceIdResponse> observer = mock(StreamObserver.class);
 
         service.reviewJobSkillResolutionTask(
                 ReviewJobSkillResolutionTaskRequest.newBuilder()
@@ -265,14 +263,11 @@ class OccupationGrpcSkillResolutionTest {
                         .build(),
                 observer);
 
-        ArgumentCaptor<GetJobSkillResolutionTaskResponse> response =
-                ArgumentCaptor.forClass(GetJobSkillResolutionTaskResponse.class);
+        ArgumentCaptor<ResourceIdResponse> response =
+                ArgumentCaptor.forClass(ResourceIdResponse.class);
         verify(observer).onNext(response.capture());
         verify(observer).onCompleted();
         verify(observer, never()).onError(any());
-        assertEquals(300L, response.getValue().getResolution()
-                .getJobSkill().getSkillId());
-        assertEquals("CREATE_NEW", response.getValue().getResolution()
-                .getTask().getResolutionAction());
+        assertEquals(10L, response.getValue().getId());
     }
 }

@@ -1,18 +1,20 @@
 // 分页查看岗位分析任务，确认专业、职业并逐条审核技能结果。
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Eye, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import DirectoryPicker from "../components/job-analysis/DirectoryPicker";
-import { Btn, Card, PageHeader, UnderlineTabs } from "../components/ui";
+import { Btn, Card, PageHeader, Pagination, UnderlineTabs } from "../components/ui";
 import T from "../constants/tokens";
 import { isHttpErrorStatus } from "../services/http-error";
 import { getJobAnalysisTask, listJobAnalysisTasks, reviewJobAnalysisTask } from "../services/job-analysis";
+import { lookupMajors, lookupOccupations } from "../services/occupation";
 import type {
   JobAnalysisResult,
   JobAnalysisSkillReviewInput,
   JobAnalysisTaskDetail,
   JobAnalysisTaskSummary,
+  JobData,
 } from "../types/api";
 
 const REVIEW_STATUS_LABEL: Record<string, string> = {
@@ -28,7 +30,7 @@ const TASK_STATUS_LABEL: Record<string, string> = {
   FAILED: "失败",
 };
 
-const MAX_PAGE_SIZE = 20;
+const PAGE_SIZE = 20;
 
 type ReviewAction = "APPROVE" | "APPROVE_WITH_EDIT" | "REJECT";
 const PROFICIENCIES = ["EXPERT", "ADVANCED", "FAMILIAR", "BASIC"] as const;
@@ -40,10 +42,15 @@ function candidateReviewAction(value: string): ReviewAction {
 export default function JobAnalysisPage() {
   const { t } = useTranslation();
   const [items, setItems] = useState<JobAnalysisTaskSummary[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [taskStatusFilter, setTaskStatusFilter] = useState<"success" | "failed" | "processing">("success");
-  const [reviewFilter, setReviewFilter] = useState<"all" | "pending" | "reviewed">("all");
+  const [taskStatusFilter, setTaskStatusFilter] = useState<"SUCCESS" | "FAILED" | "RUNNING" | "PENDING">("SUCCESS");
+  const [reviewFilter, setReviewFilter] = useState<"all" | "PENDING" | "PASSED" | "REJECTED">("all");
   const [openingId, setOpeningId] = useState("");
+  const [jobs, setJobs] = useState<Record<string, JobData>>({});
+  const [majorNames, setMajorNames] = useState<Record<string, string>>({});
+  const [occupationNames, setOccupationNames] = useState<Record<string, string>>({});
 
   const [detail, setDetail] = useState<JobAnalysisTaskDetail | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -53,60 +60,66 @@ export default function JobAnalysisPage() {
   const [occupationName, setOccupationName] = useState("");
   const [skillReviews, setSkillReviews] = useState<Record<string, JobAnalysisSkillReviewInput>>({});
 
-  // 后端仅支持 reviewStatus 筛选，不支持 taskStatus 筛选，因此按允许的最大页大小拉取全部分页后在本地分组。
-  const fetchList = async () => {
+  // 列表始终只加载当前服务端页，任务摘要与目录名称分别走批量详情接口。
+  const fetchList = useCallback(async () => {
     setLoading(true);
     try {
-      const firstPage = await listJobAnalysisTasks({
-        page: 0,
-        pageSize: MAX_PAGE_SIZE,
+      const response = await listJobAnalysisTasks({
+        page: page - 1,
+        pageSize: PAGE_SIZE,
+        taskStatus: taskStatusFilter,
+        reviewStatus: reviewFilter === "all" ? undefined : reviewFilter,
       });
-      const allItems = [...(firstPage.data.items ?? [])];
-      const pageCount = Math.ceil((firstPage.data.total ?? 0) / MAX_PAGE_SIZE);
-      for (let page = 1; page < pageCount; page += 1) {
-        const response = await listJobAnalysisTasks({ page, pageSize: MAX_PAGE_SIZE });
-        allItems.push(...(response.data.items ?? []));
-      }
-      setItems(allItems);
+      const nextItems = response.data.items ?? [];
+      setItems(nextItems);
+      setTotal(response.data.total ?? 0);
+      setJobs(Object.fromEntries((response.data.jobs ?? []).map((job) => [job.id, job])));
+      const [majors, occupations] = await Promise.all([
+        lookupMajors(nextItems.flatMap((item) => item.selectedMajorId ? [item.selectedMajorId] : [])),
+        lookupOccupations(nextItems.flatMap((item) => item.selectedOccupationId ? [item.selectedOccupationId] : [])),
+      ]);
+      setMajorNames(Object.fromEntries(majors.data.items.map((item) => [String(item.id), item.name])));
+      setOccupationNames(Object.fromEntries(occupations.data.items.map((item) => [String(item.id), item.name])));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "岗位分析任务加载失败");
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, reviewFilter, taskStatusFilter]);
 
-  useEffect(() => { void fetchList(); }, []);
+  // eslint-disable-next-line react/set-state-in-effect -- 筛选与页码变化时需要同步发起当前服务端页请求。
+  useEffect(() => { void fetchList(); }, [fetchList]);
 
-  const visibleItems = items.filter((item) => {
-    if (taskStatusFilter === "processing") {
-      if (item.taskStatus !== "PENDING" && item.taskStatus !== "RUNNING") return false;
-    } else if (item.taskStatus !== (taskStatusFilter === "success" ? "SUCCESS" : "FAILED")) {
-      return false;
+  const initializeDetail = async (nextDetail: JobAnalysisTaskDetail) => {
+    setDetail(nextDetail);
+    if (nextDetail.job) {
+      setJobs((current) => ({ ...current, [nextDetail.job!.id]: nextDetail.job! }));
     }
 
-    if (reviewFilter === "pending") return item.reviewStatus === "PENDING";
-    if (reviewFilter === "reviewed") return item.reviewStatus === "PASSED" || item.reviewStatus === "REJECTED";
-    return true;
-  });
-
-  const initializeDetail = (nextDetail: JobAnalysisTaskDetail) => {
-    setDetail(nextDetail);
+    const [majors, occupations] = await Promise.all([
+      lookupMajors([
+        ...nextDetail.majorCandidates.map((item) => item.majorId),
+        ...(nextDetail.task.selectedMajorId ? [nextDetail.task.selectedMajorId] : []),
+      ]),
+      lookupOccupations([
+        ...nextDetail.candidates.map((item) => item.occupationId),
+        ...(nextDetail.task.selectedOccupationId ? [nextDetail.task.selectedOccupationId] : []),
+      ]),
+    ]);
+    const nextMajorNames = Object.fromEntries(majors.data.items.map((item) => [String(item.id), item.name]));
+    const nextOccupationNames = Object.fromEntries(occupations.data.items.map((item) => [String(item.id), item.name]));
+    setMajorNames((current) => ({ ...current, ...nextMajorNames }));
+    setOccupationNames((current) => ({ ...current, ...nextOccupationNames }));
 
     const selectedMajorId = nextDetail.task.selectedMajorId ?? nextDetail.majorCandidates[0]?.majorId ?? "";
-    const selectedMajor = nextDetail.majorCandidates.find((item) => String(item.majorId) === String(selectedMajorId));
     setMajorId(selectedMajorId);
-    setMajorName(nextDetail.task.selectedMajorName || selectedMajor?.majorName || (
-      selectedMajorId ? `专业 #${selectedMajorId}` : ""
-    ));
+    setMajorName(selectedMajorId ? nextMajorNames[String(selectedMajorId)] || `专业 #${selectedMajorId}` : "");
 
     const selectedOccupationId = nextDetail.task.selectedOccupationId ?? nextDetail.candidates[0]?.occupationId ?? "";
-    const selectedOccupation = nextDetail.candidates.find(
-      (item) => String(item.occupationId) === String(selectedOccupationId),
-    );
     setOccupationId(selectedOccupationId);
-    setOccupationName(nextDetail.task.selectedOccupationName || selectedOccupation?.occupationName || (
-      selectedOccupationId ? `职业 #${selectedOccupationId}` : ""
-    ));
+    setOccupationName(selectedOccupationId
+      ? nextOccupationNames[String(selectedOccupationId)] || `职业 #${selectedOccupationId}`
+      : "");
 
     const reviews: Record<string, JobAnalysisSkillReviewInput> = {};
     nextDetail.results.forEach((result) => {
@@ -125,7 +138,7 @@ export default function JobAnalysisPage() {
     setOpeningId(String(id));
     try {
       const response = await getJobAnalysisTask(id);
-      initializeDetail(response.data.analysis);
+      await initializeDetail(response.data);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "岗位分析详情加载失败");
     } finally {
@@ -224,6 +237,7 @@ export default function JobAnalysisPage() {
         breadcrumbs={[t("nav.aiProcessing"), "岗位分析审核"]}
         title="岗位分析审核"
         description="确认岗位对应的专业、职业，并逐条审核 JD 技能分析结果"
+        actions={<span className="font-mono text-[13px]" style={{ color: T.info }}>共 {total} 项</span>}
       />
 
       <UnderlineTabs
@@ -231,23 +245,29 @@ export default function JobAnalysisPage() {
           {
             value: taskStatusFilter,
             onChange: (value) => {
-              setTaskStatusFilter(value as "success" | "failed" | "processing");
+              setTaskStatusFilter(value as "SUCCESS" | "FAILED" | "RUNNING" | "PENDING");
               setReviewFilter("all");
+              setPage(1);
             },
             options: [
-              { value: "success", label: `成功 ${items.filter((i) => i.taskStatus === "SUCCESS").length}` },
-              { value: "failed", label: `失败 ${items.filter((i) => i.taskStatus === "FAILED").length}` },
-              { value: "processing", label: `处理中 ${items.filter((i) => i.taskStatus === "PENDING" || i.taskStatus === "RUNNING").length}` },
+              { value: "SUCCESS", label: "成功" },
+              { value: "FAILED", label: "失败" },
+              { value: "RUNNING", label: "处理中" },
+              { value: "PENDING", label: "等待中" },
             ],
           },
-          // 审核状态只在「成功」tab 有意义：处理中/失败的任务尚未进入复核，不存在已复核。
-          ...(taskStatusFilter === "success" ? [{
+          // 只有成功任务进入岗位分析复核，审核状态使用后端单值筛选。
+          ...(taskStatusFilter === "SUCCESS" ? [{
             value: reviewFilter,
-            onChange: (value: string) => setReviewFilter(value as "all" | "pending" | "reviewed"),
+            onChange: (value: string) => {
+              setReviewFilter(value as "all" | "PENDING" | "PASSED" | "REJECTED");
+              setPage(1);
+            },
             options: [
               { value: "all", label: "全部" },
-              { value: "pending", label: "待复核" },
-              { value: "reviewed", label: "已复核" },
+              { value: "PENDING", label: "待复核" },
+              { value: "PASSED", label: "已通过" },
+              { value: "REJECTED", label: "已拒绝" },
             ],
           }] : []),
         ]}
@@ -256,7 +276,7 @@ export default function JobAnalysisPage() {
       <Card>
         {loading ? (
           <div className="px-4 py-12 text-center text-[13px]" style={{ color: T.info }}>{t("common.loading")}</div>
-        ) : visibleItems.length === 0 ? (
+        ) : items.length === 0 ? (
           <div className="px-4 py-12 text-center text-[13px]" style={{ color: T.info }}>暂无岗位分析任务</div>
         ) : (
           <div className="overflow-x-auto">
@@ -266,7 +286,7 @@ export default function JobAnalysisPage() {
                   <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: T.info }}>ID</th>
                   <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: T.info }}>岗位名称</th>
                   <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: T.info }}>岗位原专业</th>
-                  {taskStatusFilter === "processing" && (
+                  {(taskStatusFilter === "PENDING" || taskStatusFilter === "RUNNING") && (
                     <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: T.info }}>分析进度</th>
                   )}
                   <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: T.info }}>审核状态</th>
@@ -276,12 +296,12 @@ export default function JobAnalysisPage() {
                 </tr>
               </thead>
               <tbody>
-                {visibleItems.map((item) => (
+                {items.map((item) => (
                   <tr key={item.id} className="transition-colors hover:bg-gray-50" style={{ borderTop: `1px solid ${T.cloud}` }}>
                     <td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{item.id}</td>
-                    <td className="px-4 py-3 font-medium" style={{ color: T.ink }}>{item.jobName || "—"}</td>
-                    <td className="max-w-44 px-4 py-3 text-[12px]" style={{ color: T.info }}>{item.jobMajor || "—"}</td>
-                    {taskStatusFilter === "processing" && (
+                    <td className="px-4 py-3 font-medium" style={{ color: T.ink }}>{jobs[item.jobId]?.name || `岗位 #${item.jobId}`}</td>
+                    <td className="max-w-44 px-4 py-3 text-[12px]" style={{ color: T.info }}>{jobs[item.jobId]?.major || "—"}</td>
+                    {(taskStatusFilter === "PENDING" || taskStatusFilter === "RUNNING") && (
                       <td className="px-4 py-3 text-[11px] leading-5" style={{ color: T.info }}>
                         <div>专业：{TASK_STATUS_LABEL[item.majorAnalysisStatus] || item.majorAnalysisStatus || "—"}</div>
                         <div>职业：{TASK_STATUS_LABEL[item.occupationAnalysisStatus] || item.occupationAnalysisStatus || "—"}</div>
@@ -292,8 +312,8 @@ export default function JobAnalysisPage() {
                       <ReviewStatus status={item.reviewStatus} />
                     </td>
                     <td className="px-4 py-3 text-[12px] leading-5" style={{ color: T.info }}>
-                      <div>专业：{item.selectedMajorName || item.selectedMajorId || "—"}</div>
-                      <div>职业：{item.selectedOccupationName || item.selectedOccupationId || "—"}</div>
+                      <div>专业：{item.selectedMajorId ? majorNames[item.selectedMajorId] || `#${item.selectedMajorId}` : "—"}</div>
+                      <div>职业：{item.selectedOccupationId ? occupationNames[item.selectedOccupationId] || `#${item.selectedOccupationId}` : "—"}</div>
                     </td>
                     <td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>
                       {item.createdAt?.slice(0, 10) || "—"}
@@ -316,6 +336,16 @@ export default function JobAnalysisPage() {
         )}
       </Card>
 
+      {total > PAGE_SIZE && (
+        <Pagination
+          page={page}
+          totalPages={Math.max(1, Math.ceil(total / PAGE_SIZE))}
+          total={total}
+          onChange={setPage}
+          disabled={loading}
+        />
+      )}
+
       {detail && (
         <div className="fixed inset-0 z-50 flex" style={{ background: "rgba(25,50,77,0.3)" }} onClick={closeDetail}>
           <div
@@ -325,10 +355,10 @@ export default function JobAnalysisPage() {
             <div className="sticky top-0 z-10 flex items-center justify-between bg-white px-5 py-4" style={{ borderBottom: `1px solid ${T.cloud}` }}>
               <div>
                 <h3 className="text-[15px] font-medium" style={{ color: T.ink }}>
-                  {detail.task.jobName || `任务 #${detail.task.id}`}
+                  {jobs[detail.task.jobId]?.name || `任务 #${detail.task.id}`}
                 </h3>
                 <div className="mt-0.5 text-[12px]" style={{ color: T.info }}>
-                  专业 {detail.task.jobMajor || "—"} · 任务 {TASK_STATUS_LABEL[detail.task.taskStatus] || detail.task.taskStatus} · 模型 {detail.task.modelName || "—"}
+                  专业 {jobs[detail.task.jobId]?.major || "—"} · 任务 {TASK_STATUS_LABEL[detail.task.taskStatus] || detail.task.taskStatus}
                 </div>
               </div>
               <button onClick={closeDetail} style={{ color: T.info }}><X size={18} /></button>
@@ -349,7 +379,7 @@ export default function JobAnalysisPage() {
                 value={majorId}
                 candidates={detail.majorCandidates.map((candidate) => ({
                   id: candidate.majorId,
-                  name: candidate.majorName,
+                  name: majorNames[candidate.majorId] || `专业 #${candidate.majorId}`,
                   similarity: candidate.similarity,
                 }))}
                 disabled={!reviewable}
@@ -371,7 +401,7 @@ export default function JobAnalysisPage() {
                 value={occupationId}
                 candidates={detail.candidates.map((candidate) => ({
                   id: candidate.occupationId,
-                  name: candidate.occupationName,
+                  name: occupationNames[candidate.occupationId] || `职业 #${candidate.occupationId}`,
                   similarity: candidate.similarity,
                 }))}
                 disabled={!reviewable}

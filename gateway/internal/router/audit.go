@@ -17,6 +17,12 @@ func RegisterAuditLogRoutes(api *gin.RouterGroup, pool *grpcpool.GrpcClientPool,
 	// 审计日志属于系统管理数据，三个来源统一只允许 ADMIN 访问。
 	logs.Use(middleware.RoleAuth("ADMIN"))
 	logs.POST("/occupation", audithandler.ListOccupationAuditLogsHandler(pool))
+	logs.POST("/occupation/lookup", audithandler.BatchGetOccupationAuditLogsHandler(pool))
+	logs.GET("/occupation/:id", audithandler.GetOccupationAuditLogHandler(pool))
 	logs.POST("/crawler", audithandler.ListCrawlerAuditLogsHandler(pool))
+	logs.POST("/crawler/lookup", audithandler.BatchGetCrawlerAuditLogsHandler(pool))
+	logs.GET("/crawler/:id", audithandler.GetCrawlerAuditLogHandler(pool))
 	logs.POST("/ai", audithandler.ListAIAuditLogsHandler(pool))
+	logs.POST("/ai/lookup", audithandler.BatchGetAIAuditLogsHandler(pool))
+	logs.GET("/ai/:id", audithandler.GetAIAuditLogHandler(pool))
 }

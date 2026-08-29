@@ -41,7 +41,7 @@ const BTN_PRIMARY_SHADOW = "0 4px 6px -1px rgba(37,99,235,0.3)";
 
 interface SubmitOk {
   count: number;
-  trace_id: string;
+  taskId: string;
 }
 
 function formatFileSize(bytes: number): string {
@@ -61,7 +61,7 @@ export default function IngestFormModal() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [success, setSuccess] = useState<SubmitOk | null>(null);
-  const [traceCopied, setTraceCopied] = useState(false);
+  const [taskIdCopied, setTaskIdCopied] = useState(false);
 
   const clearFile = () => {
     setParsedJobs([]);
@@ -76,7 +76,7 @@ export default function IngestFormModal() {
   const resetAll = () => {
     clearFile();
     setSuccess(null);
-    setTraceCopied(false);
+    setTaskIdCopied(false);
   };
 
   const handleFile = async (file: File) => {
@@ -111,7 +111,8 @@ export default function IngestFormModal() {
       const response = await ingestData(parsedJobs);
       setSuccess({
         count: submittedCount,
-        trace_id: response.data.trace_id,
+        // 展示提交命令返回的任务身份；处理条数来自本地已校验 CSV。
+        taskId: response.data.id,
       });
       clearFile();
     } catch (error) {
@@ -121,14 +122,14 @@ export default function IngestFormModal() {
     }
   };
 
-  const copyTrace = async () => {
+  const copyTaskId = async () => {
     if (!success) return;
     try {
-      await navigator.clipboard.writeText(success.trace_id);
-      setTraceCopied(true);
-      window.setTimeout(() => setTraceCopied(false), 1500);
+      await navigator.clipboard.writeText(success.taskId);
+      setTaskIdCopied(true);
+      window.setTimeout(() => setTaskIdCopied(false), 1500);
     } catch {
-      toast.error("浏览器无法访问剪贴板，请手动复制 trace_id");
+      toast.error("浏览器无法访问剪贴板，请手动复制任务 ID");
     }
   };
 
@@ -197,11 +198,11 @@ export default function IngestFormModal() {
             className="flex items-center gap-2 px-3 py-2 rounded-md max-w-full"
             style={{ background: "#F9FAFB", border: `1px solid ${N.border}` }}
           >
-            <span className="text-[12px] font-mono flex-shrink-0" style={{ color: N.neutral400 }}>trace_id:</span>
-            <span className="text-[12px] font-mono truncate" style={{ color: N.neutral900 }}>{success.trace_id}</span>
-            <button type="button" onClick={copyTrace} className="flex items-center gap-1 text-[12px] flex-shrink-0" style={{ color: N.primary }}>
-              {traceCopied ? <Check size={13} /> : <Copy size={13} />}
-              {traceCopied ? "已复制" : "复制"}
+            <span className="text-[12px] font-mono flex-shrink-0" style={{ color: N.neutral400 }}>任务 ID:</span>
+            <span className="text-[12px] font-mono truncate" style={{ color: N.neutral900 }}>{success.taskId}</span>
+            <button type="button" onClick={copyTaskId} className="flex items-center gap-1 text-[12px] flex-shrink-0" style={{ color: N.primary }}>
+              {taskIdCopied ? <Check size={13} /> : <Copy size={13} />}
+              {taskIdCopied ? "已复制" : "复制"}
             </button>
           </div>
           <div className="flex items-center gap-2 mt-1">

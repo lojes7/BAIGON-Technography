@@ -5,9 +5,9 @@ import { toast } from "sonner";
 import { Sparkles, RefreshCw, Award, FileText } from "lucide-react";
 import T from "../constants/tokens";
 import { analyzeMyResumeSkills } from "../services/resume";
-import { listMySkills } from "../services/user";
+import { batchGetMySkills, listMySkills } from "../services/user";
 import type { UserSkillData } from "../types/api";
-import { PageHeader, Btn, Card } from "../components/ui";
+import { PageHeader, Btn, Card, Pagination } from "../components/ui";
 import AbilityRadialGraph from "../components/AbilityRadialGraph";
 
 
@@ -35,23 +35,32 @@ export default function MySkills() {
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [latest, setLatest] = useState<UserSkillData[] | null>(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const pageSize = 20;
 
   const fetchSkills = () => {
     setLoading(true);
-    listMySkills()
-      .then((res) => setItems(res.data.items ?? []))
+    listMySkills({ page: page - 1, pageSize })
+      .then((res) => {
+        setItems(res.data.items ?? []);
+        setTotal(res.data.total ?? 0);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   };
-  useEffect(() => { fetchSkills(); }, []);
+  useEffect(() => { fetchSkills(); }, [page]);
 
   const handleAnalyze = async () => {
     setAnalyzing(true);
     setLatest(null);
     try {
       const res = await analyzeMyResumeSkills();
-      setLatest(res.data.skills ?? []);
+      const ids = res.data.userSkillRecordIds ?? [];
+      const details = ids.length > 0 ? await batchGetMySkills(ids) : null;
+      setLatest(details?.data.items ?? []);
       toast.success("技能分析完成");
+      setPage(1);
       fetchSkills();
     } catch (err) {
       toast.error((err as Error).message || "分析失败");
@@ -176,6 +185,14 @@ export default function MySkills() {
                   </div>
                 </div>
               ))}
+              {total > pageSize && (
+                <Pagination
+                  page={page}
+                  totalPages={Math.ceil(total / pageSize)}
+                  onChange={setPage}
+                  total={total}
+                />
+              )}
             </div>
           )}
         </Card>

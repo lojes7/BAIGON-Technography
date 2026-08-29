@@ -26,6 +26,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionOperations;
 
@@ -33,9 +36,12 @@ import java.text.Normalizer;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -47,6 +53,9 @@ public class UserAnalysisService {
     private static final int MAX_EVIDENCE_LENGTH = 1_000;
     private static final int MAX_TEXT_LENGTH = 2_000;
     private static final int MAX_MODEL_NAME_LENGTH = 64;
+    private static final int DEFAULT_SKILL_PAGE_SIZE = 20;
+    private static final int MAX_SKILL_PAGE_SIZE = 100;
+    private static final int MAX_BATCH_SIZE = 200;
     private static final String STALE_TASK_ERROR = "ANALYSIS_TIMEOUT";
 
     private final UserAnalysisTaskRepository taskRepository;
@@ -126,16 +135,73 @@ public class UserAnalysisService {
         }
     }
 
-    /** 返回全部历史技能观察记录；createdAt 表示本次系统分析写入时间。 */
-    public List<UserSkillData> listMySkills(long userId) {
+    /** 服务端分页返回历史技能观察记录；createdAt 表示本次系统分析写入时间。 */
+    public Page<UserSkillData> listMySkills(long userId, int page, int pageSize) {
         if (userId <= 0) {
             throw new IllegalArgumentException("user_id must be > 0");
         }
+        if (page < 0) {
+            throw new IllegalArgumentException("page must be >= 0");
+        }
+        int normalizedPageSize = normalizedSkillPageSize(pageSize);
         return graphRepository
-                .findByUserIdAndDeletedAtIsNullOrderByCreatedAtAscRankAscIdAsc(userId)
-                .stream()
+                .findByUserIdAndDeletedAtIsNull(
+                        userId,
+                        PageRequest.of(page, normalizedPageSize, Sort.by(
+                                Sort.Order.asc("createdAt"),
+                                Sort.Order.asc("rank"),
+                                Sort.Order.asc("id"))))
+                .map(this::toSkillData);
+    }
+
+    /** 单条技能详情同时校验当前用户所有权。 */
+    public UserSkillData getMySkill(long userId, long id) {
+        if (userId <= 0 || id <= 0) {
+            throw new IllegalArgumentException("user_id and id must be > 0");
+        }
+        return graphRepository.findByIdAndUserIdAndDeletedAtIsNull(id, userId)
+                .map(this::toSkillData)
+                .orElseThrow(() -> new ApiException(
+                        ApiException.ErrorCode.NOT_FOUND, "user skill not found"));
+    }
+
+    /** 批量技能详情按请求顺序返回，并通过 user_id 防止越权读取。 */
+    public List<UserSkillData> batchGetMySkills(long userId, Collection<Long> values) {
+        if (userId <= 0) {
+            throw new IllegalArgumentException("user_id must be > 0");
+        }
+        List<Long> ids = validatedIds(values);
+        Map<Long, UserGraph> byId = new LinkedHashMap<>();
+        graphRepository.findByUserIdAndIdInAndDeletedAtIsNull(userId, ids)
+                .forEach(item -> byId.put(item.getId(), item));
+        return ids.stream()
+                .distinct()
+                .map(byId::get)
+                .filter(java.util.Objects::nonNull)
                 .map(this::toSkillData)
                 .toList();
+    }
+
+    public int normalizedSkillPageSize(int pageSize) {
+        if (pageSize < 0 || pageSize > MAX_SKILL_PAGE_SIZE) {
+            throw new IllegalArgumentException("page_size must be between 1 and 100");
+        }
+        return pageSize == 0 ? DEFAULT_SKILL_PAGE_SIZE : pageSize;
+    }
+
+    private List<Long> validatedIds(Collection<Long> values) {
+        if (values == null || values.isEmpty()) {
+            throw new IllegalArgumentException("ids must not be empty");
+        }
+        if (values.size() > MAX_BATCH_SIZE) {
+            throw new IllegalArgumentException("ids must contain at most 200 values");
+        }
+        List<Long> ids = List.copyOf(values);
+        if (ids.stream().anyMatch(id -> id == null || id <= 0)) {
+            throw new IllegalArgumentException("ids must contain positive values");
+        }
+        // 在仓库查询前去重，并保持首次出现顺序。
+        return ids.stream().distinct().toList();
     }
 
     /** 人岗匹配严格只读取 jobs 表；不访问岗位分析结果、正式技能或职业表。 */

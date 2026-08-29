@@ -26,6 +26,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -283,6 +284,28 @@ class CleanedJobSourceServiceTest {
         when(cleanedRepository.findByIdForReview(404L)).thenReturn(Optional.empty());
         assertTrue(service.review(
                 404L, CleanedJobSourceService.ReviewAction.APPROVE, null, audit()).isEmpty());
+    }
+
+    @Test
+    void batchFindShouldDeduplicateAndKeepRequestOrder() {
+        CleanedJobSource first = pendingSource();
+        first.setId(9L);
+        CleanedJobSource second = pendingSource();
+        second.setId(3L);
+        when(cleanedRepository.findByIdInAndDeletedAtIsNull(List.of(9L, 3L, 8L)))
+                .thenReturn(List.of(second, first));
+
+        List<CleanedJobSource> result =
+                service.batchFindByIds(List.of(9L, 3L, 9L, 8L));
+
+        assertEquals(List.of(9L, 3L), result.stream().map(CleanedJobSource::getId).toList());
+        verify(cleanedRepository).findByIdInAndDeletedAtIsNull(List.of(9L, 3L, 8L));
+    }
+
+    @Test
+    void batchFindShouldRejectEmptyRawIds() {
+        assertThrows(IllegalArgumentException.class,
+                () -> service.batchFindByIds(List.of()));
     }
 
     private CleanedJobSource pendingSource() {

@@ -33,7 +33,7 @@ import static org.mockito.Mockito.when;
 class OccupationGrpcJobAnalysisTest {
 
     @Test
-    void detailShouldExposeSelectedOccupationAndMajorNames() {
+    void detailShouldExposeOnlyTaskBodyAndChildResourceIds() {
         JobAnalysisQueryService queryService = mock(JobAnalysisQueryService.class);
         OccupationGrpcService service = new OccupationGrpcService(
                 mock(MajorCatalogService.class),
@@ -56,9 +56,7 @@ class OccupationGrpcJobAnalysisTest {
         task.setSelectedMajorId(55L);
         when(queryService.detail(20L)).thenReturn(Optional.of(
                 new JobAnalysisQueryService.JobAnalysisDetail(
-                        new JobAnalysisQueryService.JobAnalysisTaskView(
-                                task, "计算机程序设计员", "软件工程"),
-                        List.of(), List.of(), List.of())));
+                        task, List.of(30L), List.of(35L), List.of(40L))));
         @SuppressWarnings("unchecked")
         StreamObserver<GetJobAnalysisTaskResponse> observer = mock(StreamObserver.class);
 
@@ -70,9 +68,16 @@ class OccupationGrpcJobAnalysisTest {
         verify(observer).onNext(response.capture());
         verify(observer).onCompleted();
         verify(observer, never()).onError(any());
-        assertEquals("计算机程序设计员",
-                response.getValue().getAnalysis().getTask().getSelectedOccupationName());
-        assertEquals("软件工程",
-                response.getValue().getAnalysis().getTask().getSelectedMajorName());
+        assertEquals(44L,
+                response.getValue().getAnalysis().getTask().getSelectedOccupationId());
+        assertEquals(55L,
+                response.getValue().getAnalysis().getTask().getSelectedMajorId());
+        assertEquals(List.of(30L), response.getValue().getAnalysis().getCandidateIdsList());
+        assertEquals(List.of(35L), response.getValue().getAnalysis().getMajorCandidateIdsList());
+        assertEquals(List.of(40L), response.getValue().getAnalysis().getResultIdsList());
+        assertEquals(null, response.getValue().getAnalysis().getTask()
+                .getDescriptorForType().findFieldByName("selected_occupation_name"));
+        assertEquals(null, response.getValue().getAnalysis().getTask()
+                .getDescriptorForType().findFieldByName("selected_major_name"));
     }
 }

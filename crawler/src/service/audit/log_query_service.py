@@ -7,6 +7,7 @@ from typing import Any
 ALLOWED_LEVELS = {"INFO", "WARNING", "ERROR"}
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 100
+MAX_BATCH_SIZE = 200
 
 
 @dataclass(frozen=True)
@@ -53,6 +54,15 @@ class AuditLogQueryService:
         )
         return AuditLogPage(items, total, normalized_page, normalized_size)
 
+    def batch_get(self, *, requester_role: str, ids: list[int]) -> list[Any]:
+        """ADMIN 按请求顺序批量读取当前服务的日志详情。"""
+        if requester_role != "ADMIN":
+            raise PermissionError("ADMIN role required")
+        normalized_ids = self._ids(ids)
+        items_by_id = {item.id: item for item in self._repository.batch_get(normalized_ids)}
+        return [items_by_id[item_id] for item_id in dict.fromkeys(normalized_ids)
+                if item_id in items_by_id]
+
     @staticmethod
     def _page(page: int, page_size: int) -> tuple[int, int]:
         if page < 0:
@@ -90,3 +100,14 @@ class AuditLogQueryService:
         if value < 0:
             raise ValueError("target_user_id must be > 0")
         return value
+
+    @staticmethod
+    def _ids(values: list[int]) -> list[int]:
+        if not values:
+            raise ValueError("target_log_ids must not be empty")
+        if len(values) > MAX_BATCH_SIZE:
+            raise ValueError("target_log_ids must contain at most 200 values")
+        if any(value <= 0 for value in values):
+            raise ValueError("target_log_ids must contain positive values")
+        # 仓库查询前去重，并保持首次出现顺序。
+        return list(dict.fromkeys(values))

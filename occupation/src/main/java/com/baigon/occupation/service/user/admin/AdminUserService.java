@@ -2,6 +2,9 @@
 package com.baigon.occupation.service.user.admin;
 
 import com.baigon.occupation.entity.user.User;
+import com.baigon.occupation.entity.user.Department;
+import com.baigon.occupation.entity.user.School;
+import com.baigon.occupation.entity.user.University;
 import com.baigon.occupation.repository.user.UserRepository;
 import com.baigon.occupation.repository.user.admin.DepartmentRepository;
 import com.baigon.occupation.repository.user.admin.SchoolRepository;
@@ -13,8 +16,13 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 
 @Service
 @Transactional(readOnly = true)
@@ -22,6 +30,7 @@ public class AdminUserService {
 
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
+    private static final int MAX_BATCH_SIZE = 200;
 
     private final UserRepository userRepository;
     private final UniversityRepository universityRepository;
@@ -38,7 +47,7 @@ public class AdminUserService {
         this.departmentRepository = departmentRepository;
     }
 
-    /** 列表筛选使用 users 表字段，同时返回扁平组织信息。 */
+    /** 列表筛选使用 users 表字段，用户结果只携带组织外键 ID。 */
     public Page<UserData> listUsers(int page, int pageSize, UserSearchCriteria criteria) {
         UserSearchCriteria filter = criteria == null ? UserSearchCriteria.empty() : criteria;
         User.Role role = role(filter.role());
@@ -76,7 +85,7 @@ public class AdminUserService {
     /** 分页查询高校目录。 */
     public Page<OrganizationSummary> listUniversities(int page, int pageSize, String keyword) {
         return universityRepository.search(text(keyword), catalogPageable(page, pageSize))
-                .map(item -> new OrganizationSummary(item.getId(), item.getName()));
+                .map(item -> new OrganizationSummary(item.getId(), item.getName(), 0L));
     }
 
     /** 分页查询学院目录，universityId 为 0 时不限高校。 */
@@ -85,7 +94,8 @@ public class AdminUserService {
                                                   int pageSize,
                                                   String keyword) {
         return schoolRepository.search(parent(universityId), text(keyword), catalogPageable(page, pageSize))
-                .map(item -> new OrganizationSummary(item.getId(), item.getName()));
+                .map(item -> new OrganizationSummary(
+                        item.getId(), item.getName(), item.getUniversityId()));
     }
 
     /** 分页查询系部目录，schoolId 为 0 时不限学院。 */
@@ -94,7 +104,39 @@ public class AdminUserService {
                                                       int pageSize,
                                                       String keyword) {
         return departmentRepository.search(parent(schoolId), text(keyword), catalogPageable(page, pageSize))
-                .map(item -> new OrganizationSummary(item.getId(), item.getName()));
+                .map(item -> new OrganizationSummary(
+                        item.getId(), item.getName(), item.getSchoolId()));
+    }
+
+    /** 按请求 ID 顺序批量查询高校详情。 */
+    public List<OrganizationSummary> batchGetUniversities(Collection<Long> ids) {
+        List<Long> validated = validatedIds(ids);
+        return orderedOrganizations(
+                validated,
+                universityRepository.findByIdInAndDeletedAtIsNull(validated),
+                University::getId,
+                item -> new OrganizationSummary(item.getId(), item.getName(), 0L));
+    }
+
+    /** 按请求 ID 顺序批量查询学院详情。 */
+    public List<OrganizationSummary> batchGetSchools(Collection<Long> ids) {
+        List<Long> validated = validatedIds(ids);
+        return orderedOrganizations(
+                validated,
+                schoolRepository.findByIdInAndDeletedAtIsNull(validated),
+                School::getId,
+                item -> new OrganizationSummary(
+                        item.getId(), item.getName(), item.getUniversityId()));
+    }
+
+    /** 按请求 ID 顺序批量查询系部详情。 */
+    public List<OrganizationSummary> batchGetDepartments(Collection<Long> ids) {
+        List<Long> validated = validatedIds(ids);
+        return orderedOrganizations(
+                validated,
+                departmentRepository.findByIdInAndDeletedAtIsNull(validated),
+                Department::getId,
+                item -> new OrganizationSummary(item.getId(), item.getName(), item.getSchoolId()));
     }
 
     public int normalizedPageSize(int value) {
@@ -145,10 +187,37 @@ public class AdminUserService {
     private UserData build(User user) {
         return new UserData(
                 user.getId(), user.getUid(), user.getName(), user.getRole().name(), user.getStatus().name(),
-                user.getUniversityId(), user.getSchoolId(), user.getDepartmentId(),
-                user.getUniversity() == null ? null : user.getUniversity().getName(),
-                user.getSchool() == null ? null : user.getSchool().getName(),
-                user.getDepartment() == null ? null : user.getDepartment().getName());
+                user.getUniversityId(), user.getSchoolId(), user.getDepartmentId());
+    }
+
+    private List<Long> validatedIds(Collection<Long> values) {
+        if (values == null || values.isEmpty()) {
+            throw new IllegalArgumentException("ids must not be empty");
+        }
+        if (values.size() > MAX_BATCH_SIZE) {
+            throw new IllegalArgumentException("ids must contain at most 200 values");
+        }
+        List<Long> ids = List.copyOf(values);
+        if (ids.stream().anyMatch(id -> id == null || id <= 0)) {
+            throw new IllegalArgumentException("ids must contain positive values");
+        }
+        // 在仓库查询前去重，并保持首次出现顺序。
+        return ids.stream().distinct().toList();
+    }
+
+    private <T> List<OrganizationSummary> orderedOrganizations(
+            List<Long> ids,
+            List<T> entities,
+            Function<T, Long> id,
+            Function<T, OrganizationSummary> mapper) {
+        Map<Long, T> byId = new LinkedHashMap<>();
+        entities.forEach(item -> byId.put(id.apply(item), item));
+        return ids.stream()
+                .distinct()
+                .map(byId::get)
+                .filter(java.util.Objects::nonNull)
+                .map(mapper)
+                .toList();
     }
 
     private Long organizationId(long value) {
@@ -170,7 +239,7 @@ public class AdminUserService {
         }
     }
 
-    public record OrganizationSummary(Long id, String name) {
+    public record OrganizationSummary(Long id, String name, Long parentId) {
     }
 
     public record UserData(
@@ -181,9 +250,6 @@ public class AdminUserService {
             String status,
             Long universityId,
             Long schoolId,
-            Long departmentId,
-            String universityName,
-            String schoolName,
-            String departmentName) {
+            Long departmentId) {
     }
 }

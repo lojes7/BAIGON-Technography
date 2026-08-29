@@ -14,7 +14,13 @@ func RegisterJobRoutes(api *gin.RouterGroup, pool *grpcpool.GrpcClientPool, jwtS
 	jobs := api.Group("/jobs")
 	jobs.Use(middleware.Auth(jwtSecret))
 	jobs.POST("", jobhandler.ListJobsHandler(pool))
+	jobs.POST("/lookup", jobhandler.LookupJobsHandler(pool))
 	jobs.GET("/:id", jobhandler.GetJobHandler(pool))
 	jobs.POST("/:id/match", jobhandler.MatchMyResumeToJobHandler(pool))
 	jobs.GET("/:id/match", jobhandler.GetLatestMyJobMatchHandler(pool))
+
+	jobSkills := api.Group("/job-skills")
+	jobSkills.Use(middleware.Auth(jwtSecret))
+	jobSkills.POST("/lookup", jobhandler.LookupJobSkillsHandler(pool))
+	jobSkills.GET("/:id", jobhandler.GetJobSkillHandler(pool))
 }

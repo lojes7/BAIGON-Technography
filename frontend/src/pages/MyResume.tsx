@@ -240,8 +240,9 @@ export default function MyResume() {
     try {
       // 已有正文则保留；无正文时用结构化字段自动拼接，保证「我的能力」技能分析有 content 依据（否则 400）
       const content = (resume?.content?.trim() || buildContentFromFields(fields).trim()) || undefined;
-      const res = await editMyResume({ content, fields });
-      setResume(res.data);
+      await editMyResume({ content, fields });
+      const refreshed = await getMyResume();
+      setResume(refreshed.data?.id ? refreshed.data : null);
       setEditing(false);
       setEditForm(null);
       toast.success("简历已更新");

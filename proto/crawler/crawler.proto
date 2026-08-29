@@ -62,9 +62,10 @@ message IngestDataRequest {
 }
 
 message IngestDataResponse {
-  string count = 1; // 已处理条数；异步任务刚启动时为 0
-  string trace_id = 2;
-  string status = 3; // 异步任务状态：running
+  reserved 1, 2, 3;
+  reserved "count", "trace_id", "status";
+  // 采集任务 ID；当前复用任务启动请求的雪花 trace_id，但不再以审计字段名对外暴露。
+  int64 id = 4;
 }
 
 message CrawlRequest {
@@ -80,9 +81,10 @@ message CrawlRequest {
 }
 
 message CrawlResponse {
-  string count = 1; // 采集到的内容的数量
-  string trace_id = 2; // 回显链路追踪 ID
-  string status = 3; // 异步任务状态：running（已启动后台爬取）
+  reserved 1, 2, 3;
+  reserved "count", "trace_id", "status";
+  // 采集任务 ID；启动命令只返回身份，状态由 GetCrawlStatus 查询。
+  int64 id = 4;
 }
 
 message GetCrawlStatusRequest {
@@ -101,6 +103,8 @@ message GetCrawlStatusResponse {
   string current_category = 4; // 正在爬取的分类
   int32 progress = 5; // 当前分类已完成页数
   int64 total_cleaned = 6; // 累计清洗条数
+  // 最近一次采集/注入任务 ID；idle 且从未启动时为 0。
+  int64 id = 7;
 }
 
 message StopCrawlRequest {
@@ -113,7 +117,10 @@ message StopCrawlRequest {
 }
 
 message StopCrawlResponse {
-  string status = 1; // 停止后状态，stub 阶段固定返回 "stopped"
+  reserved 1;
+  reserved "status";
+  // 收到停止命令的任务 ID；当前无任务时为 0。
+  int64 id = 2;
 }
 
 message GetJobSourceByTraceIdRequest {

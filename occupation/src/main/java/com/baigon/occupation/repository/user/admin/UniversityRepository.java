@@ -8,6 +8,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
+import java.util.List;
+
 public interface UniversityRepository extends JpaRepository<University, Long> {
     @Query("""
             SELECT item FROM University item
@@ -15,4 +18,6 @@ public interface UniversityRepository extends JpaRepository<University, Long> {
               AND (:keyword = '' OR LOWER(item.name) LIKE LOWER(CONCAT('%', :keyword, '%')))
             """)
     Page<University> search(@Param("keyword") String keyword, Pageable pageable);
+
+    List<University> findByIdInAndDeletedAtIsNull(Collection<Long> ids);
 }
