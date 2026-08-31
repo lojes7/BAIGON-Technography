@@ -23,6 +23,7 @@ export const PAGE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     "job-dict", "skill-dict",
     "graph-browser", "graph-snapshots", "relation-evidence",
     "evolution-trends", "evolution-events", "skill-combos",
+    "emerging-jobs", "job-updates",
     "programs", "course-evidence", "gap-analysis", "response-lag", "recommendations",
     "export-tasks", "export-history",
     "params", "users", "audit-log",
@@ -37,7 +38,8 @@ export const PAGE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
   analyst: [
     "dashboard",
     "graph-browser", "graph-snapshots", "relation-evidence",
-    "evolution-trends", "evolution-events", "skill-combos", "account-settings",
+    "evolution-trends", "evolution-events", "skill-combos",
+    "emerging-jobs", "job-updates", "account-settings",
     "jobs",
   ],
   teacher: [

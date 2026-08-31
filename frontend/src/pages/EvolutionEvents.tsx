@@ -253,7 +253,7 @@ function EvolutionEventsPage() {
       </div>
 
       {/* 分页 */}
-      {totalPages > 1 && (
+      {total > 0 && (
         <Pagination page={page} totalPages={totalPages} onChange={setPage} total={total} />
       )}
 

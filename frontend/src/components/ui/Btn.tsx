@@ -2,11 +2,12 @@ import T from "../../constants/tokens";
 
 function Btn({
   children, variant = "primary", onClick, size = "md",
-  icon: Icon, disabled = false, title,
+  icon: Icon, disabled = false, title, block = false, className, type = "button",
 }: {
   children?: React.ReactNode; variant?: "primary" | "secondary" | "ghost" | "danger";
-  onClick?: () => void; size?: "sm" | "md";
+  onClick?: (e?: React.MouseEvent<HTMLButtonElement>) => void; size?: "sm" | "md";
   icon?: React.ComponentType<{ size?: number }>; disabled?: boolean; title?: string;
+  block?: boolean; className?: string; type?: "button" | "submit" | "reset";
 }) {
   const sz = size === "sm" ? "text-[12px] px-2.5 py-1.5 gap-1" : "text-[14px] px-4 py-2 gap-1.5";
   const iconSz = size === "sm" ? 12 : 14;
@@ -18,7 +19,8 @@ function Btn({
   };
   return (
     <button
-      className={`inline-flex items-center font-medium rounded-md cursor-pointer transition-opacity hover:opacity-85 active:opacity-75 ${sz}`}
+      type={type}
+      className={`${block ? "flex w-full" : "inline-flex"} items-center justify-center font-medium rounded-md cursor-pointer transition-opacity hover:opacity-85 active:opacity-75 ${sz}${className ? ` ${className}` : ""}`}
       style={{ ...styles[variant], opacity: disabled ? 0.45 : 1 }}
       onClick={onClick}
       disabled={disabled}

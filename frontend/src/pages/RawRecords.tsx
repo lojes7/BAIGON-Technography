@@ -1,13 +1,89 @@
 import { useTranslation } from "react-i18next";
 import { useState, useEffect } from "react";
-import { X, ShieldCheck, CheckCircle, XCircle, Loader2, ArrowLeft, FileText, Pencil, Eye } from "lucide-react";
+import { X, ShieldCheck, CheckCircle, XCircle, Loader2, ArrowLeft, FileText, Pencil, Eye, ArrowUpRight, Radio, AlertTriangle } from "lucide-react";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+} from "recharts";
 import { toast } from "sonner";
 import T from "../constants/tokens";
 import { useAuth } from "../auth/AuthContext";
 import { getDataSourceList, reviewDataSource, getCrawlerStatus, getSourceRecord, getDataSourceDetail, editAndApproveReview } from "../services/engineer";
 import type { DataSourceItem, DataSourceDetail, SourceJobDetail } from "../types/api";
-import { PageHeader, Btn, Card, StatusBadge, MetricCard, Pagination } from "../components/ui";
+import { Btn, Card, StatusBadge, Pagination } from "../components/ui";
 import DiffViewer, { type DiffRow } from "../components/diff/DiffViewer";
+
+/* 深蓝主色系（确认后与工作台一起沉淀到 tokens.ts） */
+const P = {
+  primary: "#1E4C8F",
+  primaryDeep: "#12305E",
+  sky: "#A9C8EC",
+  skySoft: "#DCE8F6",
+  ink: "#16283E",
+  muted: "#5E6E82",
+  faint: "#8B99AB",
+  green: "#159A6C",
+  greenBg: "#E4F4ED",
+  amber: "#D98E1F",
+  amberBg: "#FBF1DC",
+  red: "#E25C4A",
+  border: "#E4EAF2",
+  bg: "#F3F6FB",
+} as const;
+
+/* 近 30 天采集趋势（mock，后续接 /data-source/stats 聚合接口） */
+const trend30 = (() => {
+  const arr: { dt: string; n: number }[] = [];
+  const base = new Date("2026-08-29T00:00:00");
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(base);
+    d.setDate(base.getDate() - i);
+    const k = 29 - i;
+    const n = 22 + Math.round(16 * Math.sin(k / 3.2) + ((k * 7) % 23));
+    const dt = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    arr.push({ dt, n });
+  }
+  return arr;
+})();
+
+/* 来源平台构成（mock：合计 12,846，与数据导入页 KPI 一致） */
+const platformStats = [
+  { name: "智联招聘", pct: 42, count: "5,392", color: P.primary },
+  { name: "BOSS直聘", pct: 26, count: "3,340", color: "#2E9E9A" },
+  { name: "前程无忧", pct: 18, count: "2,312", color: "#7468CE" },
+  { name: "猎聘", pct: 9, count: "1,156", color: "#D98E1F" },
+  { name: "拉勾", pct: 4, count: "514", color: "#E25C4A" },
+  { name: "其他渠道", pct: 1, count: "132", color: P.faint },
+];
+
+const PLATFORM_TONE: Record<string, string> = {
+  "智联招聘": P.primary,
+  "BOSS直聘": "#2E9E9A",
+  "前程无忧": "#7468CE",
+  "猎聘": "#D98E1F",
+  "拉勾": P.red,
+};
+
+function KpiCard({ children, onClick, featured = false }: {
+  children: React.ReactNode; onClick?: () => void; featured?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-2xl p-5 flex flex-col relative overflow-hidden transition-all hover:-translate-y-0.5 ${featured ? "text-white cursor-pointer" : "bg-white cursor-pointer hover:shadow-md"}`}
+      style={featured
+        ? { background: `linear-gradient(135deg, ${P.primary} 0%, ${P.primaryDeep} 100%)`, minHeight: 132 }
+        : { border: `1px solid ${P.border}`, minHeight: 132 }}
+      onClick={onClick}
+    >
+      {featured && (
+        <>
+          <div className="absolute -right-8 -top-10 w-36 h-36 rounded-full" style={{ background: "rgba(255,255,255,0.07)" }} />
+          <div className="absolute -right-2 top-14 w-20 h-20 rounded-full" style={{ background: "rgba(255,255,255,0.05)" }} />
+        </>
+      )}
+      {children}
+    </div>
+  );
+}
 
 type ReviewPhase = "idle" | "confirm" | "progress" | "result";
 
@@ -257,46 +333,151 @@ export default function RawRecordsPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader
-        breadcrumbs={[t("nav.dataCenter"), t("nav.rawRecords")]}
-        title={t("page.rawRecords.title")}
-        description={t("page.rawRecords.desc")}
-      />
-
-      {/* 统计框：岗位总数 / 来源平台数 / 待审核 */}
-      <div className="grid grid-cols-3 gap-4">
-        <MetricCard title="岗位总数" value={loading ? "—" : String(total)} />
-        <MetricCard title="来源平台数" value={loading ? "—" : String(new Set(records.map(s => s.source_platform)).size)} />
-        <MetricCard title="待审核" value={loading ? "—" : String(records.filter(s => s.review_status === "PENDING").length)} />
+      {/* ===== 页头：大标题 + 状态筛选 ===== */}
+      <div className="flex items-end justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-[26px] font-bold leading-tight" style={{ color: P.ink }}>{t("page.rawRecords.title")}</h1>
+          <p className="text-[13px] mt-1" style={{ color: P.muted }}>
+            采集与 CSV 注入的样本池：清洗 → 复核 → 进入词典与图谱构建
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {[
+            { key: "", label: "全部" },
+            { key: "PENDING", label: "待复核" },
+            { key: "PASSED", label: "已通过" },
+            { key: "REJECTED", label: "已驳回" },
+          ].map(s => (
+            <button key={s.key}
+              className="px-4 py-2 rounded-full text-[13px] font-medium transition-colors"
+              style={{
+                border: `1px solid ${filterStatus === s.key ? P.primary : P.border}`,
+                color: filterStatus === s.key ? "white" : P.muted,
+                background: filterStatus === s.key ? P.primary : "white",
+              }}
+              onClick={() => { setFilterStatus(s.key); setPage(1); }}
+            >{s.label}</button>
+          ))}
+        </div>
       </div>
 
-      {/* 筛选：全部 / 未审核 / 已通过 / 已拒绝 */}
-      <div className="flex items-center gap-2">
-        {["", "PENDING", "PASSED", "REJECTED"].map(s => (
-          <button key={s}
-            className="px-3 py-1.5 rounded-md text-[13px] transition-colors"
-            style={{
-              border: `1px solid ${filterStatus === s ? T.teal : T.border}`,
-              color: filterStatus === s ? "white" : T.ink,
-              background: filterStatus === s ? T.teal : "white",
-            }}
-            onClick={() => { setFilterStatus(s); setPage(1); }}
-          >{s === "" ? "全部" : s === "PENDING" ? "未审核" : s === "PASSED" ? "已通过" : "已拒绝"}</button>
+      {/* ===== KPI 统计行 ===== */}
+      <div className="grid grid-cols-4 gap-4">
+        <KpiCard featured onClick={() => { setFilterStatus(""); setPage(1); }}>
+          <div className="flex items-start justify-between">
+            <span className="text-[13px]" style={{ color: "rgba(255,255,255,0.85)" }}>样本总量</span>
+            <span className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.16)" }}>
+              <ArrowUpRight size={14} color="#fff" />
+            </span>
+          </div>
+          <div className="text-[32px] font-mono font-semibold leading-tight mt-1">{loading ? "…" : total.toLocaleString()}</div>
+          <div className="mt-auto flex items-center gap-2">
+            <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.16)", color: "#fff" }}>今日 +86</span>
+            <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.6)" }}>覆盖 12 个行业大类</span>
+          </div>
+        </KpiCard>
+
+        {[
+          { title: "待复核样本", value: "37", chip: "9 项高优先级", bg: P.amberBg, color: P.amber, warn: true, filter: "PENDING" },
+          { title: "复核通过率", value: "89.6%", chip: "全量口径", bg: P.greenBg, color: P.green, filter: "PASSED" },
+          { title: "来源平台", value: "6", chip: "爬虫 + CSV 注入", bg: P.skySoft, color: P.primary, filter: "" },
+        ].map((k) => (
+          <KpiCard key={k.title} onClick={() => { setFilterStatus(k.filter); setPage(1); }}>
+            <div className="flex items-start justify-between">
+              <span className="text-[13px]" style={{ color: P.muted }}>{k.title}</span>
+              <span className="w-8 h-8 rounded-full flex items-center justify-center" style={{ border: `1px solid ${P.border}` }}>
+                <ArrowUpRight size={14} style={{ color: P.faint }} />
+              </span>
+            </div>
+            <div className="text-[30px] font-mono font-semibold leading-tight mt-1" style={{ color: P.ink }}>{k.value}</div>
+            <div className="mt-auto flex items-center gap-1.5">
+              {k.warn && <AlertTriangle size={11} style={{ color: k.color }} />}
+              <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: k.bg, color: k.color }}>{k.chip}</span>
+            </div>
+          </KpiCard>
         ))}
       </div>
 
-      {crawlerRunning && (
-        <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-[13px]"
-          style={{ background: `${T.emerging}12`, color: T.emerging, border: `1px solid ${T.emerging}30` }}>
-          <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: T.emerging }} />
-          {t("page.rawRecords.crawlerRunning")}
+      {/* ===== 采集趋势 + 平台构成 + 采集状态 ===== */}
+      <div className="grid grid-cols-12 gap-4">
+        <div className="col-span-5 bg-white rounded-2xl" style={{ border: `1px solid ${P.border}` }}>
+          <div className="px-5 pt-4 pb-1">
+            <div className="text-[15px] font-semibold" style={{ color: P.ink }}>近 30 天采集趋势</div>
+            <div className="text-[12px] mt-0.5" style={{ color: P.faint }}>每日新增清洗后样本</div>
+          </div>
+          <div className="px-3 pb-3 pt-2">
+            <ResponsiveContainer width="100%" height={190}>
+              <BarChart data={trend30} barSize={8}>
+                <CartesianGrid strokeDasharray="4 6" stroke={P.skySoft} vertical={false} />
+                <XAxis dataKey="dt" tick={{ fontSize: 10, fill: P.faint }} tickLine={false} axisLine={false}
+                  tickFormatter={(v: string) => v.slice(8)} interval={4} />
+                <YAxis tick={{ fontSize: 10, fill: P.faint }} tickLine={false} axisLine={false} width={26} />
+                <Tooltip
+                  contentStyle={{ fontSize: 12, border: `1px solid ${P.border}`, borderRadius: 12, boxShadow: "0 8px 20px rgba(22,40,62,0.08)" }}
+                  cursor={{ fill: P.skySoft }}
+                />
+                <Bar dataKey="n" name="新增样本" radius={[4, 4, 4, 4]}>
+                  {trend30.map((d, i) => (
+                    <Cell key={i} fill={i === trend30.length - 1 ? P.primary : d.n >= 50 ? "#7FA6D6" : P.sky} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
-      )}
+
+        <div className="col-span-4 bg-white rounded-2xl p-5" style={{ border: `1px solid ${P.border}` }}>
+          <div className="flex items-center justify-between">
+            <div className="text-[15px] font-semibold" style={{ color: P.ink }}>来源平台构成</div>
+            <span className="text-[11px] font-mono" style={{ color: P.faint }}>TOP 6</span>
+          </div>
+          <div className="mt-3 space-y-2.5">
+            {platformStats.map((pf) => (
+              <div key={pf.name}>
+                <div className="flex items-center justify-between text-[12px] mb-1">
+                  <span className="flex items-center gap-1.5" style={{ color: P.ink }}>
+                    <span className="w-2 h-2 rounded-full" style={{ background: pf.color }} />
+                    {pf.name}
+                  </span>
+                  <span className="font-mono" style={{ color: P.faint }}>{pf.count} · {pf.pct}%</span>
+                </div>
+                <div className="h-1.5 rounded-full overflow-hidden" style={{ background: P.skySoft }}>
+                  <div className="h-full rounded-full" style={{ width: `${pf.pct}%`, background: pf.color }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="col-span-3 rounded-2xl p-5 text-white relative overflow-hidden flex flex-col"
+          style={{ background: `linear-gradient(150deg, #16345E 0%, ${P.primaryDeep} 55%, #0C1F3C 100%)`, minHeight: 250 }}>
+          <div className="absolute -right-10 -bottom-14 w-40 h-40 rounded-full" style={{ border: "1px solid rgba(255,255,255,0.08)" }} />
+          <div className="flex items-center justify-between">
+            <span className="inline-flex items-center gap-2 text-[14px] font-semibold">
+              <Radio size={15} /> 采集调度
+            </span>
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full"
+              style={{ background: crawlerRunning ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.08)" }}>
+              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: crawlerRunning ? "#5EEAB5" : "#8B99AB" }} />
+              {crawlerRunning ? "爬虫运行中" : "已停止"}
+            </span>
+          </div>
+          <div className="mt-4 space-y-2.5 text-[12px]" style={{ color: "rgba(255,255,255,0.65)" }}>
+            <div className="flex justify-between"><span>今日新增样本</span><span className="font-mono" style={{ color: "#fff" }}>+86</span></div>
+            <div className="flex justify-between"><span>最近一次采集</span><span className="font-mono" style={{ color: "#fff" }}>14:20</span></div>
+            <div className="flex justify-between"><span>最近采集城市</span><span className="font-mono" style={{ color: "#fff" }}>常州</span></div>
+            <div className="flex justify-between"><span>采集队列</span><span className="font-mono" style={{ color: "#fff" }}>12 个关键词</span></div>
+          </div>
+          <div className="mt-auto pt-3 text-[11px] leading-relaxed" style={{ color: "rgba(255,255,255,0.45)", borderTop: "1px dashed rgba(255,255,255,0.12)" }}>
+            采集与清洗完成后，样本自动进入下方列表等待人工复核
+          </div>
+        </div>
+      </div>
 
       {/* 顶部批量工具栏 */}
       {isReviewer && (
-        <div className="flex items-center gap-3 px-4 py-2.5 rounded-lg" style={{ background: T.bg, border: `1px solid ${T.border}` }}>
-          <span className="text-[13px] font-medium" style={{ color: T.ink }}>
+        <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl" style={{ background: P.bg, border: `1px solid ${P.border}` }}>
+          <span className="text-[13px] font-medium" style={{ color: P.ink }}>
             已选 {selectedIds.size} 条
           </span>
           <div className="flex items-center gap-2">
@@ -311,18 +492,18 @@ export default function RawRecordsPage() {
               批量驳回
             </Btn>
             {hasSelection && (
-              <button className="text-[13px] ml-2" style={{ color: T.info }} onClick={clearSelection}>
+              <button className="text-[13px] ml-2" style={{ color: P.faint }} onClick={clearSelection}>
                 清空选择
               </button>
             )}
           </div>
           {!hasSelection && (
-            <span className="text-[12px]" style={{ color: T.info }}>勾选记录后可批量通过或驳回</span>
+            <span className="text-[12px]" style={{ color: P.faint }}>勾选记录后可批量通过或驳回</span>
           )}
         </div>
       )}
 
-      <Card>
+      <Card className="overflow-hidden">
         {loading ? (
           <div className="px-4 py-12 text-center text-[13px]" style={{ color: T.info }}>{t("common.loading")}</div>
         ) : records.length === 0 ? (
@@ -330,7 +511,7 @@ export default function RawRecordsPage() {
         ) : (
           <table className="w-full table-fixed text-[13px]">
             <thead>
-              <tr style={{ background: T.cloud }}>
+              <tr style={{ background: P.skySoft }}>
                 {isReviewer && (
                   <th className="w-10 px-2 py-2.5">
                     <input type="checkbox" className="accent-[#3996b7] cursor-pointer"
@@ -348,7 +529,7 @@ export default function RawRecordsPage() {
                   { key: "colReviewStatus", width: "w-[12%]", align: "center" },
                   { key: "colActions", width: "w-[12%]", align: "center" },
                 ].map((col) => (
-                  <th key={col.key} className={`${col.width} px-2 py-2.5 ${col.align === "center" ? "text-center" : "text-left"} font-medium text-[12px] whitespace-nowrap`} style={{ color: T.info }}>
+                  <th key={col.key} className={`${col.width} px-2 py-2.5 ${col.align === "center" ? "text-center" : "text-left"} font-medium text-[12px] whitespace-nowrap`} style={{ color: P.muted }}>
                     {t(`page.rawRecords.${col.key}`)}
                   </th>
                 ))}
@@ -357,22 +538,30 @@ export default function RawRecordsPage() {
             <tbody>
               {records.map((r) => {
                 return (
-                  <tr key={r.id} className="hover:bg-gray-50 transition-colors" style={{ borderTop: `1px solid ${T.cloud}` }}>
+                  <tr key={r.id} className="hover:bg-gray-50 transition-colors" style={{ borderTop: `1px solid ${P.border}` }}>
                     {isReviewer && (
                       <td className="px-2 py-2.5">
-                        <input type="checkbox" className="accent-[#2563EB] cursor-pointer"
+                        <input type="checkbox" className="accent-[#1E4C8F] cursor-pointer"
                           checked={selectedIds.has(r.id)}
                           onChange={() => toggleSelect(r.id)} />
                       </td>
                     )}
-                    <td className="px-2 py-2.5 text-[12px] truncate" style={{ color: T.info }} title={r.source_platform}>{r.source_platform}</td>
+                    <td className="px-2 py-2.5">
+                      <span className="flex items-center gap-2 min-w-0">
+                        <span className="w-6 h-6 rounded-md flex items-center justify-center text-[10px] font-medium text-white flex-shrink-0"
+                          style={{ background: PLATFORM_TONE[r.source_platform] ?? P.faint }}>
+                          {(r.source_platform || "?").slice(0, 1)}
+                        </span>
+                        <span className="text-[12px] truncate" style={{ color: P.muted }} title={r.source_platform}>{r.source_platform || "-"}</span>
+                      </span>
+                    </td>
                     <td className="px-2 py-2.5 font-medium truncate" style={{ color: T.ink }} title={r.job_name || undefined}>{r.job_name || "-"}</td>
                     <td className="px-2 py-2.5 truncate" style={{ color: T.ink }} title={r.company_name || undefined}>{r.company_name || "-"}</td>
                     <td className="px-2 py-2.5 font-mono text-[12px] text-center" style={{ color: T.info }}>{r.publish_date?.slice(0, 10) || "-"}</td>
                     <td className="px-2 py-2.5 font-mono text-[12px] text-center" style={{ color: T.info }}>{r.created_at?.slice(0, 10) || "-"}</td>
                     <td className="px-2 py-2.5 text-center"><StatusBadge status={r.review_status} /></td>
                     <td className="px-2 py-2.5 text-center">
-                      <button className="inline-flex items-center justify-center gap-1 text-[12px] font-medium" style={{ color: T.teal }} onClick={() => openDetail(r)}>
+                      <button className="inline-flex items-center justify-center gap-1 text-[12px] font-medium" style={{ color: P.primary }} onClick={() => openDetail(r)}>
                         <Eye size={13} />{t("common.view")}
                       </button>
                     </td>
@@ -384,7 +573,7 @@ export default function RawRecordsPage() {
         )}
       </Card>
 
-      {total > 20 && (
+      {total > 0 && (
         <Pagination page={page} totalPages={Math.ceil(total / 20)} onChange={setPage} total={total} />
       )}
 
@@ -532,7 +721,7 @@ export default function RawRecordsPage() {
       {/* ==================== 详情抽屉（原始 vs 清洗后 双栏 diff） ==================== */}
       {detail && (
         <div className="fixed inset-0 z-50 flex" style={{ background: "rgba(25,50,77,0.3)" }} onClick={() => { setDetail(null); setSourceDetail(null); setCleanedDetail(null); setEditing(false); }}>
-          <div className="ml-auto w-[900px] h-full bg-white shadow-xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+          <div className="ml-auto w-[720px] shrink-0 max-w-[calc(100vw-24px)] h-full bg-white shadow-xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 flex-shrink-0" style={{ borderBottom: `1px solid ${T.cloud}` }}>
               <div className="flex items-center gap-3">
                 {viewDiff && (

@@ -2,7 +2,6 @@ import { useTranslation } from "react-i18next";
 import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { Upload, FileText, Eye, Pencil, Plus, Trash2, X } from "lucide-react";
-import T from "../constants/tokens";
 import { getMyResume, createResumeUploadUrl, completeResumeUpload, editMyResume } from "../services/resume";
 import type {
   ResumeData, ResumeFields, ResumeProficiency,
@@ -12,6 +11,24 @@ import { PageHeader, Btn, Card } from "../components/ui";
 
 const MAX_SIZE = 10 * 1024 * 1024; // 10 MiB
 const ACCEPT = [".pdf", ".docx"];
+
+/* 深蓝主色系（与其他改造页一致） */
+const P = {
+  primary: "#1E4C8F",
+  primaryDeep: "#12305E",
+  sky: "#A9C8EC",
+  skySoft: "#DCE8F6",
+  ink: "#16283E",
+  muted: "#5E6E82",
+  faint: "#8B99AB",
+  green: "#159A6C",
+  greenBg: "#E4F4ED",
+  amber: "#D98E1F",
+  amberBg: "#FBF1DC",
+  red: "#E25C4A",
+  border: "#E4EAF2",
+  bgSoft: "#FAFBFD",
+} as const;
 const PROFICIENCIES: ResumeProficiency[] = ["", "Basic", "Familiar", "Advanced", "Expert"];
 const PROFICIENCY_LABEL: Record<string, string> = {
   "": "未注明", Basic: "基础", Familiar: "熟悉", Advanced: "熟练", Expert: "精通",
@@ -222,58 +239,69 @@ export default function MyResume() {
         description="上传简历文件（PDF / DOCX），系统直传 MinIO 并自动完成结构化分析"
       />
 
-      <Card title={t("page.myResume.uploadArea")}>
-        <div className="px-6 py-8 flex flex-col items-center gap-4">
+      {/* 上传区：简历是整个能力链路的入口 */}
+      <div className="bg-white rounded-2xl" style={{ border: `1px solid ${P.border}` }}>
+        <div className="px-5 py-4" style={{ borderBottom: `1px solid ${P.border}` }}>
+          <div className="text-[15px] font-semibold" style={{ color: P.ink }}>{t("page.myResume.uploadArea")}</div>
+          <div className="text-[12px] mt-0.5" style={{ color: P.faint }}>系统直传 MinIO 并自动完成结构化分析 · 分析结果在「我的能力」页生成能力画像</div>
+        </div>
+        <div className="px-6 py-6 flex flex-col items-center gap-4">
           <input type="file" accept={ACCEPT.join(",")} ref={fileRef} onChange={handleUpload} style={{ display: "none" }} />
-          <div className="border-2 border-dashed rounded-lg flex flex-col items-center justify-center py-12 w-full cursor-pointer transition-colors"
-            style={{ borderColor: T.border, background: T.cloud }}
+          <div className="rounded-xl flex flex-col items-center justify-center py-10 w-full cursor-pointer transition-all hover:opacity-95"
+            style={{ border: `1.5px dashed ${P.sky}`, background: P.bgSoft }}
             onClick={() => fileRef.current?.click()}>
-            <Upload size={32} style={{ color: T.info, marginBottom: 12 }} />
-            <div className="text-[14px] font-medium" style={{ color: T.ink }}>
+            <span className="w-12 h-12 rounded-xl flex items-center justify-center mb-3" style={{ background: P.skySoft }}>
+              <Upload size={22} style={{ color: P.primary }} />
+            </span>
+            <div className="text-[14px] font-medium" style={{ color: P.ink }}>
               {uploading ? "正在上传并分析…" : t("page.myResume.dropHint")}
             </div>
-            <div className="text-[12px] mt-1" style={{ color: T.info }}>
-              {t("page.myResume.clickHint")} · 最大 10 MiB
+            <div className="text-[12px] mt-1" style={{ color: P.faint }}>
+              {t("page.myResume.clickHint")} · 仅支持 PDF / DOCX · 最大 10 MiB
             </div>
           </div>
-          <Btn icon={Upload} onClick={() => fileRef.current?.click()} disabled={uploading}>
-            {uploading ? "上传中…" : t("page.myResume.selectFile")}
-          </Btn>
+          <div className="flex items-center gap-2 text-[12px]" style={{ color: P.faint }}>
+            <span className="px-2 py-0.5 rounded-full" style={{ background: P.skySoft, color: P.primary }}>① 上传文件</span>
+            <span>→</span>
+            <span className="px-2 py-0.5 rounded-full" style={{ background: P.skySoft, color: P.primary }}>② AI 结构化解析</span>
+            <span>→</span>
+            <span className="px-2 py-0.5 rounded-full" style={{ background: P.skySoft, color: P.primary }}>③ 生成能力画像</span>
+          </div>
         </div>
-      </Card>
+      </div>
 
       <Card
         title={t("page.myResume.title")}
         action={!editing ? <Btn icon={Pencil} size="sm" variant="secondary" onClick={openEdit}>{t("common.edit")}</Btn> : undefined}
       >
         {loading ? (
-          <div className="px-4 py-12 text-center text-[13px]" style={{ color: T.info }}>{t("common.loading")}</div>
+          <div className="px-4 py-12 text-center text-[13px]" style={{ color: P.faint }}>{t("common.loading")}</div>
         ) : !resume ? (
-          <div className="px-4 py-12 text-center text-[13px]" style={{ color: T.info }}>
+          <div className="px-4 py-12 text-center text-[13px]" style={{ color: P.faint }}>
             暂无简历，可点击右上角「编辑」手动填写，或上传文件自动解析
           </div>
         ) : (
           <div className="px-4 py-4 space-y-4">
             {/* 文件信息 + 来源 */}
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: T.cloud }}>
-                <FileText size={20} style={{ color: T.teal }} />
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: P.skySoft }}>
+                <FileText size={20} style={{ color: P.primary }} />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-[14px] font-medium truncate" style={{ color: T.ink }}>
+                <div className="text-[14px] font-medium truncate" style={{ color: P.ink }}>
                   {resume.fileName ?? "手动编辑记录（未绑定文件）"}
                 </div>
-                <div className="text-[12px] mt-0.5 font-mono" style={{ color: T.info }}>
+                <div className="text-[12px] mt-0.5 font-mono" style={{ color: P.faint }}>
                   {resume.fileName ? `${fmtSize(resume.fileSize)} · ` : ""}{fmtTime(resume.createdAt)}
                 </div>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
-                <span className="px-2 py-0.5 rounded text-[11px] font-medium"
-                  style={{ color: isEdited ? T.stable : T.emerging, background: isEdited ? "#EBF2FA" : "#E6F5F1" }}>
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap"
+                  style={{ color: isEdited ? P.green : P.primary, background: isEdited ? P.greenBg : P.skySoft }}>
                   {isEdited ? t("page.myResume.sourceEdited") : t("page.myResume.sourceSystem")}
                 </span>
                 {resume.content && (
-                  <button className="text-[12px] flex items-center gap-1" style={{ color: T.teal }}
+                  <button className="text-[12px] flex items-center gap-1 whitespace-nowrap" style={{ color: P.primary }}
                     onClick={() => setViewContent(v => !v)}>
                     <Eye size={13} />{viewContent ? "收起原文" : "查看原文"}
                   </button>
@@ -282,8 +310,8 @@ export default function MyResume() {
             </div>
 
             {viewContent && resume.content && (
-              <div className="rounded-lg p-4 text-[13px] leading-relaxed whitespace-pre-wrap max-h-[480px] overflow-y-auto"
-                style={{ background: T.cloud, color: T.ink, border: `1px solid ${T.border}` }}>
+              <div className="rounded-xl p-4 text-[13px] leading-relaxed whitespace-pre-wrap max-h-[480px] overflow-y-auto"
+                style={{ background: P.bgSoft, color: P.ink, border: `1px solid ${P.border}` }}>
                 {resume.content}
               </div>
             )}
@@ -298,9 +326,9 @@ export default function MyResume() {
       {editing && editForm && (
         <div className="fixed inset-0 z-50 flex" style={{ background: "rgba(25,50,77,0.3)" }} onClick={() => { setEditing(false); setEditForm(null); }}>
           <div className="ml-auto w-[640px] h-full bg-white shadow-xl flex flex-col overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-4 flex-shrink-0 sticky top-0 bg-white" style={{ borderBottom: `1px solid ${T.cloud}` }}>
-              <h3 className="text-[15px] font-medium" style={{ color: T.ink }}>{t("page.myResume.editTitle")}</h3>
-              <button onClick={() => { setEditing(false); setEditForm(null); }} style={{ color: T.info }}><X size={18} /></button>
+            <div className="flex items-center justify-between px-5 py-4 flex-shrink-0 sticky top-0 bg-white" style={{ borderBottom: `1px solid ${P.border}` }}>
+              <h3 className="text-[15px] font-medium" style={{ color: P.ink }}>{t("page.myResume.editTitle")}</h3>
+              <button onClick={() => { setEditing(false); setEditForm(null); }} style={{ color: P.faint }}><X size={18} /></button>
             </div>
 
             <div className="px-5 py-4 space-y-6">
@@ -370,7 +398,7 @@ export default function MyResume() {
               </EditSection>
             </div>
 
-            <div className="flex justify-end gap-2 px-5 py-4 flex-shrink-0" style={{ borderTop: `1px solid ${T.cloud}` }}>
+            <div className="flex justify-end gap-2 px-5 py-4 flex-shrink-0" style={{ borderTop: `1px solid ${P.border}` }}>
               <Btn variant="secondary" onClick={() => { setEditing(false); setEditForm(null); }}>{t("common.cancel")}</Btn>
               <Btn onClick={saveEdit} disabled={saving}>{saving ? "保存中…" : t("common.save")}</Btn>
             </div>
@@ -419,11 +447,13 @@ function ResumeSections({ fields }: { fields: ResumeFields }) {
         <Section title="专业技能">
           <div className="flex flex-wrap gap-2">
             {fields.professional_skills.map((s, i) => (
-              <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md"
-                style={{ background: T.cloud, color: T.ink }}>
-                {s.skill_name}
+              <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[13px]"
+                style={{ background: "white", border: `1px solid ${P.border}` }}>
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: P.primary }} />
+                <span className="font-medium" style={{ color: P.ink }}>{s.skill_name}</span>
                 {s.proficiency && (
-                  <span className="text-[11px]" style={{ color: T.teal }}>{PROFICIENCY_LABEL[s.proficiency] ?? s.proficiency}</span>
+                  <span className="text-[11px] px-1.5 py-0.5 rounded-full font-medium"
+                    style={{ color: P.primary, background: P.skySoft }}>{PROFICIENCY_LABEL[s.proficiency] ?? s.proficiency}</span>
                 )}
               </span>
             ))}
@@ -438,7 +468,7 @@ function ResumeSections({ fields }: { fields: ResumeFields }) {
         </Section>
       )}
       {!has(fields.education_experience) && !has(fields.work_experience) && !has(fields.project_experience) && !has(fields.professional_skills) && !has(fields.awards) && (
-        <div className="text-center py-8 text-[13px]" style={{ color: T.info }}>暂无结构化字段</div>
+        <div className="text-center py-8 text-[13px]" style={{ color: P.faint }}>暂无结构化字段</div>
       )}
     </div>
   );
@@ -452,7 +482,10 @@ function dateRange(start: string, end: string) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="text-[12px] font-medium mb-2" style={{ color: T.info }}>{title}</div>
+      <div className="flex items-center gap-2 mb-2">
+        <span className="w-1 h-3.5 rounded-full" style={{ background: P.primary }} />
+        <span className="text-[12px] font-semibold" style={{ color: P.muted }}>{title}</span>
+      </div>
       {children}
     </div>
   );
@@ -460,13 +493,13 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function KV({ title, sub, date, desc }: { title: string; sub?: string; date?: string; desc?: string }) {
   return (
-    <div className="p-3 rounded-md text-[13px] mb-2" style={{ background: T.cloud }}>
-      <div className="flex items-center gap-2">
-        <span className="font-medium" style={{ color: T.ink }}>{title || "—"}</span>
-        {sub && <span style={{ color: T.info }}>· {sub}</span>}
-        {date && <span className="ml-auto font-mono text-[11px]" style={{ color: T.info }}>{date}</span>}
+    <div className="p-3 rounded-lg text-[13px] mb-2" style={{ background: P.bgSoft, border: `1px solid ${P.border}`, borderLeft: `3px solid ${P.sky}` }}>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="font-medium" style={{ color: P.ink }}>{title || "—"}</span>
+        {sub && <span style={{ color: P.muted }}>· {sub}</span>}
+        {date && <span className="ml-auto font-mono text-[11px]" style={{ color: P.faint }}>{date}</span>}
       </div>
-      {desc && <div className="mt-1 text-[12px]" style={{ color: T.info }}>{desc}</div>}
+      {desc && <div className="mt-1 text-[12px] leading-relaxed" style={{ color: P.muted }}>{desc}</div>}
     </div>
   );
 }
@@ -476,8 +509,8 @@ function EditSection({ title, onAdd, children }: { title: string; onAdd: () => v
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
-        <span className="text-[12px] font-medium" style={{ color: T.info }}>{title}</span>
-        <button className="text-[12px] flex items-center gap-1" style={{ color: T.teal }} onClick={onAdd}>
+        <span className="text-[12px] font-medium" style={{ color: P.faint }}>{title}</span>
+        <button className="text-[12px] flex items-center gap-1" style={{ color: P.primary }} onClick={onAdd}>
           <Plus size={12} />新增
         </button>
       </div>
@@ -488,8 +521,8 @@ function EditSection({ title, onAdd, children }: { title: string; onAdd: () => v
 
 function EditRow({ onRemove, children }: { onRemove: () => void; children: React.ReactNode }) {
   return (
-    <div className="relative rounded-lg p-3 mb-2 space-y-2" style={{ background: T.cloud, border: `1px solid ${T.border}` }}>
-      <button className="absolute top-2 right-2" style={{ color: T.risk }} onClick={onRemove} title="删除">
+    <div className="relative rounded-lg p-3 mb-2 space-y-2" style={{ background: P.bgSoft, border: `1px solid ${P.border}` }}>
+      <button className="absolute top-2 right-2" style={{ color: P.red }} onClick={onRemove} title="删除">
         <Trash2 size={14} />
       </button>
       {children}
@@ -500,9 +533,9 @@ function EditRow({ onRemove, children }: { onRemove: () => void; children: React
 function TextInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <div>
-      <label className="text-[11px] block mb-1" style={{ color: T.info }}>{label}</label>
+      <label className="text-[11px] block mb-1" style={{ color: P.faint }}>{label}</label>
       <input className="w-full px-2 py-1.5 rounded text-[13px] outline-none"
-        style={{ background: "white", border: `1px solid ${T.border}`, color: T.ink }}
+        style={{ background: "white", border: `1px solid ${P.border}`, color: P.ink }}
         value={value} onChange={e => onChange(e.target.value)} />
     </div>
   );
@@ -511,9 +544,9 @@ function TextInput({ label, value, onChange }: { label: string; value: string; o
 function DateInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <div>
-      <label className="text-[11px] block mb-1" style={{ color: T.info }}>{label}</label>
+      <label className="text-[11px] block mb-1" style={{ color: P.faint }}>{label}</label>
       <input type="date" className="w-full px-2 py-1.5 rounded text-[13px] outline-none"
-        style={{ background: "white", border: `1px solid ${T.border}`, color: T.ink }}
+        style={{ background: "white", border: `1px solid ${P.border}`, color: P.ink }}
         value={value} onChange={e => onChange(e.target.value)} />
     </div>
   );
@@ -522,9 +555,9 @@ function DateInput({ label, value, onChange }: { label: string; value: string; o
 function TextArea({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <div>
-      <label className="text-[11px] block mb-1" style={{ color: T.info }}>{label}</label>
+      <label className="text-[11px] block mb-1" style={{ color: P.faint }}>{label}</label>
       <textarea className="w-full px-2 py-1.5 rounded text-[13px] outline-none resize-none" rows={2}
-        style={{ background: "white", border: `1px solid ${T.border}`, color: T.ink }}
+        style={{ background: "white", border: `1px solid ${P.border}`, color: P.ink }}
         value={value} onChange={e => onChange(e.target.value)} />
     </div>
   );
@@ -533,9 +566,9 @@ function TextArea({ label, value, onChange }: { label: string; value: string; on
 function ProficiencySelect({ value, onChange }: { value: ResumeProficiency; onChange: (v: ResumeProficiency) => void }) {
   return (
     <div>
-      <label className="text-[11px] block mb-1" style={{ color: T.info }}>熟练度</label>
+      <label className="text-[11px] block mb-1" style={{ color: P.faint }}>熟练度</label>
       <select className="w-full px-2 py-1.5 rounded text-[13px] outline-none"
-        style={{ background: "white", border: `1px solid ${T.border}`, color: T.ink }}
+        style={{ background: "white", border: `1px solid ${P.border}`, color: P.ink }}
         value={value} onChange={e => onChange(e.target.value as ResumeProficiency)}>
         {PROFICIENCIES.map(p => (
           <option key={p} value={p}>{PROFICIENCY_LABEL[p] ?? p}</option>

@@ -1,22 +1,14 @@
 import { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import T from "../../constants/tokens";
+import { ChevronsLeft, ChevronsRight } from "lucide-react";
 
-const DISABLED_COLOR = "#D1D5DB";
-
-function pageItems(current: number, total: number): (number | "...")[] {
-  if (total <= 7) {
-    return Array.from({ length: total }, (_, i) => i + 1);
-  }
-  const items: (number | "...")[] = [1];
-  const start = Math.max(2, current - 1);
-  const end = Math.min(total - 1, current + 1);
-  if (start > 2) items.push("...");
-  for (let i = start; i <= end; i += 1) items.push(i);
-  if (end < total - 1) items.push("...");
-  items.push(total);
-  return items;
-}
+/* 深蓝主色系（全局推广时与页面一起收敛到 tokens.ts） */
+const PRIMARY = "#1E4C8F";
+const INK = "#16283E";
+const MUTED = "#8B99AB";
+const BORDER = "#E4EAF2";
+const HOVER_BG = "#F3F6FB";
+const DISABLED_BG = "#F6F8FB";
+const DISABLED = "#C4CFDD";
 
 export default function Pagination({
   page,
@@ -24,13 +16,16 @@ export default function Pagination({
   onChange,
   disabled = false,
   total,
+  pageSize = 20,
 }: {
   page: number;
   totalPages: number;
   onChange: (page: number) => void;
   disabled?: boolean;
-  total?: number; 
+  total?: number;
+  pageSize?: number;
 }) {
+  const safeTotalPages = Math.max(1, totalPages);
   const [draft, setDraft] = useState(String(page));
 
   useEffect(() => { setDraft(String(page)); }, [page]);
@@ -41,88 +36,70 @@ export default function Pagination({
       setDraft(String(page));
       return;
     }
-    const clamped = Math.min(Math.max(1, parsed), totalPages);
+    const clamped = Math.min(Math.max(1, parsed), safeTotalPages);
     setDraft(String(clamped));
     if (clamped !== page) onChange(clamped);
   };
 
-  const items = pageItems(page, totalPages);
+  const navBtn = (label: string, target: number, off: boolean, icon?: React.ReactNode, iconRight = false) => {
+    const isOff = disabled || off;
+    return (
+      <button
+        type="button"
+        disabled={isOff}
+        onClick={() => onChange(target)}
+        className="inline-flex h-8 items-center gap-1 rounded-full px-3 text-[12px] whitespace-nowrap transition-colors disabled:cursor-not-allowed"
+        style={{
+          background: isOff ? DISABLED_BG : "#FFFFFF",
+          color: isOff ? DISABLED : INK,
+          border: `1px solid ${isOff ? "#EDF0F5" : BORDER}`,
+        }}
+        onMouseEnter={e => { if (!isOff) e.currentTarget.style.background = HOVER_BG; }}
+        onMouseLeave={e => { if (!isOff) e.currentTarget.style.background = "#FFFFFF"; }}
+      >
+        {icon && !iconRight && icon}
+        {label}
+        {icon && iconRight && icon}
+      </button>
+    );
+  };
 
   return (
-    <div className="flex items-center justify-between py-2 text-[14px]">
-      <div className="text-[13px]" style={{ color: T.info }}>
-        {total != null ? `共 ${total} 条记录` : ""}
+    <div className="flex items-center justify-between flex-wrap gap-2 py-2 text-[13px]">
+      {/* 左侧：总记录数 + 每页条数 */}
+      <div className="whitespace-nowrap" style={{ color: MUTED }}>
+        {total != null ? (
+          <>
+            共 <span className="font-mono font-medium" style={{ color: INK }}>{total.toLocaleString()}</span> 条记录
+            <span className="mx-2.5" style={{ color: BORDER }}>|</span>
+            每页 <span className="font-mono font-medium" style={{ color: INK }}>{pageSize}</span> 条
+          </>
+        ) : ""}
       </div>
 
-      <div className="flex items-center gap-1">
-        {/* 上一页图标按钮 */}
-        <button
-          type="button"
-          className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed"
-          style={{
-            background: disabled || page <= 1 ? "transparent" : "#F1F3F9",
-            color: disabled || page <= 1 ? DISABLED_COLOR : T.ink,
-          }}
-          disabled={disabled || page <= 1}
-          onClick={() => onChange(page - 1)}
-          aria-label="上一页"
-        >
-          <ChevronLeft size={16} />
-        </button>
-
-        {/* 页码按钮组 */}
-        {items.map((item, idx) =>
-          item === "..." ? (
-            <span key={`ellipsis-${idx}`} className="px-1 text-[13px]" style={{ color: T.info }}>
-              …
-            </span>
-          ) : (
-            <button
-              key={item}
-              type="button"
-              className="flex h-8 min-w-8 items-center justify-center rounded-lg px-1.5 text-[13px] transition-colors"
-              style={{
-                background: item === page ? T.teal : "transparent",
-                color: item === page ? "#FFFFFF" : T.ink,
-              }}
-              onClick={() => onChange(item)}
-            >
-              {item}
-            </button>
-          )
-        )}
-
-        {/* 下一页图标按钮 */}
-        <button
-          type="button"
-          className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed"
-          style={{
-            background: disabled || page >= totalPages ? "transparent" : "#F1F3F9",
-            color: disabled || page >= totalPages ? DISABLED_COLOR : T.ink,
-          }}
-          disabled={disabled || page >= totalPages}
-          onClick={() => onChange(page + 1)}
-          aria-label="下一页"
-        >
-          <ChevronRight size={16} />
-        </button>
-
-        {/* 跳页输入 */}
-        {totalPages > 7 && (
-          <div className="ml-3 flex items-center gap-1 text-[13px]" style={{ color: T.info }}>
-            <span>跳至</span>
-            <input
-              className="h-8 w-12 rounded-md text-center text-[13px] outline-none"
-              style={{ background: "#F1F3F9", color: T.ink, border: "none" }}
-              value={draft}
-              inputMode="numeric"
-              onChange={(e) => setDraft(e.target.value)}
-              onBlur={jump}
-              onKeyDown={(e) => { if (e.key === "Enter") jump(); }}
-            />
-            <span>页</span>
-          </div>
-        )}
+      {/* 右侧：翻页控件 */}
+      <div className="flex items-center gap-1.5">
+        {navBtn("首页", 1, page <= 1)}
+        {navBtn("上一页", page - 1, page <= 1, <ChevronsLeft size={13} />)}
+        <span className="px-1.5 whitespace-nowrap" style={{ color: MUTED }}>
+          页码 <span className="font-mono font-medium" style={{ color: PRIMARY }}>{Math.min(Math.max(1, page), safeTotalPages)}</span>
+          <span style={{ color: DISABLED }}>/{safeTotalPages}</span>
+        </span>
+        {navBtn("下一页", page + 1, page >= safeTotalPages, <ChevronsRight size={13} />, true)}
+        {navBtn("尾页", safeTotalPages, page >= safeTotalPages)}
+        <span className="ml-1.5 flex items-center gap-1.5 whitespace-nowrap" style={{ color: MUTED }}>
+          <input
+            className="h-8 w-12 rounded-full text-center text-[12px] outline-none focus:ring-2"
+            style={{ background: "#FFFFFF", color: INK, border: `1px solid ${BORDER}` }}
+            value={draft}
+            inputMode="numeric"
+            disabled={disabled}
+            onChange={e => setDraft(e.target.value.replace(/[^\d]/g, ""))}
+            onBlur={jump}
+            onKeyDown={e => { if (e.key === "Enter") jump(); }}
+          />
+          跳转到
+        </span>
       </div>
     </div>
   );

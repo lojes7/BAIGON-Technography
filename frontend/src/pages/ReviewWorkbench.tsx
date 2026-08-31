@@ -22,7 +22,7 @@ import type {
 } from "../types/api";
 
 const PAGE_SIZE = 20;
-const SKILL_PAGE_SIZE = 50;
+const SKILL_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 1000;
 
 const TASK_STATUS_LABEL: Record<string, string> = {
@@ -333,7 +333,7 @@ function ReviewWorkbenchPage() {
         )}
       </Card>
 
-      {visibleItems.length > PAGE_SIZE && (
+      {visibleItems.length > 0 && (
         <Pagination page={page} totalPages={pageCount} onChange={setPage} total={visibleItems.length} />
       )}
 
@@ -546,7 +546,7 @@ function ReviewWorkbenchPage() {
                           </button>
                         ))}
                     </div>
-                    {skillTotal > SKILL_PAGE_SIZE && (
+                    {skillTotal > 0 && (
                       <div className="pt-1">
                         <Pagination page={skillPage} totalPages={skillPageCount} onChange={changeSkillPage} disabled={searching} total={skillTotal} />
                       </div>

@@ -550,10 +550,13 @@ export interface CrawlerResult {
 }
 
 // 采集状态响应
-export interface CrawlerStatus {
+  export interface CrawlerStatus {
   status: "idle" | "running" | "success" | "failed" | "stopped";
   count: string;
   message: string;
+  currentCategory?: string;
+  progress?: number;
+  totalCleaned?: number;
 }
 
 // 清洗后岗位列表摘要（后端返回 snake_case）

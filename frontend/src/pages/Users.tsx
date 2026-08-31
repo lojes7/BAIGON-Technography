@@ -128,7 +128,7 @@ function UsersPage() {
         : <table className="w-full text-[13px]"><thead><tr style={{ background: T.cloud }}>{["UID","姓名","角色","学院","系部","状态","操作"].map(h => (<th key={h} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: T.info }}>{h}</th>))}</tr></thead>
         <tbody>{users.map(u => (<tr key={u.id} className="hover:bg-gray-50 transition-colors" style={{ borderTop: `1px solid ${T.cloud}` }}><td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{u.uid}</td><td className="px-4 py-3 font-medium" style={{ color: T.ink }}>{u.name || "—"}</td><td className="px-4 py-3 text-[12px]" style={{ color: T.info }}>{roleLabel(u.role)}</td><td className="px-4 py-3 text-[12px]" style={{ color: T.info }}>{u.school_name || "—"}</td><td className="px-4 py-3 text-[12px]" style={{ color: T.info }}>{u.department_name || "—"}</td><td className="px-4 py-3"><span className="text-[12px]" style={{ color: u.status === "NORMAL" ? T.emerging : T.risk }}>{u.status === "NORMAL" ? "正常" : "已封禁"}</span></td><td className="px-4 py-3"><button className="text-[12px] font-medium" style={{ color: T.pending }} onClick={() => handleToggleStatus(u)}>{u.status === "LOCKED" ? "解封" : "封禁"}</button></td></tr>))}</tbody></table>}
 
-        {total > 20 && (
+        {total > 0 && (
           <div className="px-4 py-3">
             <Pagination page={page} totalPages={Math.ceil(total / 20)} onChange={setPage} total={total} />
           </div>

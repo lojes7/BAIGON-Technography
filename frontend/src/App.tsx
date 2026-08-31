@@ -30,6 +30,8 @@ import JobsPage from "./pages/Jobs";
 import GraphSnapshotsPage from "./pages/GraphSnapshots";
 import RelationEvidencePage from "./pages/RelationEvidence";
 import EvolutionEventsPage from "./pages/EvolutionEvents";
+import EmergingJobsPage from "./pages/EmergingJobs";
+import JobUpdatesPage from "./pages/JobUpdates";
 import SkillCombosPage from "./pages/SkillCombos";
 import ProgramsPage from "./pages/Programs";
 import CourseEvidencePage from "./pages/CourseEvidence";
@@ -123,6 +125,8 @@ export default function App() {
             <Route path="graph-snapshots" element={<GraphSnapshotsPage />} />
             <Route path="relation-evidence" element={<RelationEvidencePage />} />
             <Route path="evolution-events" element={<EvolutionEventsPage />} />
+            <Route path="emerging-jobs" element={<EmergingJobsPage />} />
+            <Route path="job-updates" element={<JobUpdatesPage />} />
             <Route path="skill-combos" element={<SkillCombosPage />} />
             <Route path="programs" element={<ProgramsPage />} />
             <Route path="course-evidence" element={<CourseEvidencePage />} />

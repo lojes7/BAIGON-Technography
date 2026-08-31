@@ -32,6 +32,8 @@ export const ADMIN_NAV: NavSection[] = [
     mkChild("relation-evidence", "nav.relationEvidence"),
   ]),
   mk("evolution", "nav.evolution", Activity, [
+    mkChild("emerging-jobs", "nav.emergingJobs"),
+    mkChild("job-updates", "nav.jobUpdates"),
     mkChild("evolution-trends", "nav.evolutionTrends"),
     mkChild("evolution-events", "nav.evolutionEvents"),
     mkChild("skill-combos", "nav.skillCombos"),
@@ -102,6 +104,8 @@ export const ANALYST_NAV: NavSection[] = [
     mkChild("relation-evidence", "nav.relationEvidence"),
   ]),
   mk("evolution", "nav.evolution", Activity, [
+    mkChild("emerging-jobs", "nav.emergingJobs"),
+    mkChild("job-updates", "nav.jobUpdates"),
     mkChild("evolution-trends", "nav.evolutionTrends"),
     mkChild("evolution-events", "nav.evolutionEvents"),
     mkChild("skill-combos", "nav.skillCombos"),

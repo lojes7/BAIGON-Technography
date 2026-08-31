@@ -1,43 +1,28 @@
 import { useTranslation } from "react-i18next";
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Play, Square, RefreshCw, ArrowRight, ChevronDown, X, Loader2 } from "lucide-react";
+import { Play, Square, RefreshCw, ArrowRight, ChevronDown, Check, Loader2, Lock } from "lucide-react";
 import { toast } from "sonner";
 import T from "../constants/tokens";
 import { startCrawler, stopCrawler, getCrawlerStatus } from "../services/engineer";
 import { PageHeader, Btn, Card, MetricCard, Segmented } from "../components/ui";
 
-// 数据类型 — 平铺高频项，低频收进下拉
-const DATA_TYPES_FLAT = [
-  { value: "all", label: "全部类型" },
-  { value: "recruitment", label: "招聘数据" },
-  { value: "course", label: "课程数据" },
-];
-const DATA_TYPES_MORE = [
-  { value: "training", label: "培养方案" },
-  { value: "survey", label: "调研问卷" },
+const OBJECT_TYPES = [
+  { label: "岗位数据", active: true },
+  { label: "课程数据", active: true },
+  { label: "培养方案", active: true },
+  { label: "调研问卷", active: true },
 ];
 
-// 地区 — 江苏省常用市平铺，全国省-市放进下拉
-const REGIONS_FLAT = [
-  { value: "", label: "全部地区" },
-  { value: "上海", label: "上海市" },
-  { value: "北京", label: "北京市" },
+// 岗位分类：与 crawler-service JOB_LIST_URL（智联招聘）的 16 个分类一一对应
+const JOB_CATEGORIES = [
+  "人工智能", "大数据", "智能系统", "物联网", "云计算", "自动化",
+  "后端开发", "前端开发", "测试软件", "网络运维", "嵌入式软件",
+  "数据挖掘", "机器学习", "硬件测试", "计算机视觉", "数据库工程师",
 ];
-const PROVINCES: Record<string, string[]> = {
-  "江苏": ["常州", "南京", "苏州", "无锡", "南通", "徐州", "扬州", "镇江", "盐城", "泰州", "淮安", "连云港", "宿迁"],
-  "浙江": ["杭州", "宁波", "温州", "嘉兴", "湖州", "绍兴", "金华", "衢州", "舟山", "台州", "丽水"],
-  "上海": ["上海"],
-  "北京": ["北京"],
-  "广东": ["广州", "深圳", "东莞", "佛山", "珠海", "中山", "惠州"],
-  "山东": ["济南", "青岛", "烟台", "潍坊", "临沂", "淄博"],
-};
 
-// 产业 — 多选下拉
-const INDUSTRIES = [
-  "人工智能", "大数据", "云计算", "物联网", "智能制造",
-  "新能源", "生物医药", "集成电路", "软件与信息服务", "新材料",
-];
+// 单分类最大条数（后端约束 ≤ 1000）
+const MAX_DOC_OPTIONS = [100, 300, 500, 1000];
 
 type TaskStatus = "idle" | "running" | "completed" | "stopped";
 
@@ -52,17 +37,19 @@ export default function AutoImportPage() {
   const nav = useNavigate();
   const tt = (key: string) => t(`page.autoImport.${key}`);
 
-  const [dataType, setDataType] = useState("all");
-  const [region, setRegion] = useState("常州");
-  const [industries, setIndustries] = useState<string[]>([]);
-  const [moreTypeOpen, setMoreTypeOpen] = useState(false);
-  const [regionDropdown, setRegionDropdown] = useState(false);
-  const [selProvince, setSelProvince] = useState("");
-  const [industryOpen, setIndustryOpen] = useState(false);
+  /* 采集配置（真实传参：categories 空 = 全部 16 类） */
+  const [selectedCats, setSelectedCats] = useState<string[]>([]);
+  const [maxDocs, setMaxDocs] = useState(1000);
+  const [catOpen, setCatOpen] = useState(false);
+  const catRef = useRef<HTMLDivElement>(null);
 
   const [taskStatus, setTaskStatus] = useState<TaskStatus>("idle");
   const [stopping, setStopping] = useState(false);
   const [logs, setLogs] = useState<CrawlLog[]>([]);
+  /* 运行进度（后端可选字段，未返回时显示占位） */
+  const [progress, setProgress] = useState<number | null>(null);
+  const [currentCategory, setCurrentCategory] = useState("");
+  const [totalCleaned, setTotalCleaned] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(() => {
     const start = localStorage.getItem("crawl_start_time");
     return start ? Math.floor((Date.now() - Number(start)) / 1000) : 0;
@@ -70,10 +57,28 @@ export default function AutoImportPage() {
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollingRef = useRef(false);
+  const lastProgressSigRef = useRef("");
+  const logBoxRef = useRef<HTMLDivElement>(null);
 
   const addLog = (msg: string, level: CrawlLog["level"] = "info") => {
     setLogs((prev) => [...prev, { time: new Date().toLocaleTimeString(), level, message: msg }]);
   };
+
+  // 日志自动滚动到底部
+  useEffect(() => {
+    const box = logBoxRef.current;
+    if (box) box.scrollTop = box.scrollHeight;
+  }, [logs]);
+
+  // 下拉点击外部关闭
+  useEffect(() => {
+    if (!catOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (catRef.current && !catRef.current.contains(e.target as Node)) setCatOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [catOpen]);
 
   // 页面初始化时检查爬虫是否正在运行
   useEffect(() => {
@@ -101,7 +106,7 @@ export default function AutoImportPage() {
     return () => clearInterval(id);
   }, [taskStatus]);
 
-  // 轮询爬虫状态
+  // 轮询爬虫状态：同步进度字段 + 变化时写入实时日志
   useEffect(() => {
     if (taskStatus !== "running") {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
@@ -113,13 +118,32 @@ export default function AutoImportPage() {
     const poll = async () => {
       try {
         const res = await getCrawlerStatus();
-        if (res.data.status !== "running") {
-          setTaskStatus(res.data.status === "failed" ? "stopped" : "completed");
+        const d = res.data;
+        const p = typeof d.progress === "number" ? d.progress : null;
+        const tc = typeof d.totalCleaned === "number" ? d.totalCleaned : null;
+        setProgress(p);
+        setCurrentCategory(d.currentCategory ?? "");
+        setTotalCleaned(tc);
+
+        if (d.status !== "running") {
+          setTaskStatus(d.status === "failed" ? "stopped" : "completed");
           localStorage.removeItem("crawl_start_time");
-          addLog(res.data.message || "爬虫已停止运行", "success");
+          const tail = tc != null ? `，共清洗 ${tc} 条数据` : "";
+          addLog((d.message || "采集任务结束") + tail, "success");
           toast.success(tt("crawlComplete"), { description: tt("crawlCompleteDesc") });
           if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
           pollingRef.current = false;
+        } else {
+          // 进度变化才写日志，避免刷屏
+          const sig = `${d.currentCategory ?? ""}|${p ?? ""}|${tc ?? ""}`;
+          if (sig !== lastProgressSigRef.current && (p != null || tc != null || d.currentCategory)) {
+            lastProgressSigRef.current = sig;
+            const parts: string[] = [];
+            if (d.currentCategory) parts.push(`正在采集「${d.currentCategory}」`);
+            if (tc != null) parts.push(`已清洗 ${tc} 条`);
+            if (p != null) parts.push(`总进度 ${p}%`);
+            if (parts.length) addLog(parts.join(" · "), "info");
+          }
         }
       } catch {
         // 轮询失败不中断
@@ -132,12 +156,20 @@ export default function AutoImportPage() {
 
   const handleStart = async () => {
     try {
-      const res = await startCrawler();
+      const res = await startCrawler({
+        categories: selectedCats.length ? selectedCats : [],
+        maxDocuments: maxDocs,
+      });
       setTaskStatus("running");
       localStorage.setItem("crawl_start_time", String(Date.now()));
       setElapsedSeconds(0);
-      addLog(`爬虫任务已启动，trace_id: ${res.data.trace_id}，采集 ${res.data.count} 条`, "info");
-      addLog("正在爬取数据...", "info");
+      setProgress(null);
+      setCurrentCategory("");
+      setTotalCleaned(null);
+      lastProgressSigRef.current = "";
+      addLog(`采集任务已启动 · 岗位分类：${selectedCats.length ? selectedCats.join("、") : `全部 ${JOB_CATEGORIES.length} 类`} · 单类上限 ${maxDocs} 条`, "info");
+      if (res.data.trace_id) addLog(`trace_id: ${res.data.trace_id}`, "info");
+      addLog("任务已提交后台执行，采集进度将实时同步至下方日志", "info");
       toast.success(tt("crawlStart"), { description: `已采集 ${res.data.count} 条数据` });
     } catch (err) {
       const msg = (err as Error)?.message || "未知错误";
@@ -183,6 +215,12 @@ export default function AutoImportPage() {
     error: T.risk,
   };
 
+  const toggleCat = (cat: string) => {
+    setSelectedCats(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]);
+  };
+
+  const locked = taskStatus === "running";
+
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
@@ -191,150 +229,128 @@ export default function AutoImportPage() {
         description={t("page.autoImport.desc")}
       />
 
-      {/* 已选条件标签 */}
-      {(dataType !== "all" || region !== "" || industries.length > 0) && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[12px]" style={{ color: T.info }}>{tt("selected")}</span>
-          {dataType !== "all" && (
-            <Tag label={[...DATA_TYPES_FLAT, ...DATA_TYPES_MORE].find(d => d.value === dataType)?.label ?? dataType} onRemove={() => setDataType("all")} />
-          )}
-          {region !== "" && (
-            <Tag label={region} onRemove={() => setRegion("")} />
-          )}
-          {industries.map(ind => (
-            <Tag key={ind} label={ind} onRemove={() => setIndustries(prev => prev.filter(i => i !== ind))} />
-          ))}
-          <button className="text-[12px]" style={{ color: T.risk }} onClick={() => { setDataType("all"); setRegion(""); setIndustries([]); }}>{tt("clearAll")}</button>
-        </div>
-      )}
+      {/* ── 采集配置卡（参数真实传给 POST /crawl）── */}
+      <Card title="采集配置" action={
+        locked ? (
+          <span className="inline-flex items-center gap-1 text-[12px]" style={{ color: T.pending }}>
+            <Lock size={11} />任务运行中，配置已锁定
+          </span>
+        ) : undefined
+      }>
+        <div className={`px-5 py-4 flex flex-col gap-4 ${locked ? "opacity-60 pointer-events-none" : ""}`}>
+          {/* 采集对象 */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[12px] flex-shrink-0 w-16" style={{ color: T.info }}>采集对象</span>
+            {OBJECT_TYPES.map((o) => (
+              o.active ? (
+                <span key={o.label}
+                  className="px-2.5 py-1 rounded-md text-[12.5px] font-medium"
+                  style={{ background: `${T.teal}14`, color: T.teal, border: `1px solid ${T.teal}45` }}>
+                  {o.label}
+                </span>
+              ) : (
+                <span key={o.label} title="采集接口暂未开放"
+                  className="px-2.5 py-1 rounded-md text-[12.5px] cursor-not-allowed"
+                  style={{ background: T.cloud, color: T.info, border: `1px dashed ${T.border}` }}>
+                  {o.label} · 即将接入
+                </span>
+              )
+            ))}
+          </div>
 
-      {/* ── 紧凑筛选条 ── */}
-      <div className="rounded-lg bg-white px-4 py-3" style={{ border: `1px solid ${T.border}` }}>
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-          {/* 数据类型（分段控件） */}
-          <div className="flex items-center gap-2">
-            <span className="text-[12px] text-neutral-400 flex-shrink-0">{tt("dataType")}</span>
-            <Segmented
-              value={dataType}
-              onChange={(v) => setDataType(v)}
-              options={DATA_TYPES_FLAT.map(dt => ({ value: dt.value, label: dt.label }))}
-            />
-            <div className="relative">
-              <button
-                className="flex items-center gap-1 rounded-md px-2 py-1.5 text-[13px]"
-                style={{
-                  border: `1px solid ${T.border}`,
-                  color: DATA_TYPES_MORE.some(d => d.value === dataType) ? T.teal : T.info,
-                  background: "white",
-                }}
-                onClick={() => setMoreTypeOpen(!moreTypeOpen)}
-              >
-                {DATA_TYPES_MORE.find(d => d.value === dataType)?.label ?? tt("moreDataTypes")}
-                <ChevronDown size={12} style={{ color: T.info }} />
-              </button>
-              {moreTypeOpen && (
-                <div className="absolute top-full left-0 mt-1 bg-white rounded-md shadow-lg z-20 py-1 min-w-[120px]" style={{ border: `1px solid ${T.border}` }}>
-                  {DATA_TYPES_MORE.map(dt => (
-                    <button key={dt.value}
-                      className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-gray-50"
-                      style={{ color: dataType === dt.value ? T.teal : T.ink }}
-                      onClick={() => { setDataType(dt.value); setMoreTypeOpen(false); }}
-                    >{dt.label}</button>
-                  ))}
-                </div>
-              )}
+          {/* 岗位分类 + 单分类上限 */}
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] flex-shrink-0" style={{ color: T.info }}>岗位分类</span>
+              <div className="relative" ref={catRef}>
+                <button
+                  className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] min-w-[150px] justify-between transition-colors"
+                  style={{
+                    border: `1px solid ${selectedCats.length ? `${T.teal}60` : T.border}`,
+                    color: selectedCats.length ? T.teal : T.ink,
+                    background: "white",
+                  }}
+                  onClick={() => setCatOpen(!catOpen)}
+                >
+                  {selectedCats.length ? `已选 ${selectedCats.length} 类` : `全部 ${JOB_CATEGORIES.length} 类`}
+                  <ChevronDown size={13} style={{ color: T.info }} />
+                </button>
+                {catOpen && (
+                  <div className="absolute top-full left-0 mt-1.5 bg-white rounded-lg shadow-lg z-20 w-[360px]" style={{ border: `1px solid ${T.border}` }}>
+                    <div className="flex items-center justify-between px-3 py-2" style={{ borderBottom: `1px solid ${T.cloud}` }}>
+                      <span className="text-[12px]" style={{ color: T.info }}>选择要采集的分类（不选 = 全部）</span>
+                      <button
+                        className="text-[12px] font-medium"
+                        style={{ color: T.teal }}
+                        onClick={() => setSelectedCats(selectedCats.length ? [] : [...JOB_CATEGORIES])}
+                      >
+                        {selectedCats.length ? "清空选择" : "全选"}
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-1 px-2 py-1.5 max-h-[248px] overflow-y-auto">
+                      {JOB_CATEGORIES.map((cat) => {
+                        const on = selectedCats.includes(cat);
+                        return (
+                          <button key={cat}
+                            className="flex items-center gap-2 px-2 py-1.5 rounded text-left text-[12.5px] hover:bg-gray-50"
+                            onClick={() => toggleCat(cat)}
+                          >
+                            <span className="w-3.5 h-3.5 rounded flex items-center justify-center flex-shrink-0 transition-colors"
+                              style={on
+                                ? { background: T.teal, border: `1px solid ${T.teal}` }
+                                : { background: "white", border: `1px solid ${T.border}` }}>
+                              {on && <Check size={10} color="#fff" />}
+                            </span>
+                            <span style={{ color: on ? T.teal : T.ink }}>{cat}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] flex-shrink-0" style={{ color: T.info }}>单分类上限</span>
+              <Segmented
+                value={String(maxDocs)}
+                onChange={(v) => setMaxDocs(Number(v))}
+                options={MAX_DOC_OPTIONS.map(n => ({ value: String(n), label: String(n) }))}
+              />
+              <span className="text-[12px]" style={{ color: T.info }}>条 / 分类</span>
             </div>
           </div>
 
-          {/* 区域（分段控件） */}
-          <div className="flex items-center gap-2">
-            <span className="text-[12px] text-neutral-400 flex-shrink-0">{tt("region")}</span>
-            <Segmented
-              value={region}
-              onChange={(v) => setRegion(v)}
-              options={REGIONS_FLAT.map(r => ({ value: r.value, label: r.label }))}
-            />
-            <div className="relative">
-              <button
-                className="flex items-center gap-1 rounded-md px-2 py-1.5 text-[13px]"
-                style={{ border: `1px solid ${T.border}`, color: T.info, background: "white" }}
-                onClick={() => setRegionDropdown(!regionDropdown)}
-              >{tt("moreRegions")} <ChevronDown size={12} style={{ color: T.info }} /></button>
-              {regionDropdown && (
-                <div className="absolute top-full left-0 mt-1 bg-white rounded-md shadow-lg z-20 py-2 flex" style={{ border: `1px solid ${T.border}`, minWidth: 280 }}>
-                  <div className="w-24 border-r max-h-[260px] overflow-y-auto" style={{ borderColor: T.cloud }}>
-                    {Object.keys(PROVINCES).map(prov => (
-                      <button key={prov}
-                        className="w-full text-left px-3 py-1.5 text-[12px]"
-                        style={{ color: selProvince === prov ? T.teal : T.ink, background: selProvince === prov ? `${T.teal}10` : "transparent" }}
-                        onClick={() => setSelProvince(prov)}
-                      >{prov}</button>
-                    ))}
-                  </div>
-                  <div className="flex-1 max-h-[260px] overflow-y-auto">
-                    {selProvince && PROVINCES[selProvince]?.map(city => (
-                      <button key={city}
-                        className="w-full text-left px-3 py-1.5 text-[12px] hover:bg-gray-50"
-                        style={{ color: region === city ? T.teal : T.ink }}
-                        onClick={() => { setRegion(city); setRegionDropdown(false); setSelProvince(""); }}
-                      >{city}</button>
-                    ))}
-                    {!selProvince && <div className="px-3 py-2 text-[12px]" style={{ color: T.info }}>{tt("selectProvince")}</div>}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* 产业范围（下拉多选） */}
-          <div className="flex items-center gap-2">
-            <span className="text-[12px] text-neutral-400 flex-shrink-0">{tt("industry")}</span>
-            <div className="relative">
-              <button
-                className="flex items-center gap-1 rounded-md px-2.5 py-1.5 text-[13px]"
-                style={{ border: `1px solid ${T.border}`, color: industries.length > 0 ? T.teal : T.info, background: "white" }}
-                onClick={() => setIndustryOpen(!industryOpen)}
-              >
-                {industries.length > 0 ? `已选 ${industries.length} 项` : tt("selectIndustry")}
-                <ChevronDown size={12} style={{ color: T.info }} />
-              </button>
-              {industryOpen && (
-                <div className="absolute top-full left-0 mt-1 bg-white rounded-md shadow-lg z-20 py-1 max-h-[220px] overflow-y-auto" style={{ border: `1px solid ${T.border}`, minWidth: 160 }}>
-                  {INDUSTRIES.map(ind => (
-                    <button key={ind}
-                      className="w-full text-left px-4 py-1.5 text-[12px] hover:bg-gray-50 flex items-center gap-2"
-                      style={{ color: industries.includes(ind) ? T.teal : T.ink }}
-                      onClick={() => {
-                        setIndustries(prev => prev.includes(ind) ? prev.filter(i => i !== ind) : [...prev, ind]);
-                      }}
-                    >{industries.includes(ind) && <span style={{ color: T.teal }}>✓</span>}{ind}</button>
-                  ))}
-                </div>
-              )}
-            </div>
-            {industries.length > 0 && (
-              <button className="text-[12px]" style={{ color: T.risk }} onClick={() => setIndustries([])}>清空</button>
-            )}
+          {/* 操作引导 */}
+          <div className="flex flex-wrap items-center gap-1.5 text-[12px] pt-1" style={{ color: T.info, borderTop: `1px solid ${T.cloud}` }}>
+            <span>① 配置参数</span>
+            <ArrowRight size={11} style={{ color: T.border }} />
+            <span>② 点击「开始采集」</span>
+            <ArrowRight size={11} style={{ color: T.border }} />
+            <span>③ 下方日志实时查看进度与结果</span>
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* 任务状态卡片 */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <MetricCard
           title={tt("taskStatus")}
           value={statusInfo[taskStatus].label}
           sub={taskStatus === "running" ? t("page.autoImport.elapsedTime", { time: formatTime(elapsedSeconds) }) : undefined}
         />
         <MetricCard
-          title={tt("crawledCount")}
-          value={taskStatus === "idle" ? "—" : (taskStatus === "running" ? tt("crawling2") : "—")}
-          sub={taskStatus === "completed" ? tt("crawlCompleteDesc") : undefined}
+          title="采集进度"
+          value={taskStatus === "idle" ? "—" : progress != null ? `${progress}%` : taskStatus === "running" ? "同步中" : "—"}
+          sub={taskStatus === "running"
+            ? `当前分类：${currentCategory || "初始化中"}`
+            : taskStatus === "completed" ? "采集链路执行完毕" : undefined}
         />
         <MetricCard
-          title={tt("dataSource")}
-          value={region || tt("allRegions")}
-          sub={[...DATA_TYPES_FLAT, ...DATA_TYPES_MORE].find(d => d.value === dataType)?.label ?? "—"}
+          title="已清洗条数"
+          value={taskStatus === "idle" ? "—" : totalCleaned != null ? totalCleaned : taskStatus === "running" ? "同步中" : "—"}
+          sub="经清洗管道写入"
         />
         <MetricCard
           title={tt("targetStorage")}
@@ -342,6 +358,20 @@ export default function AutoImportPage() {
           sub="raw_records"
         />
       </div>
+
+      {/* 运行中：总进度条 */}
+      {taskStatus === "running" && progress != null && (
+        <div className="rounded-lg bg-white px-4 py-3" style={{ border: `1px solid ${T.border}` }}>
+          <div className="flex items-center justify-between text-[12px] mb-2">
+            <span style={{ color: T.ink }}>采集总进度</span>
+            <span className="font-mono" style={{ color: T.teal }}>{progress}%</span>
+          </div>
+          <div className="h-1.5 rounded-full overflow-hidden" style={{ background: T.cloud }}>
+            <div className="h-full rounded-full transition-all duration-500"
+              style={{ width: `${Math.min(100, Math.max(0, progress))}%`, background: `linear-gradient(90deg, #4E7FBF, ${T.teal})` }} />
+          </div>
+        </div>
+      )}
 
       {/* 操作按钮 */}
       <div className="flex items-center gap-3">
@@ -384,10 +414,11 @@ export default function AutoImportPage() {
         <div className="px-5 pb-4">
           {logs.length === 0 ? (
             <div className="text-center py-8 text-[13px]" style={{ color: T.info }}>
-              {taskStatus === "idle" ? tt("logHint") : tt("noLogs")}
+              {taskStatus === "idle" ? "暂无日志 · 任务启动后，采集进度与结果将实时滚动显示在此处" : tt("noLogs")}
             </div>
           ) : (
             <div
+              ref={logBoxRef}
               className="rounded-md p-3 font-mono text-[12px] leading-relaxed max-h-[360px] overflow-y-auto"
               style={{ background: "#1a1a2e", color: "#a8d8a8" }}
             >
@@ -409,15 +440,5 @@ export default function AutoImportPage() {
       </Card>
 
     </div>
-  );
-}
-
-function Tag({ label, onRemove }: { label: string; onRemove: () => void }) {
-  return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[12px]"
-      style={{ background: `${T.teal}12`, color: T.teal, border: `1px solid ${T.teal}30` }}>
-      {label}
-      <button onClick={onRemove} style={{ color: T.teal }}><X size={11} /></button>
-    </span>
   );
 }

@@ -39,12 +39,22 @@ async function request<T>(url: string, init?: RequestInit): Promise<ApiResponse<
 
 // ═══════════════════ 爬虫操作 ═══════════════════
 
+// 启动采集参数
+export interface StartCrawlParams {
+  categories?: string[];
+  maxDocuments?: number;
+}
+
 // 启动采集
-export async function startCrawler() {
+export async function startCrawler(params?: StartCrawlParams) {
   return request<CrawlerResult>(`${BASE}/crawl`, {
     method: "POST",
     headers: hdrs(),
-    body: JSON.stringify({ type: "JOB" }),
+    body: JSON.stringify({
+      type: "JOB",
+      categories: params?.categories ?? [],
+      maxDocuments: params?.maxDocuments ?? 1000,
+    }),
   });
 }
 

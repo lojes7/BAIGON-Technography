@@ -64,7 +64,7 @@ export default function MyStudentsPage() {
         )}
       </Card>
 
-      {total > 20 && (
+      {total > 0 && (
         <Pagination page={page} totalPages={Math.ceil(total / 20)} onChange={setPage} total={total} />
       )}
     </div>
