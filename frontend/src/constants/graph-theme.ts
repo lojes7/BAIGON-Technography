@@ -33,7 +33,7 @@ export const RELATION_COLOR: Record<RelationType, { stroke: string; dash?: strin
 };
 
 /* ===== 关键技能：与中心恒星用淡彩实线箭头相连（数量 ≤ 10） =====
-   取全图谱 demandLevel 最高的 8 个技能点。 */
+   取全图谱 demandLevel 最高的 9 个技能点，兼顾软件工程/人工智能/大数据三个领域。 */
 export const KEY_SKILL_IDS = [
   "sk_001", // Python 0.97
   "sk_004", // 大语言模型 0.96
@@ -41,8 +41,9 @@ export const KEY_SKILL_IDS = [
   "sk_005", // RAG工程化 0.94
   "sk_011", // PyTorch 0.94
   "sk_003", // 深度学习 0.93
+  "sk_023", // MySQL 0.93
   "sk_014", // Java 0.92
-  "sk_002", // 机器学习 0.91
+  "sk_012", // 数据仓库 0.87
 ] as const;
 
 /* 恒星 → 关键技能 的淡彩箭头颜色（与实体色同风格的 TikZ 淡彩） */
@@ -73,14 +74,16 @@ export function proficiencyOf(text?: string): number {
 /* 熟练度要求 → 节点尺寸加成（了解 +0 → 精通 +4.5） */
 const PROFICIENCY_SIZE_BONUS: Record<number, number> = { 1: 0, 2: 1.5, 3: 3, 4: 4.5 };
 
-/* 节点尺寸：中心恒星最大(46)；其余随需求热度(0.65~1 → 12~37)与熟练度要求递增，上限 42 < 恒星 */
+/* 节点尺寸：中心恒星最大(46)；其余节点上限 = 23（数据量大、图面密集时节点整体缩小，
+   间距不压缩——靠缩放浏览细看） */
 export const DOMAIN_STAR_RADIUS = 46;
+export const NODE_MAX_RADIUS = 23; // = DOMAIN_STAR_RADIUS * 0.5
 
 export function nodeSizeOf(demandLevel: number, requiredLevel?: string): number {
   const t = Math.min(1, Math.max(0, (demandLevel - 0.65) / 0.35));
-  const base = 12 + t * 25;
+  const base = 7 + t * 15; // 7 → 22
   const bonus = PROFICIENCY_SIZE_BONUS[proficiencyOf(requiredLevel)] ?? 0;
-  return Math.min(42, base + bonus);
+  return Math.min(NODE_MAX_RADIUS, base + bonus);
 }
 
 export const TREND_COLOR: Record<TrendType, string> = {

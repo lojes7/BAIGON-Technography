@@ -10,7 +10,7 @@ import {
   Tooltip, ResponsiveContainer, Cell, PieChart, Pie,
 } from "recharts";
 import { useNav } from "../context/NavContext";
-import { coverageData } from "../data";
+import { DEMO_STATS } from "../services/demo-pool";
 import { StatusBadge } from "../components/ui";
 import ConfirmDialog from "../components/overlay/ConfirmDialog";
 
@@ -36,7 +36,8 @@ const P = {
   border: "#E4EAF2",
 } as const;
 
-const trendData = coverageData;
+/* 与数据源 / 数据导入页共用 DEMO_STATS 统计口径（合计恒等于样本总量） */
+const trendData = DEMO_STATS.trend;
 
 const signals = [
   { name: "RAG 应用工程", dir: "up", pct: "+8.7%", chip: "热度上升", chipBg: P.greenBg, chipColor: P.green },
@@ -54,10 +55,10 @@ const quickLinks = [
 ];
 
 const recentTasks = [
-  { id: "#102", name: "AI 抽取任务", desc: "招聘岗位批次 JOB-202607-006", status: "running", pct: 78, target: "job-analysis" },
-  { id: "#21", name: "数据导出", desc: "2025H1—2026H1 全量词典", status: "succeeded", pct: 100, target: "export-tasks" },
-  { id: "#46", name: "指标重算", desc: "能力覆盖率 · 常州市", status: "succeeded", pct: 100, target: "evolution-trends" },
-  { id: "#101", name: "AI 抽取任务", desc: "招聘岗位批次 JOB-202606-015", status: "partially_succeeded", pct: 100, target: "job-analysis" },
+  { id: "#102", name: "AI 抽取任务", desc: "招聘岗位批次 JOB-202608-004", status: "running", pct: 78, target: "job-analysis" },
+  { id: "#21", name: "数据导出", desc: "2026-08 全量词典快照", status: "succeeded", pct: 100, target: "export-tasks" },
+  { id: "#46", name: "指标重算", desc: "能力覆盖率 · 武汉市", status: "succeeded", pct: 100, target: "evolution-trends" },
+  { id: "#101", name: "AI 抽取任务", desc: "招聘岗位批次 JOB-202608-002", status: "partially_succeeded", pct: 100, target: "job-analysis" },
 ];
 
 const gaugeData = [
@@ -143,16 +144,16 @@ function AdminDashboard() {
               <ArrowUpRight size={14} color="#fff" />
             </span>
           </div>
-          <div className="text-[36px] font-mono font-semibold leading-tight mt-1">486</div>
+          <div className="text-[36px] font-mono font-semibold leading-tight mt-1">{DEMO_STATS.total}</div>
           <div className="mt-auto flex items-center gap-2">
-            <TrendChip label="+52 本月新增" bg="rgba(255,255,255,0.16)" color="#fff" />
-            <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.6)" }}>覆盖 12 个行业大类</span>
+            <TrendChip label={`+${DEMO_STATS.todayNew} 今日入库`} bg="rgba(255,255,255,0.16)" color="#fff" />
+            <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.6)" }}>覆盖 {DEMO_STATS.directions} 大技术方向</span>
           </div>
         </div>
 
         {[
           { title: "标准技能", value: "162", chip: "+11 本月新增", bg: P.greenBg, color: P.green, target: "skill-dict" },
-          { title: "待人工复核", value: "37", chip: "9 项高优先级", bg: P.amberBg, color: P.amber, target: "review-queue", warn: true },
+          { title: "待人工复核", value: String(DEMO_STATS.pending), chip: `${DEMO_STATS.pendingHigh} 项高优先级`, bg: P.amberBg, color: P.amber, target: "raw-records", warn: true },
           { title: "已识别演进信号", value: "24", chip: "6 项待专家确认", bg: P.violetBg, color: P.violet, target: "evolution-trends" },
         ].map((k) => (
           <div key={k.title} className="bg-white rounded-2xl p-5 flex flex-col cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5"
@@ -176,8 +177,8 @@ function AdminDashboard() {
         <div className="col-span-8 bg-white rounded-2xl" style={{ border: `1px solid ${P.border}` }}>
           <div className="flex items-center justify-between px-5 pt-4 pb-1">
             <div>
-              <div className="text-[15px] font-semibold" style={{ color: P.ink }}>岗位样本月度导入</div>
-              <div className="text-[12px] mt-0.5" style={{ color: P.faint }}>近 12 个月 · 单位：条清洗后样本</div>
+              <div className="text-[15px] font-semibold" style={{ color: P.ink }}>岗位样本导入趋势</div>
+              <div className="text-[12px] mt-0.5" style={{ color: P.faint }}>近 1 个月 · 单位：条清洗后样本</div>
             </div>
             <button className="inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-full transition-colors hover:bg-gray-50"
               style={{ color: P.muted, border: `1px solid ${P.border}` }}
@@ -187,22 +188,21 @@ function AdminDashboard() {
           </div>
           <div className="px-5 pb-4 pt-2">
             <ResponsiveContainer width="100%" height={190}>
-              <BarChart data={trendData} barSize={18}>
+              <BarChart data={trendData} barSize={8}>
                 <CartesianGrid strokeDasharray="4 6" stroke={P.skySoft} vertical={false} />
-                <XAxis dataKey="m" tick={{ fontSize: 11, fill: P.faint }} tickLine={false} axisLine={false}
-                  tickFormatter={(v: string) => v.slice(5)} />
-                <YAxis tick={{ fontSize: 11, fill: P.faint }} tickLine={false} axisLine={false} width={28} />
+                <XAxis dataKey="dt" tick={{ fontSize: 11, fill: P.faint }} tickLine={false} axisLine={false}
+                  tickFormatter={(v: string) => v.slice(8)} interval={4} />
+                <YAxis tick={{ fontSize: 11, fill: P.faint }} tickLine={false} axisLine={false} width={28} allowDecimals={false} />
                 <Tooltip
                   contentStyle={{ fontSize: 12, border: `1px solid ${P.border}`, borderRadius: 12, boxShadow: "0 8px 20px rgba(22,40,62,0.08)" }}
                   cursor={{ fill: P.skySoft, radius: 8 }}
                 />
-                <Bar dataKey="n" name="岗位样本" radius={[9, 9, 9, 9]}>
+                <Bar dataKey="n" name="岗位样本" radius={[4, 4, 4, 4]}>
                   {trendData.map((d, i) => (
                     <Cell key={i} fill={
                       i === trendData.length - 1 ? P.primary
-                        : d.n >= 90 ? "#4A79C2"
-                          : i === trendData.length - 2 ? "#7FA6D6"
-                            : P.sky
+                        : d.n >= 5 ? "#4A79C2"
+                          : P.sky
                     } />
                   ))}
                 </Bar>
@@ -214,18 +214,18 @@ function AdminDashboard() {
         <div className="col-span-4 bg-white rounded-2xl p-5 flex flex-col" style={{ border: `1px solid ${P.border}` }}>
           <div className="text-[15px] font-semibold" style={{ color: P.ink }}>复核提醒</div>
           <div className="mt-3 text-[20px] font-semibold leading-snug" style={{ color: P.primary }}>
-            37 项 AI 结果待人工复核
+            {DEMO_STATS.pending} 项清洗样本待人工复核
           </div>
           <div className="mt-1.5 text-[13px] flex items-center gap-2" style={{ color: P.muted }}>
             <span className="inline-block w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: P.amber }} />
-            批次 JOB-202607-006 · 高优先级 9 项
+            批次 JOB-202608-004 · 高优先级 {DEMO_STATS.pendingHigh} 项
           </div>
           <div className="mt-2 text-[12px]" style={{ color: P.faint }}>SLA 剩余 2 天 · 超时将自动降级抽样</div>
           <button
             className="mt-auto inline-flex items-center justify-center gap-2 w-full rounded-full text-white text-[14px] font-medium py-2.5 cursor-pointer transition-opacity hover:opacity-90"
             style={{ background: P.primary, boxShadow: "0 8px 16px -6px rgba(30,76,143,0.45)" }}
-            onClick={() => nav("review-queue")}>
-            <Eye size={15} /> 前往复核工作台
+            onClick={() => nav("raw-records")}>
+            <Eye size={15} /> 前往数据源复核
           </button>
         </div>
       </div>

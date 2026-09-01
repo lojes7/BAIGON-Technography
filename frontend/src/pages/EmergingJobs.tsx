@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   X, Sparkles, Building2, TrendingUp, FileText, BookOpen, RefreshCw,
   Pencil, CheckCircle2, XCircle, Check, Plus,
 } from "lucide-react";
 import { toast } from "sonner";
+import { PageHeader } from "../components/ui";
 
 /* 深蓝主色系（与数据导入/数据源页一致） */
 const P = {
@@ -129,6 +131,7 @@ const INITIAL_JOBS: EmergingJob[] = [
 /* ═══════════ 页面 ═══════════ */
 
 export default function EmergingJobsPage() {
+  const { t } = useTranslation();
   const [jobs, setJobs] = useState<EmergingJob[]>(INITIAL_JOBS);
   const [drawerId, setDrawerId] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
@@ -202,12 +205,11 @@ export default function EmergingJobsPage() {
   return (
     <div className="flex flex-col gap-5">
       {/* ===== 页头 ===== */}
-      <div>
-        <h1 className="text-[26px] font-bold leading-tight" style={{ color: P.ink }}>新岗位发现与定义</h1>
-        <p className="text-[13px] mt-1" style={{ color: P.muted }}>
-          识别市场上正在萌芽、尚未被标准化的新岗位 · AI 生成岗位定义 · 支持人工优化与动态更新（Mock 演示数据）
-        </p>
-      </div>
+      <PageHeader
+        breadcrumbs={[t("nav.evolution"), t("nav.emergingJobs")]}
+        title="新岗位发现与定义"
+        description="识别市场上正在萌芽、尚未被标准化的新岗位 · AI 生成岗位定义 · 支持人工优化与动态更新"
+      />
 
       {/* ===== KPI 统计行 ===== */}
       <div className="grid grid-cols-4 gap-4">

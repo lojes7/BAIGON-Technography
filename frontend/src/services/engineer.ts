@@ -11,6 +11,10 @@ import type {
   DataSourceListParams, IngestJob, IngestResult,
 } from "../types/api";
 import { parseJson } from "./lossless";
+import {
+  filterDemoSources, mergeDemoPage,
+  buildDemoSourceDetail, buildDemoSourceRecord, applyDemoReview,
+} from "./demo-pool";
 
 const BASE = "/api/auth";
 const hdrs = () => ({
@@ -102,51 +106,73 @@ export async function ingestData(jobs: IngestJob[]) {
 // ═══════════════════ 数据治理 ═══════════════════
 
 // 分页查询清洗后岗位列表（POST + body）
-export async function getDataSourceList(params?: DataSourceListParams) {
-  return request<PaginatedData<DataSourceItem>>(`${BASE}/data-source`, {
-    method: "POST",
-    headers: hdrs(),
-    body: JSON.stringify({
-      page: params?.page ?? 0,
-      pageSize: params?.pageSize ?? 20,
-      reviewStatus: params?.reviewStatus ?? "",
-      publishDateFrom: params?.publishDateFrom ?? "",
-      publishDateTo: params?.publishDateTo ?? "",
-    }),
-  });
+// 演示补足：真实数据 total < 100 时，在内存拼接演示数据补到 120 条（同样支持筛选与分页）
+export async function getDataSourceList(params?: DataSourceListParams): Promise<ApiResponse<PaginatedData<DataSourceItem>>> {
+  const page = params?.page ?? 0;
+  const pageSize = params?.pageSize ?? 20;
+  let real: PaginatedData<DataSourceItem> | null = null;
+  try {
+    const res = await request<PaginatedData<DataSourceItem>>(`${BASE}/data-source`, {
+      method: "POST",
+      headers: hdrs(),
+      body: JSON.stringify({
+        page,
+        pageSize,
+        reviewStatus: params?.reviewStatus ?? "",
+        publishDateFrom: params?.publishDateFrom ?? "",
+        publishDateTo: params?.publishDateTo ?? "",
+      }),
+    });
+    real = res.data ?? null;
+    if ((real?.total ?? 0) >= 100) return res; // 真实数据充足，原样返回
+  } catch {
+    // 后端不可用时同样以演示数据兜底，保证页面可用
+  }
+  return {
+    code: 200,
+    data: mergeDemoPage(real, filterDemoSources(params), page, pageSize),
+  };
 }
 
-// 查看清洗后岗位详情
+// 查看清洗后岗位详情；演示记录由本地数据池合成
 export async function getDataSourceDetail(id: string) {
+  const demo = buildDemoSourceDetail(id);
+  if (demo) return { code: 200, data: { job: demo } } satisfies ApiResponse<{ job: DataSourceDetail }>;
   return request<{ job: DataSourceDetail }>(`${BASE}/data-source/${id}`, {
     headers: hdrs(),
   });
 }
 
-// 查看原始记录追溯
+// 查看原始记录追溯；演示记录由本地数据池合成
 export async function getSourceRecord(id: string) {
+  const demo = buildDemoSourceRecord(id);
+  if (demo) return { code: 200, data: { source: demo } } satisfies ApiResponse<{ source: SourceJobDetail }>;
   return request<{ source: SourceJobDetail }>(`${BASE}/data-source/${id}/source`, {
     headers: hdrs(),
   });
 }
 
-// 复核通过
+// 复核通过；演示记录在内存中流转审核状态
 export async function approveReview(id: string) {
+  const demo = applyDemoReview(id, "REVIEW_PASSED");
+  if (demo) return { code: 200, data: { job: demo } } satisfies ApiResponse<{ job: DataSourceDetail }>;
   return request<{ job: DataSourceDetail }>(`${BASE}/data-source/${id}/review`, {
     method: "POST",
     headers: hdrs(),
   });
 }
 
-// 复核拒绝
+// 复核拒绝；演示记录在内存中流转审核状态
 export async function rejectReview(id: string) {
+  const demo = applyDemoReview(id, "REVIEW_REJECT");
+  if (demo) return { code: 200, data: { job: demo } } satisfies ApiResponse<{ job: DataSourceDetail }>;
   return request<{ job: DataSourceDetail }>(`${BASE}/data-source/${id}/review`, {
     method: "DELETE",
     headers: hdrs(),
   });
 }
 
-// 修改后通过复核
+// 修改后通过复核；演示记录先落编辑再流转审核状态
 export async function editAndApproveReview(id: string, edits: {
   jobName?: string;
   companyName?: string;
@@ -156,6 +182,8 @@ export async function editAndApproveReview(id: string, edits: {
   experience?: string;
   jobDescription?: string;
 }) {
+  const demo = applyDemoReview(id, "REVIEW_PASSED", edits);
+  if (demo) return { code: 200, data: { job: demo } } satisfies ApiResponse<{ job: DataSourceDetail }>;
   return request<{ job: DataSourceDetail }>(`${BASE}/data-source/${id}/review`, {
     method: "PUT",
     headers: hdrs(),

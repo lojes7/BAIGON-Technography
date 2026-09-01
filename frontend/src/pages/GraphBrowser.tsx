@@ -44,9 +44,19 @@ const STACK_OPTIONS = [STACK_AI, STACK_DATA, STACK_BACKEND];
 const CATEGORY_STACK: Record<string, string> = {
   "AI算法": STACK_AI, "LLM应用": STACK_AI, "深度学习框架": STACK_AI, "LLM框架": STACK_AI,
   "模型库": STACK_AI, "推理引擎": STACK_AI, "高性能计算": STACK_AI, "计算机视觉": STACK_AI,
+  "知识工程": STACK_AI, "模型优化": STACK_AI, "NLP": STACK_AI, "语音技术": STACK_AI,
+  "LLM应用平台": STACK_AI, "本地推理": STACK_AI, "机器人": STACK_AI, "机器人框架": STACK_AI,
+  "工业协议": STACK_AI, "仿真": STACK_AI, "边缘计算": STACK_AI, "视觉库": STACK_AI, "测控软件": STACK_AI,
   "大数据": STACK_DATA, "数据存储": STACK_DATA, "数据查询": STACK_DATA, "消息队列": STACK_DATA,
+  "批处理": STACK_DATA, "流处理": STACK_DATA, "查询引擎": STACK_DATA, "数据治理": STACK_DATA,
+  "BI可视化": STACK_DATA, "数据分析": STACK_DATA, "调度": STACK_DATA, "数据湖": STACK_DATA,
   "编程语言": STACK_BACKEND, "Web框架": STACK_BACKEND, "容器化": STACK_BACKEND,
-  "容器编排": STACK_BACKEND, "工程实践": STACK_BACKEND,
+  "容器编排": STACK_BACKEND, "工程实践": STACK_BACKEND, "前端": STACK_BACKEND,
+  "架构设计": STACK_BACKEND, "数据库": STACK_BACKEND, "中间件": STACK_BACKEND,
+  "测试": STACK_BACKEND, "操作系统": STACK_BACKEND, "网络协议": STACK_BACKEND,
+  "Web服务器": STACK_BACKEND, "版本控制": STACK_BACKEND, "CI/CD": STACK_BACKEND,
+  "自动化测试": STACK_BACKEND, "运维监控": STACK_BACKEND, "IaC": STACK_BACKEND,
+  "服务网格": STACK_BACKEND, "安全": STACK_BACKEND, "镜像仓库": STACK_BACKEND,
 };
 const INDUSTRY_STACK: Record<string, string> = {
   "人工智能": STACK_AI, "智能制造": STACK_AI, "互联网": STACK_DATA, "全行业": STACK_BACKEND,
@@ -54,7 +64,19 @@ const INDUSTRY_STACK: Record<string, string> = {
 /* 任务/证书无类目字段，按业务归属显式映射 */
 const NODE_STACK: Record<string, string> = {
   tk_001: STACK_AI, tk_002: STACK_AI, tk_003: STACK_AI, tk_004: STACK_DATA, tk_005: STACK_DATA,
+  tk_006: STACK_BACKEND, tk_007: STACK_BACKEND, tk_008: STACK_AI, tk_009: STACK_AI,
+  tk_010: STACK_DATA, tk_011: STACK_DATA, tk_012: STACK_BACKEND, tk_013: STACK_AI,
+  tk_014: STACK_AI, tk_015: STACK_AI,
+  tk_016: STACK_BACKEND, tk_017: STACK_BACKEND, tk_018: STACK_BACKEND, tk_019: STACK_BACKEND,
+  tk_020: STACK_AI, tk_021: STACK_AI, tk_022: STACK_AI,
+  tk_023: STACK_DATA, tk_024: STACK_DATA,
+  tk_025: STACK_BACKEND, tk_026: STACK_BACKEND,
+  tk_027: STACK_AI,
   cert_001: STACK_AI, cert_002: STACK_AI, cert_003: STACK_AI, cert_004: STACK_BACKEND, cert_005: STACK_AI,
+  cert_006: STACK_BACKEND, cert_008: STACK_AI, cert_009: STACK_DATA,
+  cert_010: STACK_BACKEND, cert_011: STACK_BACKEND, cert_012: STACK_AI,
+  cert_013: STACK_BACKEND, cert_014: STACK_BACKEND, cert_015: STACK_AI, cert_016: STACK_AI,
+  cert_017: STACK_DATA, cert_018: STACK_BACKEND, cert_019: STACK_BACKEND,
 };
 
 function GraphBrowserPage() {
@@ -115,26 +137,69 @@ function GraphBrowserPage() {
   }, [selectedId, loadNodeDetail]);
 
   /* 按中心领域拆分图谱：不同领域是不同的图谱。
-     从中心领域出发 BFS 收集子图；其余领域节点不进入本图谱，也不经其扩展。 */
+     从中心领域出发按结构关系定向 BFS 收集子图；其余领域节点不进入本图谱，也不经其扩展。
+     规则：
+     ① 结构扩展（定向）：领域→职业/岗位(BROADER_THAN)；职业/岗位→技能/任务/工具/证书(REQUIRES)；
+        技能↔技能层级(BROADER_THAN / EVOLVES_INTO 双向)；其它领域节点(Domain)一律不入队。
+     ② 关联叶挂接：已入环节点通过 RELATED_TO / SIMILAR_TO 连接的 工具/证书 叶子节点并入（不继续扩展），
+        防止关联边把其它领域的岗位/技能卷进来。 */
   const scopedData = useMemo(() => {
     const typeById = new Map(graphData.nodes.map((n) => [n.id, n.type] as const));
-    const adj = new Map<string, string[]>();
+    const outEdges = new Map<string, DynamicGraphEdge[]>();
+    const assocEdges: DynamicGraphEdge[] = [];
     for (const e of graphData.edges) {
-      if (!adj.has(e.source)) adj.set(e.source, []);
-      if (!adj.has(e.target)) adj.set(e.target, []);
-      adj.get(e.source)!.push(e.target);
-      adj.get(e.target)!.push(e.source);
+      if (e.relationType === "RELATED_TO" || e.relationType === "SIMILAR_TO") {
+        assocEdges.push(e);
+        continue;
+      }
+      if (!outEdges.has(e.source)) outEdges.set(e.source, []);
+      outEdges.get(e.source)!.push(e);
     }
     const keep = new Set<string>([centerDomainId]);
     const queue: string[] = [centerDomainId];
     while (queue.length) {
       const cur = queue.shift()!;
-      for (const other of adj.get(cur) ?? []) {
-        if (keep.has(other)) continue;
-        if (typeById.get(other) === "Domain") continue; // 其它领域不属于本图谱
-        keep.add(other);
-        queue.push(other);
+      const curType = typeById.get(cur);
+      for (const e of outEdges.get(cur) ?? []) {
+        const target = e.target;
+        if (keep.has(target)) continue;
+        if (typeById.get(target) === "Domain") continue; // 其它领域不属于本图谱
+        const tType = typeById.get(target);
+        const expandable =
+          (curType === "Domain" && e.relationType === "BROADER_THAN") ||
+          ((curType === "Occupation" || curType === "JobRole") && e.relationType === "REQUIRES") ||
+          (curType === "Skill" && tType === "Skill" && (e.relationType === "BROADER_THAN" || e.relationType === "EVOLVES_INTO"));
+        if (!expandable) continue;
+        keep.add(target);
+        queue.push(target);
       }
+    }
+    /* 技能层级的反向：技能是被"包含"的子技能时也应并入（BROADER_THAN/EVOLVES_INTO 双向） */
+    const inEdges = new Map<string, DynamicGraphEdge[]>();
+    for (const e of graphData.edges) {
+      if (e.relationType !== "BROADER_THAN" && e.relationType !== "EVOLVES_INTO") continue;
+      if (!inEdges.has(e.target)) inEdges.set(e.target, []);
+      inEdges.get(e.target)!.push(e);
+    }
+    const skillQueue: string[] = [...keep].filter((id) => typeById.get(id) === "Skill");
+    while (skillQueue.length) {
+      const cur = skillQueue.shift()!;
+      for (const e of inEdges.get(cur) ?? []) {
+        const src = e.source;
+        if (keep.has(src)) continue;
+        if (typeById.get(src) !== "Skill") continue;
+        keep.add(src);
+        skillQueue.push(src);
+      }
+    }
+    /* 关联叶挂接：工具/证书 通过关联边并入，不扩展 */
+    for (const e of assocEdges) {
+      const aIn = keep.has(e.source);
+      const bIn = keep.has(e.target);
+      if (aIn === bIn) continue;
+      const other = aIn ? e.target : e.source;
+      const otherType = typeById.get(other);
+      if (otherType === "Tool" || otherType === "Certificate") keep.add(other);
     }
     return {
       nodes: graphData.nodes.filter((n) => keep.has(n.id)),

@@ -7,7 +7,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 import { useNav } from "../context/NavContext";
-import { coverageData } from "../data";
+import { DEMO_STATS } from "../services/demo-pool";
 import { INGEST_CSV_COLUMNS } from "../features/ingest/csv";
 import IngestFormModal from "../components/overlay/IngestFormModal";
 
@@ -31,13 +31,13 @@ const P = {
   border: "#E4EAF2",
 } as const;
 
-/* 批次记录（mock，后续接 /ingest 批次查询接口） */
+/* 批次口径与 DEMO_STATS 同源：样本数合计 = 120（样本总量） */
 const recentBatches = [
-  { batch: "JOB-202607-006", source: "CSV 手动注入", rows: 486, time: "2026-07-01 14:32", trace: "tr_9f3a2c", status: "待复核", tone: "amber" },
-  { batch: "JOB-202606-015", source: "CSV 手动注入", rows: 352, time: "2026-06-28 09:15", trace: "tr_7b1e8d", status: "部分失败", tone: "red" },
-  { batch: "JOB-202606-014", source: "智联爬虫", rows: 1204, time: "2026-06-25 22:08", trace: "tr_5c9f04", status: "清洗中", tone: "sky" },
-  { batch: "JOB-202606-013", source: "CSV 手动注入", rows: 278, time: "2026-06-21 16:47", trace: "tr_3a6d91", status: "已入库", tone: "green" },
-  { batch: "JOB-202606-012", source: "智联爬虫", rows: 986, time: "2026-06-18 21:30", trace: "tr_2e4b70", status: "已入库", tone: "green" },
+  { batch: "JOB-202608-001", source: "CSV 手动注入", rows: 46, time: "2026-08-01 11:20", trace: "trace-2026-a1f80200", status: "已入库", tone: "green" },
+  { batch: "JOB-202608-002", source: "智联爬虫", rows: 38, time: "2026-08-09 21:47", trace: "trace-2026-b7c39e11", status: "部分失败", tone: "red" },
+  { batch: "JOB-202608-003", source: "BOSS直聘爬虫", rows: 22, time: "2026-08-16 10:05", trace: "trace-2026-c4d85a7f", status: "已入库", tone: "green" },
+  { batch: "JOB-202608-004", source: "CSV 手动注入", rows: 10, time: "2026-08-24 14:32", trace: "trace-2026-d92e6b3a", status: "待复核", tone: "amber" },
+  { batch: "JOB-202609-001", source: "前程无忧爬虫", rows: 4, time: "2026-09-01 09:26", trace: "trace-2026-e05f1c48", status: "清洗中", tone: "sky" },
 ] as const;
 
 const TONE: Record<string, { bg: string; color: string }> = {
@@ -92,17 +92,17 @@ function DataImportPage() {
               <ArrowUpRight size={14} color="#fff" />
             </span>
           </div>
-          <div className="text-[32px] font-mono font-semibold leading-tight mt-1">12,846</div>
+          <div className="text-[32px] font-mono font-semibold leading-tight mt-1">{DEMO_STATS.total}</div>
           <div className="mt-auto flex items-center gap-2">
-            <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.16)", color: "#fff" }}>+1,032 本月</span>
-            <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.6)" }}>覆盖 12 个行业大类</span>
+            <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.16)", color: "#fff" }}>+{DEMO_STATS.todayNew} 今日</span>
+            <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.6)" }}>覆盖 {DEMO_STATS.directions} 大技术方向</span>
           </div>
         </KpiCard>
 
         {[
-          { title: "本月注入批次", value: "14", icon: Layers, chip: "较上月 +3", bg: P.skySoft, color: P.primary },
-          { title: "待复核样本", value: "37", icon: AlertTriangle, chip: "9 项高优先级", bg: P.amberBg, color: P.amber, warn: true },
-          { title: "清洗通过率", value: "92.4%", icon: CheckCircle2, chip: "近 30 天均值", bg: P.greenBg, color: P.green },
+          { title: "注入批次", value: String(recentBatches.length), icon: Layers, chip: "08-01 起累计", bg: P.skySoft, color: P.primary },
+          { title: "待复核样本", value: String(DEMO_STATS.pending), icon: AlertTriangle, chip: `${DEMO_STATS.pendingHigh} 项高优先级`, bg: P.amberBg, color: P.amber, warn: true },
+          { title: "复核通过率", value: DEMO_STATS.passRate, icon: CheckCircle2, chip: "全量口径", bg: P.greenBg, color: P.green },
         ].map((k) => (
           <KpiCard key={k.title} onClick={() => nav("raw-records")}>
             <div className="flex items-start justify-between">
@@ -179,9 +179,9 @@ function DataImportPage() {
               ))}
             </div>
             <div className="mt-4 space-y-1.5 text-[12px]" style={{ color: "rgba(255,255,255,0.65)" }}>
-              <div className="flex justify-between"><span>今日新增样本</span><span className="font-mono" style={{ color: "#fff" }}>+86</span></div>
-              <div className="flex justify-between"><span>最近一次采集</span><span className="font-mono" style={{ color: "#fff" }}>14:20</span></div>
-              <div className="flex justify-between"><span>最近 trace</span><span className="font-mono" style={{ color: "#9DBCE4" }}>tr_9f3a2c</span></div>
+              <div className="flex justify-between"><span>今日新增样本</span><span className="font-mono" style={{ color: "#fff" }}>+{DEMO_STATS.todayNew}</span></div>
+              <div className="flex justify-between"><span>最近一次采集</span><span className="font-mono" style={{ color: "#fff" }}>{DEMO_STATS.latestTime}</span></div>
+              <div className="flex justify-between"><span>最近 trace</span><span className="font-mono" style={{ color: "#9DBCE4" }}>{DEMO_STATS.latestTrace}</span></div>
             </div>
           </div>
         </div>
@@ -191,23 +191,23 @@ function DataImportPage() {
       <div className="grid grid-cols-12 gap-4">
         <div className="col-span-4 bg-white rounded-2xl" style={{ border: `1px solid ${P.border}` }}>
           <div className="px-5 pt-4 pb-1">
-            <div className="text-[15px] font-semibold" style={{ color: P.ink }}>近 12 个月注入量</div>
+            <div className="text-[15px] font-semibold" style={{ color: P.ink }}>近 1 个月注入趋势</div>
             <div className="text-[12px] mt-0.5" style={{ color: P.faint }}>单位：条清洗后样本</div>
           </div>
           <div className="px-3 pb-3 pt-2">
             <ResponsiveContainer width="100%" height={168}>
-              <BarChart data={coverageData} barSize={10}>
+              <BarChart data={DEMO_STATS.trend} barSize={8}>
                 <CartesianGrid strokeDasharray="4 6" stroke={P.skySoft} vertical={false} />
-                <XAxis dataKey="m" tick={{ fontSize: 10, fill: P.faint }} tickLine={false} axisLine={false}
-                  tickFormatter={(v: string) => v.slice(5)} interval={1} />
-                <YAxis tick={{ fontSize: 10, fill: P.faint }} tickLine={false} axisLine={false} width={26} />
+                <XAxis dataKey="dt" tick={{ fontSize: 10, fill: P.faint }} tickLine={false} axisLine={false}
+                  tickFormatter={(v: string) => v.slice(8)} interval={4} />
+                <YAxis tick={{ fontSize: 10, fill: P.faint }} tickLine={false} axisLine={false} width={26} allowDecimals={false} />
                 <Tooltip
                   contentStyle={{ fontSize: 12, border: `1px solid ${P.border}`, borderRadius: 12, boxShadow: "0 8px 20px rgba(22,40,62,0.08)" }}
                   cursor={{ fill: P.skySoft }}
                 />
-                <Bar dataKey="n" name="注入样本" radius={[5, 5, 5, 5]}>
-                  {coverageData.map((d, i) => (
-                    <Cell key={i} fill={i === coverageData.length - 1 ? P.primary : P.sky} />
+                <Bar dataKey="n" name="注入样本" radius={[4, 4, 4, 4]}>
+                  {DEMO_STATS.trend.map((_, i) => (
+                    <Cell key={i} fill={i === DEMO_STATS.trend.length - 1 ? P.primary : P.sky} />
                   ))}
                 </Bar>
               </BarChart>

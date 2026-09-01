@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import T from "../constants/tokens";
 import { useAuth } from "../auth/AuthContext";
 import { getDataSourceList, reviewDataSource, getCrawlerStatus, getSourceRecord, getDataSourceDetail, editAndApproveReview } from "../services/engineer";
+import { DEMO_STATS } from "../services/demo-pool";
 import type { DataSourceItem, DataSourceDetail, SourceJobDetail } from "../types/api";
 import { Btn, Card, StatusBadge, Pagination } from "../components/ui";
 import DiffViewer, { type DiffRow } from "../components/diff/DiffViewer";
@@ -33,30 +34,10 @@ const P = {
 
 const nv = (v?: string | null) => (v && v !== "null" && v !== "undefined" ? v : "");
 
-/* 近 30 天采集趋势（mock，后续接 /data-source/stats 聚合接口） */
-const trend30 = (() => {
-  const arr: { dt: string; n: number }[] = [];
-  const base = new Date("2026-08-29T00:00:00");
-  for (let i = 29; i >= 0; i--) {
-    const d = new Date(base);
-    d.setDate(base.getDate() - i);
-    const k = 29 - i;
-    const n = 22 + Math.round(16 * Math.sin(k / 3.2) + ((k * 7) % 23));
-    const dt = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    arr.push({ dt, n });
-  }
-  return arr;
-})();
+/* 采集趋势与平台构成：与工作台 / 数据导入页共用 DEMO_STATS 统计口径（合计恒等于样本总量） */
+const trend30 = DEMO_STATS.trend;
 
-/* 来源平台构成（mock：合计 12,846，与数据导入页 KPI 一致） */
-const platformStats = [
-  { name: "智联招聘", pct: 42, count: "5,392", color: P.primary },
-  { name: "BOSS直聘", pct: 26, count: "3,340", color: "#2E9E9A" },
-  { name: "前程无忧", pct: 18, count: "2,312", color: "#7468CE" },
-  { name: "猎聘", pct: 9, count: "1,156", color: "#D98E1F" },
-  { name: "拉勾", pct: 4, count: "514", color: "#E25C4A" },
-  { name: "其他渠道", pct: 1, count: "132", color: P.faint },
-];
+const platformStats = DEMO_STATS.platformStats;
 
 function KpiCard({ children, onClick, featured = false }: {
   children: React.ReactNode; onClick?: () => void; featured?: boolean;
@@ -367,15 +348,15 @@ export default function RawRecordsPage() {
           </div>
           <div className="text-[32px] font-mono font-semibold leading-tight mt-1">{loading ? "…" : total.toLocaleString()}</div>
           <div className="mt-auto flex items-center gap-2">
-            <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.16)", color: "#fff" }}>今日 +86</span>
-            <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.6)" }}>覆盖 12 个行业大类</span>
+            <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.16)", color: "#fff" }}>今日 +{DEMO_STATS.todayNew}</span>
+            <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.6)" }}>覆盖 {DEMO_STATS.directions} 大技术方向</span>
           </div>
         </KpiCard>
 
         {[
-          { title: "待复核样本", value: "37", chip: "9 项高优先级", bg: P.amberBg, color: P.amber, warn: true, filter: "PENDING" },
-          { title: "复核通过率", value: "89.6%", chip: "全量口径", bg: P.greenBg, color: P.green, filter: "PASSED" },
-          { title: "来源平台", value: "6", chip: "爬虫 + CSV 注入", bg: P.skySoft, color: P.primary, filter: "" },
+          { title: "待复核样本", value: String(DEMO_STATS.pending), chip: `${DEMO_STATS.pendingHigh} 项高优先级`, bg: P.amberBg, color: P.amber, warn: true, filter: "PENDING" },
+          { title: "复核通过率", value: DEMO_STATS.passRate, chip: "全量口径", bg: P.greenBg, color: P.green, filter: "PASSED" },
+          { title: "来源平台", value: String(DEMO_STATS.platformStats.length), chip: "爬虫 + CSV 注入", bg: P.skySoft, color: P.primary, filter: "" },
         ].map((k) => (
           <KpiCard key={k.title} onClick={() => { setFilterStatus(k.filter); setPage(1); }}>
             <div className="flex items-start justify-between">
@@ -397,7 +378,7 @@ export default function RawRecordsPage() {
       <div className="grid grid-cols-12 gap-4">
         <div className="col-span-5 bg-white rounded-2xl" style={{ border: `1px solid ${P.border}` }}>
           <div className="px-5 pt-4 pb-1">
-            <div className="text-[15px] font-semibold" style={{ color: P.ink }}>近 30 天采集趋势</div>
+            <div className="text-[15px] font-semibold" style={{ color: P.ink }}>近 1 个月采集趋势</div>
             <div className="text-[12px] mt-0.5" style={{ color: P.faint }}>每日新增清洗后样本</div>
           </div>
           <div className="px-3 pb-3 pt-2">
@@ -424,7 +405,7 @@ export default function RawRecordsPage() {
         <div className="col-span-4 bg-white rounded-2xl p-5" style={{ border: `1px solid ${P.border}` }}>
           <div className="flex items-center justify-between">
             <div className="text-[15px] font-semibold" style={{ color: P.ink }}>来源平台构成</div>
-            <span className="text-[11px] font-mono" style={{ color: P.faint }}>TOP 6</span>
+            <span className="text-[11px] font-mono" style={{ color: P.faint }}>TOP {platformStats.length}</span>
           </div>
           <div className="mt-3 space-y-2.5">
             {platformStats.map((pf) => (
@@ -458,9 +439,9 @@ export default function RawRecordsPage() {
             </span>
           </div>
           <div className="mt-4 space-y-2.5 text-[12px]" style={{ color: "rgba(255,255,255,0.65)" }}>
-            <div className="flex justify-between"><span>今日新增样本</span><span className="font-mono" style={{ color: "#fff" }}>+86</span></div>
-            <div className="flex justify-between"><span>最近一次采集</span><span className="font-mono" style={{ color: "#fff" }}>14:20</span></div>
-            <div className="flex justify-between"><span>最近采集城市</span><span className="font-mono" style={{ color: "#fff" }}>常州</span></div>
+            <div className="flex justify-between"><span>今日新增样本</span><span className="font-mono" style={{ color: "#fff" }}>+{DEMO_STATS.todayNew}</span></div>
+            <div className="flex justify-between"><span>最近一次采集</span><span className="font-mono" style={{ color: "#fff" }}>{DEMO_STATS.latestTime}</span></div>
+            <div className="flex justify-between"><span>最近采集城市</span><span className="font-mono" style={{ color: "#fff" }}>{DEMO_STATS.latestCity}</span></div>
             <div className="flex justify-between"><span>采集队列</span><span className="font-mono" style={{ color: "#fff" }}>12 个关键词</span></div>
           </div>
           <div className="mt-auto pt-3 text-[11px] leading-relaxed" style={{ color: "rgba(255,255,255,0.45)", borderTop: "1px dashed rgba(255,255,255,0.12)" }}>

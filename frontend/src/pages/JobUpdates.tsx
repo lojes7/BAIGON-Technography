@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   History, ArrowUpRight, ArrowDownRight, ArrowRightLeft,
   Pencil, CheckCircle2, XCircle, Check,
 } from "lucide-react";
 import { toast } from "sonner";
+import { PageHeader } from "../components/ui";
 
 /* 深蓝主色系（与数据导入/数据源页一致） */
 const P = {
@@ -127,6 +129,7 @@ const INITIAL_UPDATES: JobUpdate[] = [
 /* ═══════════ 页面 ═══════════ */
 
 export default function JobUpdatesPage() {
+  const { t } = useTranslation();
   const [updates, setUpdates] = useState<JobUpdate[]>(INITIAL_UPDATES);
   const [expandedId, setExpandedId] = useState<string | null>("ju_001");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -160,12 +163,11 @@ export default function JobUpdatesPage() {
   return (
     <div className="flex flex-col gap-5">
       {/* ===== 页头 ===== */}
-      <div>
-        <h1 className="text-[26px] font-bold leading-tight" style={{ color: P.ink }}>既有岗位能力动态更新</h1>
-        <p className="text-[13px] mt-1" style={{ color: P.muted }}>
-          识别现有岗位能力要求变化 · 明确标注新增 / 删除 / 修改 · 提供更新说明与数据源 · 支持人工优化与动态演化（Mock 演示数据）
-        </p>
-      </div>
+      <PageHeader
+        breadcrumbs={[t("nav.evolution"), t("nav.jobUpdates")]}
+        title="既有岗位能力动态更新"
+        description="识别现有岗位能力要求变化 · 明确标注新增 / 删除 / 修改 · 提供更新说明与数据源 · 支持人工优化与动态演化"
+      />
 
       {/* ===== KPI 统计行 ===== */}
       <div className="grid grid-cols-4 gap-4">
