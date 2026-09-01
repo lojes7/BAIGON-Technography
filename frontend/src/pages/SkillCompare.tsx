@@ -605,9 +605,9 @@ export default function SkillCompare() {
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[560px] text-[13px]">
                   <thead>
-                    <tr style={{ background: P.skySoft }}>
+                    <tr style={{ background: P.sky }}>
                       {["状态", "技能点", "岗位要求", "我的水平", "差距说明"].map(h => (
-                        <th key={h} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: P.muted }}>{h}</th>
+                        <th key={h} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: P.primaryDeep }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -635,7 +635,7 @@ export default function SkillCompare() {
                             </span>
                           </td>
                           <td className="px-4 py-2.5 font-mono text-[12.5px]" style={{ color: g.myLevel == null ? P.faint : P.ink }}>
-                            {g.myLevel == null ? "—" : MY_LEVELS[g.myLevel]}
+                            {g.myLevel == null ? "-" : MY_LEVELS[g.myLevel]}
                           </td>
                           <td className="px-4 py-2.5 text-[12.5px]" style={{ color: P.muted }}>
                             {g.status === "ok" ? "满足岗位要求" : g.status === "partial" ? `距「${g.reqLabel}」还差 ${g.reqLevel - (g.myLevel ?? 0)} 档` : `岗位必备，简历中未体现`}

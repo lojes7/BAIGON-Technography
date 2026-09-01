@@ -3,6 +3,7 @@ import { useState, useRef } from "react";
 import { toast } from "sonner";
 import { Upload, Search, ChevronDown, X } from "lucide-react";
 import T from "../constants/tokens";
+import P from "../constants/palette";
 import { importUsers } from "../services/student-affair";
 import { PageHeader, Btn, Card, StatusBadge } from "../components/ui";
 
@@ -71,9 +72,9 @@ export default function TeacherManagement() {
       <Card>
         <table className="w-full text-[13px]">
           <thead>
-            <tr style={{ background: T.cloud }}>
+            <tr style={{ background: P.sky }}>
               {[t("page.teacherManagement.colId2"), t("page.teacherManagement.colName2"), t("page.teacherManagement.college"), t("common.status"), t("common.operate")].map(h => (
-                <th key={h} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: T.info }}>{h}</th>
+                <th key={h} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: P.primaryDeep }}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -125,9 +126,9 @@ export default function TeacherManagement() {
                   <div className="text-[12px] font-medium mb-2" style={{ color: T.info }}>导入预览</div>
                   <table className="w-full text-[13px]">
                     <thead>
-                      <tr style={{ background: T.cloud }}>
+                      <tr style={{ background: P.sky }}>
                         {[t("page.teacherManagement.colId2"), t("page.teacherManagement.colName2"), t("page.teacherManagement.college"), "验证结果"].map(h => (
-                          <th key={h} className="px-3 py-1.5 text-left font-medium text-[12px]" style={{ color: T.info }}>{h}</th>
+                          <th key={h} className="px-3 py-1.5 text-left font-medium text-[12px]" style={{ color: P.primaryDeep }}>{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -135,7 +136,7 @@ export default function TeacherManagement() {
                       {importPreview.map((r, i) => (
                         <tr key={i} style={{ borderTop: `1px solid ${T.cloud}` }}>
                           <td className="px-3 py-2 font-mono text-[12px]" style={{ color: T.info }}>{r.id}</td>
-                          <td className="px-3 py-2" style={{ color: r.valid ? T.ink : T.risk }}>{r.name || "—"}</td>
+                          <td className="px-3 py-2" style={{ color: r.valid ? T.ink : T.risk }}>{r.name || "-"}</td>
                           <td className="px-3 py-2 text-[12px]" style={{ color: T.info }}>{r.college}</td>
                           <td className="px-3 py-2">
                             <span className="text-[11px] px-1.5 py-0.5 rounded"

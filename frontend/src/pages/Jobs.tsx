@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import type { ReactNode } from "react";
 import {
   X, Eye, Search, RotateCcw, Sparkles, ChevronDown, ChevronUp, Star,
   Copy, Download, Clock, Bookmark, SlidersHorizontal, ArrowUpDown,
+  Briefcase, Building2, Target, Hash, Globe, Users, GraduationCap, ExternalLink, FileSearch,
 } from "lucide-react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -28,8 +30,11 @@ const P = {
   amber: "#D98E1F",
   amberBg: "#FBF1DC",
   red: "#E25C4A",
+  violet: "#7468CE",
+  violetBg: "#ECEAFA",
   border: "#E4EAF2",
   bg: "#F3F6FB",
+  bgSoft: "#FAFBFD",
 } as const;
 
 const PIE_COLORS = ["#1E4C8F", "#4E7FBF", "#7FA6D6", "#A9C8EC", "#2E9E9A", "#D98E1F", "#8B99AB"];
@@ -70,6 +75,67 @@ function parseSalaryK(s?: string): number | null {
   return (Math.min(...nums) + Math.max(...nums)) / 2;
 }
 
+/* 来源平台 → 图标映射（lucide） */
+function platformIcon(platform?: string): ReactNode {
+  const p = String(platform ?? "");
+  const Icon =
+    p.includes("Boss") || p.includes("直聘") ? Building2 :
+    p.includes("猎") ? Target :
+    p.includes("拉勾") ? Hash :
+    p.includes("Linked") || p.includes("领英") ? Globe :
+    p.includes("脉脉") ? Users :
+    p.includes("实习") ? GraduationCap :
+    p.includes("智联") ? Briefcase :
+    ExternalLink;
+  return <Icon size={12} />;
+}
+
+/* 入库时间 → 采集批次（如"2026-07月批次"） */
+function inferBatch(createdAt?: string): string {
+  if (!createdAt) return "-";
+  const d = new Date(createdAt);
+  if (Number.isNaN(d.getTime())) return "-";
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}月批次`;
+}
+
+/* 后端可能返回字面量 "null"/"undefined" 字符串，统一按空处理 */
+function txt(v?: string | null): string {
+  return v && v !== "null" && v !== "undefined" ? v : "";
+}
+
+/* ===== 原始记录三列对比：左=原始采集记录 · 中=数据源（来源平台）记录 · 右=岗位查询（归一化）数据 ===== */
+interface DiffRow { field: string; raw: string; source: string; normalized: string }
+
+function buildDiffRows(j: JobData): DiffRow[] {
+  const d = (v: string) => v || "-";
+  const name = d(txt(j.name));
+  const company = d(txt(j.companyName));
+  const city = d(txt(j.city));
+  const prov = txt(j.province);
+  const citySrc = [prov, txt(j.city)].filter(Boolean).join(" · ") || "-";
+  const salary = d(txt(j.salary));
+  const edu = txt(j.education);
+  const exp = txt(j.experience);
+  const pub = txt(j.publishDate);
+  return [
+    { field: "岗位名称", raw: name, source: name, normalized: name },
+    { field: "公司", raw: company, source: company, normalized: company },
+    { field: "城市 / 省份", raw: city, source: d(citySrc), normalized: city },
+    { field: "薪资", raw: salary, source: salary, normalized: salary },
+    { field: "学历", raw: d(edu ? `${edu}及以上` : "不限"), source: d(edu ? `${edu}及以上` : "学历不限"), normalized: d(edu) },
+    { field: "经验", raw: d(exp ? `${exp}经验` : "经验不限"), source: d(exp || "经验不限"), normalized: d(exp) },
+    { field: "工作性质", raw: d(txt(j.nature)), source: d(txt(j.nature)), normalized: d(txt(j.nature)) },
+    { field: "专业", raw: d(txt(j.major)), source: d(txt(j.major)), normalized: d(txt(j.major)) },
+    { field: "公司规模", raw: d(txt(j.companySize)), source: d(txt(j.companySize)), normalized: d(txt(j.companySize)) },
+    {
+      field: "发布时间",
+      raw: d(pub ? `${pub.slice(0, 10)} ${pub.slice(11, 19) || "00:00:00"}` : ""),
+      source: d(pub.slice(0, 10)),
+      normalized: d(pub.slice(0, 10)),
+    },
+  ];
+}
+
 export default function JobsPage() {
   const [items, setItems] = useState<JobData[]>([]);
   const [total, setTotal] = useState(0);
@@ -93,6 +159,8 @@ export default function JobsPage() {
 
   /* 详情抽屉与人岗匹配（逻辑不变） */
   const [detail, setDetail] = useState<JobDetail | null>(null);
+  /* 原始记录三列对比弹窗 */
+  const [rawOf, setRawOf] = useState<JobData | null>(null);
   const detailRequestRef = useRef(0);
   const [match, setMatch] = useState<JobMatchResult | null>(null);
   const [matchLoading, setMatchLoading] = useState(false);
@@ -217,8 +285,8 @@ export default function JobsPage() {
     if (rows.length === 0) { toast.error("请先勾选岗位"); return; }
     const header = ["ID", "岗位名称", "公司", "城市", "省份", "薪资", "学历", "经验", "专业", "来源", "发布时间"];
     const lines = rows.map(j => [
-      j.id, j.name, j.companyName, j.city, j.province, j.salary,
-      j.education, j.experience, j.major, j.sourcePlatform, j.publishDate?.slice(0, 10),
+      j.id, txt(j.name), txt(j.companyName), txt(j.city), txt(j.province), txt(j.salary),
+      txt(j.education), txt(j.experience), txt(j.major), txt(j.sourcePlatform), j.publishDate?.slice(0, 10),
     ].map(v => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","));
     const blob = new Blob(["\uFEFF" + [header.join(","), ...lines].join("\n")], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -686,14 +754,14 @@ export default function JobsPage() {
         ) : (
           <table className="w-full table-fixed text-[13px]">
             <thead>
-              <tr style={{ background: P.skySoft }}>
+              <tr style={{ background: P.sky }}>
                 <th className="w-[36px] pl-4 py-2.5">
                   <input type="checkbox" className="accent-[#1E4C8F] cursor-pointer" checked={allSelected}
                     onChange={() => setSelected(allSelected ? new Set() : new Set(items.map(j => String(j.id))))} />
                 </th>
                 {SORTABLE.map(c => (
-                  <th key={c.key} className={`${c.key === "name" ? "w-[16%]" : c.key === "companyName" ? "w-[15%]" : "w-[9%]"} px-3 py-2.5 text-left font-medium text-[12px] whitespace-nowrap`}>
-                    <button className="inline-flex items-center gap-1 hover:opacity-80" style={{ color: sort?.key === c.key ? P.primary : P.muted }}
+                  <th key={c.key} className={`${c.key === "name" ? "w-[14%]" : c.key === "companyName" ? "w-[13%]" : "w-[8%]"} px-3 py-2.5 text-left font-medium text-[12px] whitespace-nowrap`}>
+                    <button className="inline-flex items-center gap-1 hover:opacity-80" style={{ color: sort?.key === c.key ? P.primary : P.primaryDeep }}
                       onClick={() => toggleSort(c.key)}>
                       {c.label}
                       <span className="text-[9px] leading-none flex flex-col">
@@ -704,9 +772,9 @@ export default function JobsPage() {
                   </th>
                 ))}
                 {[
-                  ["学历", "w-[7%]"], ["经验", "w-[8%]"], ["专业", "w-[9%]"], ["发布时间", "w-[10%]"], ["操作", "w-[10%]"],
+                  ["学历", "w-[6%]"], ["经验", "w-[7%]"], ["专业", "w-[8%]"], ["原始记录", "w-[8%]"], ["操作", "w-[11%]"],
                 ].map(([h, w]) => (
-                  <th key={h} className={`${w} px-3 py-2.5 text-left font-medium text-[12px] whitespace-nowrap`} style={{ color: P.muted }}>{h}</th>
+                  <th key={h} className={`${w} px-3 py-2.5 text-left font-medium text-[12px] whitespace-nowrap`} style={{ color: P.primaryDeep }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -724,23 +792,29 @@ export default function JobsPage() {
                           return n;
                         })} />
                     </td>
-                    <td className="px-3 py-3 font-medium truncate" style={{ color: P.ink }} title={j.name || undefined}>{j.name || "—"}</td>
-                    <td className="px-3 py-3 truncate" style={{ color: P.muted }} title={j.companyName || undefined}>{j.companyName || "—"}</td>
-                    <td className="px-3 py-3 text-[12px] truncate" style={{ color: P.muted }} title={[j.city, j.province].filter(Boolean).join(" · ")}>{j.city || "—"}</td>
-                    <td className="px-3 py-3 text-[12px] font-medium truncate" style={{ color: P.primary }} title={j.salary || undefined}>{j.salary || "—"}</td>
-                    <td className="px-3 py-3 text-[12px] truncate" style={{ color: P.muted }}>{j.education || "—"}</td>
-                    <td className="px-3 py-3 text-[12px] truncate" style={{ color: P.muted }}>{j.experience || "—"}</td>
-                    <td className="px-3 py-3 text-[12px] truncate" style={{ color: P.muted }} title={j.major || undefined}>{j.major || "—"}</td>
-                    <td className="px-3 py-3 font-mono text-[12px] whitespace-nowrap" style={{ color: P.faint }}>{j.publishDate?.slice(0, 10) || "—"}</td>
+                    <td className="px-3 py-3 font-medium truncate" style={{ color: P.ink }} title={txt(j.name) || undefined}>{txt(j.name) || "-"}</td>
+                    <td className="px-3 py-3 truncate" style={{ color: P.muted }} title={txt(j.companyName) || undefined}>{txt(j.companyName) || "-"}</td>
+                    <td className="px-3 py-3 text-[12px] truncate" style={{ color: P.muted }} title={[txt(j.city), txt(j.province)].filter(Boolean).join(" · ") || undefined}>{txt(j.city) || "-"}</td>
+                    <td className="px-3 py-3 text-[12px] font-medium truncate" style={{ color: P.primary }} title={txt(j.salary) || undefined}>{txt(j.salary) || "-"}</td>
+                    <td className="px-3 py-3 font-mono text-[12px] whitespace-nowrap" style={{ color: P.faint }}>{txt(j.publishDate)?.slice(0, 10) || "-"}</td>
+                    <td className="px-3 py-3 text-[12px] truncate" style={{ color: P.muted }}>{txt(j.education) || "-"}</td>
+                    <td className="px-3 py-3 text-[12px] truncate" style={{ color: P.muted }}>{txt(j.experience) || "-"}</td>
+                    <td className="px-3 py-3 text-[12px] truncate" style={{ color: P.muted }} title={txt(j.major) || undefined}>{txt(j.major) || "-"}</td>
                     <td className="px-3 py-3">
-                      <div className="flex items-center gap-2.5">
-                        <button className="text-[12px] font-medium inline-flex items-center gap-1" style={{ color: P.primary }} onClick={() => openDetail(j.id)}>
+                      <button className="text-[12px] font-medium inline-flex items-center gap-1 whitespace-nowrap hover:opacity-80" style={{ color: P.violet }}
+                        title="原始记录三列对比（原始采集 / 数据源 / 岗位查询）" onClick={() => setRawOf(j)}>
+                        <FileSearch size={12} />对比
+                      </button>
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="flex items-center gap-2 whitespace-nowrap">
+                        <button className="text-[12px] font-medium inline-flex items-center gap-1 whitespace-nowrap" style={{ color: P.primary }} onClick={() => openDetail(j.id)}>
                           <Eye size={12} />详情
                         </button>
-                        <button title={faved ? "取消收藏" : "收藏岗位"} onClick={() => toggleFav(j.id)}>
+                        <button title={faved ? "取消收藏" : "收藏岗位"} className="flex-shrink-0" onClick={() => toggleFav(j.id)}>
                           <Star size={13} style={{ color: faved ? P.amber : P.faint }} fill={faved ? P.amber : "none"} />
                         </button>
-                        <button title="复制岗位 ID" style={{ color: P.faint }} className="opacity-60 group-hover:opacity-100" onClick={() => copyId(j.id)}>
+                        <button title="复制岗位 ID" style={{ color: P.faint }} className="flex-shrink-0 opacity-60 group-hover:opacity-100" onClick={() => copyId(j.id)}>
                           <Copy size={12} />
                         </button>
                       </div>
@@ -789,11 +863,10 @@ export default function JobsPage() {
                     ["薪资", detail.job?.salary], ["学历", detail.job?.education],
                     ["经验", detail.job?.experience], ["工作性质", detail.job?.nature],
                     ["专业", detail.job?.major], ["公司规模", detail.job?.companySize],
-                    ["来源平台", detail.job?.sourcePlatform], ["发布时间", detail.job?.publishDate?.slice(0, 10)],
                   ].map(([k, v]) => (
                     <div key={k} className="flex justify-between" style={{ borderBottom: `1px dashed ${P.border}` }}>
                       <span style={{ color: P.faint }}>{k}</span>
-                      <span className="text-right" style={{ color: P.ink }}>{v || "—"}</span>
+                      <span className="text-right" style={{ color: P.ink }}>{txt(v) || "-"}</span>
                     </div>
                   ))}
                 </div>
@@ -828,6 +901,93 @@ export default function JobsPage() {
                 ) : (
                   <div className="text-[13px]" style={{ color: P.faint }}>尚未归类</div>
                 )}
+              </section>
+
+              {/* 数据源（追溯来源，与 EvidenceDrawer 风格一致） */}
+              <section>
+                <div className="text-[12px] font-medium mb-2" style={{ color: P.faint }}>数据源（追溯）</div>
+                <div className="rounded-lg p-4" style={{ background: P.bg, border: `1px solid ${P.border}` }}>
+                  {/* 来源平台 + 状态 chip */}
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-medium"
+                        style={{ background: P.skySoft, color: P.primary }}>
+                        {platformIcon(detail.job?.sourcePlatform)}
+                        {detail.job?.sourcePlatform || "未标注来源"}
+                      </span>
+                      {txt(detail.job?.sourceUrl) ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px]"
+                          style={{ background: P.greenBg, color: P.green }}>
+                          已关联原文链接
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px]"
+                          style={{ background: P.amberBg, color: P.amber }}>
+                          缺少原文链接
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-mono text-[10.5px] px-2 py-0.5 rounded-md"
+                      style={{ background: P.skySoft, color: P.muted }}>
+                      JOB_{String(detail.job?.id ?? "-")}
+                    </span>
+                  </div>
+
+                  {/* 追溯信息 */}
+                  <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-[12px]" style={{ borderTop: `1px dashed ${P.border}`, paddingTop: 12 }}>
+                    <div className="flex justify-between">
+                      <span style={{ color: P.faint }}>原文发布时间</span>
+                      <span className="font-mono text-right" style={{ color: P.ink }}>
+                        {detail.job?.publishDate?.slice(0, 10) || "-"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span style={{ color: P.faint }}>系统入库时间</span>
+                      <span className="font-mono text-right" style={{ color: P.ink }}>
+                        {detail.job?.createdAt?.slice(0, 10) || "-"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span style={{ color: P.faint }}>采集批次</span>
+                      <span className="font-mono text-right" style={{ color: P.ink }}>
+                        {inferBatch(detail.job?.createdAt)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span style={{ color: P.faint }}>最后更新</span>
+                      <span className="font-mono text-right" style={{ color: P.ink }}>
+                        {detail.job?.updatedAt?.slice(0, 10) || "-"}
+                      </span>
+                    </div>
+                    <div className="col-span-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="text-[11px] mb-0.5" style={{ color: P.faint }}>来源链接</div>
+                          {txt(detail.job?.sourceUrl) ? (
+                            <a href={txt(detail.job?.sourceUrl)!} target="_blank" rel="noreferrer noopener"
+                              className="text-[12px] font-mono break-all hover:underline inline-block max-w-full"
+                              style={{ color: P.primary }}>
+                              {txt(detail.job?.sourceUrl)}
+                            </a>
+                          ) : (
+                            <span className="text-[12px]" style={{ color: P.faint }}>- （该岗位未提供来源 URL）</span>
+                          )}
+                        </div>
+                        {txt(detail.job?.sourceUrl) && (
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <button
+                              className="text-[11px] px-2.5 py-1 rounded-full font-medium inline-flex items-center gap-1 transition-colors"
+                              style={{ background: P.primary, color: "#fff" }}
+                              onClick={() => window.open(detail.job?.sourceUrl!, "_blank", "noopener,noreferrer")}
+                            >
+                              跳转原站
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </section>
 
               {/* 能力图谱 */}
@@ -868,7 +1028,7 @@ export default function JobsPage() {
                             }}>
                               {s.skillId ? "已归一" : "待归一"}
                             </span>
-                            <span className="text-[12px]" style={{ color: P.primary }}>{s.skillProficiency || "—"}</span>
+                            <span className="text-[12px]" style={{ color: P.primary }}>{s.skillProficiency || "-"}</span>
                           </div>
                         </div>
                         {s.skillId && <div className="font-mono text-[11px] mt-1" style={{ color: P.faint }}>规范技能 ID：{s.skillId}</div>}
@@ -908,7 +1068,7 @@ export default function JobsPage() {
                     <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px]" style={{ color: P.faint }}>
                       <span>结果 ID：{match.id}</span>
                       <span>简历 ID：{match.resumeId}</span>
-                      <span>生成时间：{match.createdAt || "—"}</span>
+                      <span>生成时间：{match.createdAt || "-"}</span>
                     </div>
                     <div className="flex items-center gap-3">
                       <div className="w-14 h-14 rounded-full flex items-center justify-center flex-shrink-0"
@@ -967,6 +1127,100 @@ export default function JobsPage() {
           </div>
         </div>
       )}
+
+      {/* ==================== 原始记录三列对比弹窗 ==================== */}
+      {rawOf && (() => {
+        const rows = buildDiffRows(rawOf);
+        const platform = txt(rawOf.sourcePlatform);
+        const url = txt(rawOf.sourceUrl);
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-6" style={{ background: "rgba(25,50,77,0.35)" }} onClick={() => setRawOf(null)}>
+            <div className="w-[1080px] max-w-full max-h-[85vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+              {/* 头部 */}
+              <div className="flex items-center justify-between gap-3 px-5 py-3.5" style={{ borderBottom: `1px solid ${P.border}` }}>
+                <div className="flex items-center gap-2.5 flex-wrap min-w-0">
+                  <span className="text-[15px] font-semibold whitespace-nowrap" style={{ color: P.ink }}>原始记录对比</span>
+                  <span className="text-[13px] truncate" style={{ color: P.muted }}>
+                    {txt(rawOf.name) || "-"}{txt(rawOf.companyName) ? ` · ${txt(rawOf.companyName)}` : ""}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap"
+                    style={{ background: P.skySoft, color: P.primary }}>
+                    {platformIcon(platform)}
+                    {platform || "未标注来源"}
+                  </span>
+                  <span className="font-mono text-[10.5px] px-2 py-0.5 rounded-md whitespace-nowrap"
+                    style={{ background: P.bg, color: P.muted }}>
+                    JOB_{String(rawOf.id ?? "-")}
+                  </span>
+                </div>
+                <button onClick={() => setRawOf(null)} style={{ color: P.faint }}><X size={18} /></button>
+              </div>
+
+              {/* 三列对比体 */}
+              <div className="flex-1 overflow-auto px-5 py-4">
+                {/* 列头 */}
+                <div className="grid gap-2 mb-2" style={{ gridTemplateColumns: "88px 1fr 1fr 1fr" }}>
+                  <div />
+                  <div className="rounded-lg px-3 py-2" style={{ background: P.bg, border: `1px solid ${P.border}` }}>
+                    <div className="text-[12px] font-semibold" style={{ color: P.ink }}>原始数据</div>
+                    <div className="text-[10.5px] mt-0.5" style={{ color: P.faint }}>爬虫抓取 · 未清洗</div>
+                  </div>
+                  <div className="rounded-lg px-3 py-2" style={{ background: P.bg, border: `1px solid ${P.border}` }}>
+                    <div className="text-[12px] font-semibold" style={{ color: P.ink }}>数据源数据</div>
+                    <div className="text-[10.5px] mt-0.5 truncate" style={{ color: P.faint }}>来源平台：{platform || "未标注"}</div>
+                  </div>
+                  <div className="rounded-lg px-3 py-2" style={{ background: P.skySoft, border: `1px solid ${P.sky}` }}>
+                    <div className="text-[12px] font-semibold" style={{ color: P.primary }}>岗位查询数据</div>
+                    <div className="text-[10.5px] mt-0.5" style={{ color: P.muted }}>系统归一化 · 查询返回值</div>
+                  </div>
+                </div>
+
+                {/* 行（同一字段三列横向对齐，差异标琥珀底） */}
+                <div className="rounded-lg overflow-hidden" style={{ border: `1px solid ${P.border}` }}>
+                  {rows.map((r, i) => {
+                    const diff = r.raw !== r.normalized || r.source !== r.normalized;
+                    return (
+                      <div key={r.field} className="grid text-[12px]"
+                        style={{ gridTemplateColumns: "88px 1fr 1fr 1fr", background: i % 2 ? "#FAFBFD" : "white", borderTop: i ? `1px dashed ${P.border}` : "none" }}>
+                        <div className="px-3 py-2.5 font-medium flex items-center" style={{ color: P.muted }}>{r.field}</div>
+                        <div className="px-3 py-2.5 break-all flex items-center" style={{ background: diff ? P.amberBg : undefined, color: P.ink }}>{r.raw}</div>
+                        <div className="px-3 py-2.5 break-all flex items-center" style={{ background: diff ? P.amberBg : undefined, color: P.ink }}>{r.source}</div>
+                        <div className="px-3 py-2.5 break-all flex items-center font-medium" style={{ background: diff ? P.amberBg : P.bgSoft, color: P.primary }}>{r.normalized}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* 来源链接 */}
+                <div className="mt-3 flex items-center justify-between gap-3 rounded-lg px-4 py-3" style={{ background: P.bg }}>
+                  <div className="min-w-0">
+                    <div className="text-[11px] mb-0.5" style={{ color: P.faint }}>来源链接</div>
+                    {url ? (
+                      <a href={url} target="_blank" rel="noreferrer noopener"
+                        className="text-[12px] font-mono break-all hover:underline inline-block max-w-full" style={{ color: P.primary }}>
+                        {url}
+                      </a>
+                    ) : (
+                      <span className="text-[12px]" style={{ color: P.faint }}>- （该岗位未提供来源 URL）</span>
+                    )}
+                  </div>
+                  {url && (
+                    <button className="text-[11px] px-2.5 py-1 rounded-full font-medium whitespace-nowrap flex-shrink-0 inline-flex items-center gap-1 transition-colors"
+                      style={{ background: P.primary, color: "#fff" }}
+                      onClick={() => window.open(url, "_blank", "noopener,noreferrer")}>
+                      跳转原站
+                    </button>
+                  )}
+                </div>
+
+                <div className="mt-2 text-[11px] leading-relaxed" style={{ color: P.faint }}>
+                  「原始数据 / 数据源数据」暂为演示样例，后端溯源接口就绪后自动替换；「岗位查询数据」为系统实际返回值。琥珀底 = 该字段与查询数据存在差异。
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

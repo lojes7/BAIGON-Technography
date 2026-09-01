@@ -25,7 +25,7 @@ function GapDetailDrawer({
           <button onClick={onClose} style={{ color: T.info }}><X size={18} /></button>
         </div>
 
-        <div className="flex-1 overflow-y-auto divide-y" style={{ borderColor: T.cloud }}>
+        <div className="flex-1 overflow-y-auto divide-y divide-[#E4EAF2]" >
           {/* Summary */}
           <div className="px-5 py-4">
             <div className="grid grid-cols-3 gap-3 text-center">

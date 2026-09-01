@@ -46,7 +46,7 @@ function NotificationPanel({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto divide-y" style={{ borderColor: T.cloud }}>
+        <div className="flex-1 overflow-y-auto divide-y divide-[#E4EAF2]" >
           {items.map(n => {
             const ni = notifIcon[n.type];
             return (

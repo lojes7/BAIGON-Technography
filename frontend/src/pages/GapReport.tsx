@@ -190,9 +190,9 @@ export default function GapReport() {
         <div className="overflow-x-auto">
           <table className="w-full text-[13px]">
             <thead>
-              <tr style={{ background: P.skySoft }}>
+              <tr style={{ background: P.sky }}>
                 {["优先级", "技能", "当前水平", "岗位要求", "建议学习资源"].map((h) => (
-                  <th key={h} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: P.muted }}>{h}</th>
+                  <th key={h} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: P.primaryDeep }}>{h}</th>
                 ))}
               </tr>
             </thead>

@@ -1,4 +1,3 @@
-// 百工谱 — 真实规范技能词典与批量向量化进度页
 import { useEffect, useState } from "react";
 import { CheckCircle2, CircleDashed, RefreshCw, Search, SearchX, Database } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -6,6 +5,7 @@ import { toast } from "sonner";
 import EmbeddingProgress from "../components/EmbeddingProgress";
 import { Btn, Card, PageHeader, Pagination, MetricCard } from "../components/ui";
 import T from "../constants/tokens";
+import P from "../constants/palette";
 import { searchCanonicalSkills } from "../services/skill-resolution";
 import { getEmbeddingProgress } from "../services/occupation";
 import type { CanonicalSkillItem } from "../types/api";
@@ -90,24 +90,24 @@ function SkillDictionaryPage() {
           <Database size={44} className="absolute -right-2 -bottom-2 opacity-15" />
           <div className="text-[13px] opacity-80">已向量化技能</div>
           <div className="text-[24px] font-mono font-medium leading-tight">
-            {embedded ?? "—"}
+            {embedded ?? "-"}
           </div>
           <div className="text-[12px] opacity-75">可直接用于语义检索与匹配</div>
         </div>
         <MetricCard
           title="规范技能总数"
-          value={skillTotal ?? "—"}
+          value={skillTotal ?? "-"}
           sub="词典全量条目"
         />
         <MetricCard
           title="待向量化"
-          value={pendingCount ?? "—"}
+          value={pendingCount ?? "-"}
           sub={pendingCount ? "建议尽快启动向量化" : "全部处理完成"}
           severity={pendingCount ? "warning" : "normal"}
         />
         <MetricCard
           title="向量化覆盖率"
-          value={coverage != null ? `${coverage}%` : "—"}
+          value={coverage != null ? `${coverage}%` : "-"}
           sub="已向量化 / 总数"
           trend={{ label: "目标 100%", up: coverage != null && coverage >= 99 ? true : undefined }}
         />
@@ -182,9 +182,9 @@ function SkillDictionaryPage() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[680px] text-[13px]">
               <thead>
-                <tr style={{ background: T.cloud }}>
+                <tr style={{ background: P.sky }}>
                   {["#", "规范技能", "技能 ID", "向量化状态"].map((heading) => (
-                    <th key={heading} className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: T.info }}>
+                    <th key={heading} className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: P.primaryDeep }}>
                       {heading}
                     </th>
                   ))}

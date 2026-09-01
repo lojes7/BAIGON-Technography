@@ -73,7 +73,7 @@ export default function TeacherDashboard() {
         </Card>
 
         <Card title={t("page.teacherDashboard.topSkillGaps")}>
-          <div className="divide-y" style={{ borderColor: T.cloud }}>
+          <div className="divide-y divide-[#E4EAF2]" >
             {skillGaps.map((s, i) => (
               <div key={i} className="flex items-center gap-4 px-4 py-3">
                 <span className="w-5 font-mono text-[12px]" style={{ color: T.info }}>{i + 1}</span>
@@ -90,7 +90,7 @@ export default function TeacherDashboard() {
       </div>
 
       <Card title={t("page.teacherDashboard.todoItems")}>
-        <div className="divide-y" style={{ borderColor: T.cloud }}>
+        <div className="divide-y divide-[#E4EAF2]" >
           {[
             { text: "Docker 技能缺口影响 22 名学生，建议优先纳入实训课程", type: "critical" },
             { text: "人工智能专业培养方案覆盖率偏低，3 项高需求技能未覆盖", type: "warning" },

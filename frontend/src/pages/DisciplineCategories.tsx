@@ -1,7 +1,7 @@
 // 百工谱 — 学科门类页（学科门类 → 专业类 → 专业 三级懒加载树）
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import T from "../constants/tokens";
+import P from "../constants/palette";
 import { PageHeader, Card } from "../components/ui";
 import CatalogTree, { type CatalogNodeData } from "../components/CatalogTree";
 import CatalogSearch, { type CatalogSearchLevel } from "../components/CatalogSearch";
@@ -73,7 +73,7 @@ function DisciplineCategoriesPage() {
       {!searchActive && (
         <Card>
           {loading ? (
-            <div className="px-4 py-8 text-center text-[13px]" style={{ color: T.info }}>{t("common.loading")}</div>
+            <div className="px-4 py-8 text-center text-[13px]" style={{ color: P.muted }}>{t("common.loading")}</div>
           ) : (
             <CatalogTree roots={roots} loadChildren={loadChildren} maxDepth={3} leafEmbedBadge />
           )}

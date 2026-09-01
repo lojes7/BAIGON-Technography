@@ -133,7 +133,7 @@ function EvolutionTrendsPage() {
               </span>
             </div>
             <div className="text-[26px] font-mono font-semibold mt-1 leading-tight" style={{ color: P.ink }}>
-              {loading ? "—" : (k.value ?? "—")}
+              {loading ? "-" : (k.value ?? "-")}
               <span className="text-[13px] font-normal ml-1" style={{ color: P.faint }}>项</span>
             </div>
             <span className="mt-auto inline-flex w-fit text-[11px] px-2 py-0.5 rounded-full" style={{ background: P.skySoft, color: P.primary }}>
@@ -224,9 +224,9 @@ function EvolutionTrendsPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-[13px]">
               <thead>
-                <tr style={{ background: P.skySoft }}>
+                <tr style={{ background: P.sky }}>
                   {["page.evolutionTrends.colSkill", "page.evolutionTrends.colCoverage", "page.evolutionTrends.colChange", "page.evolutionTrends.colCompanies", "page.evolutionTrends.colStatus"].map(key => (
-                    <th key={key} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: P.muted }}>{t(key)}</th>
+                    <th key={key} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: P.primaryDeep }}>{t(key)}</th>
                   ))}
                 </tr>
               </thead>
@@ -248,7 +248,7 @@ function EvolutionTrendsPage() {
                       <td className="px-4 py-3">
                         <span className="text-[11px] px-2 py-0.5 rounded-full font-medium"
                           style={{ color: statusColors[statusKey] || P.primary, background: `${statusColors[statusKey] || P.primary}15` }}>
-                          {statusLabels[statusKey] || row.status || "—"}
+                          {statusLabels[statusKey] || row.status || "-"}
                         </span>
                       </td>
                     </tr>

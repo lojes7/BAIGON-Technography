@@ -85,7 +85,7 @@ export default function MySkills() {
 
   /* 统计（来自真实数据） */
   const expertCount = items.filter(s => s.proficiency === "EXPERT").length;
-  const recentTime = groups[0]?.createdAt ? new Date(groups[0].createdAt).toLocaleDateString() : "—";
+  const recentTime = groups[0]?.createdAt ? new Date(groups[0].createdAt).toLocaleDateString() : "-";
 
   return (
     <div className="flex flex-col gap-5">

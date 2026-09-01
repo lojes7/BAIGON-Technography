@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { Btn, Card, PageHeader, Pagination } from "../components/ui";
 import T from "../constants/tokens";
+import P from "../constants/palette";
 import { pagedSearchAuditLogs } from "../services/audit";
 import { listUsers } from "../services/user";
 import type {
@@ -61,13 +62,13 @@ function toRFC3339(value: string): string {
 }
 
 function formatTime(value: string): string {
-  if (!value) return "—";
+  if (!value) return "-";
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString("zh-CN", { hour12: false });
 }
 
 function roleLabel(role: string): string {
-  return (ROLE_OPTIONS.find(([value]) => value === role)?.[1] ?? role) || "—";
+  return (ROLE_OPTIONS.find(([value]) => value === role)?.[1] ?? role) || "-";
 }
 
 function levelColor(level: string): string {
@@ -313,9 +314,9 @@ export default function AuditLogPage() {
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1120px] text-[12px]">
             <thead>
-              <tr style={{ background: T.cloud }}>
+              <tr style={{ background: P.sky }}>
                 {["时间", "操作人", "级别", "请求", "操作详情", "IP", "Trace ID"].map((header) => (
-                  <th key={header} className="px-4 py-2.5 text-left font-medium" style={{ color: T.info }}>{header}</th>
+                  <th key={header} className="px-4 py-2.5 text-left font-medium" style={{ color: P.primaryDeep }}>{header}</th>
                 ))}
               </tr>
             </thead>
@@ -337,17 +338,17 @@ export default function AuditLogPage() {
                     <td className="px-4 py-3 max-w-64">
                       <div className="flex items-center gap-1.5">
                         <span className="font-mono text-[10px] px-1.5 py-0.5 rounded" style={{ background: T.cloud, color: T.ink }}>
-                          {item.requestMethod || "—"}
+                          {item.requestMethod || "-"}
                         </span>
-                        <span className="font-mono truncate" title={item.requestUrl} style={{ color: T.info }}>{item.requestUrl || "—"}</span>
+                        <span className="font-mono truncate" title={item.requestUrl} style={{ color: T.info }}>{item.requestUrl || "-"}</span>
                       </div>
                     </td>
                     <td className="px-4 py-3 max-w-80">
-                      <div style={{ color: T.ink }}>{item.detail || "—"}</div>
+                      <div style={{ color: T.ink }}>{item.detail || "-"}</div>
                       {item.errorMsg && <div className="mt-1 break-words" style={{ color: T.risk }}>{item.errorMsg}</div>}
                     </td>
-                    <td className="px-4 py-3 font-mono whitespace-nowrap" style={{ color: T.info }}>{item.userIp || "—"}</td>
-                    <td className="px-4 py-3 font-mono max-w-44 break-all" style={{ color: T.info }}>{item.traceId || "—"}</td>
+                    <td className="px-4 py-3 font-mono whitespace-nowrap" style={{ color: T.info }}>{item.userIp || "-"}</td>
+                    <td className="px-4 py-3 font-mono max-w-44 break-all" style={{ color: T.info }}>{item.traceId || "-"}</td>
                   </tr>
                 );
               })}

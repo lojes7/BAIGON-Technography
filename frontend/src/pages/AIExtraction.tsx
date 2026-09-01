@@ -3,6 +3,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { CheckCircle, Pencil, X } from "lucide-react";
 import T from "../constants/tokens";
+import P from "../constants/palette";
 import { extractionRecords } from "../data";
 import { PageHeader, Btn, Card, StatusBadge, ConfidenceBadge } from "../components/ui";
 import ConfirmDialog from "../components/overlay/ConfirmDialog";
@@ -141,10 +142,10 @@ function AIExtractionPage() {
       }>
         <table className="w-full text-[13px]">
           <thead>
-            <tr style={{ background: T.cloud }}>
+            <tr style={{ background: P.sky }}>
               {["岗位名称", "能力数", "平均置信度", "状态", "操作"].map(h => (
                 <th key={h} className="px-4 py-2.5 text-left font-medium text-[12px]"
-                  style={{ color: T.info }}>{h}</th>
+                  style={{ color: P.primaryDeep }}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -154,10 +155,10 @@ function AIExtractionPage() {
                 style={{ borderTop: `1px solid ${T.cloud}` }}>
                 <td className="px-4 py-3 font-medium" style={{ color: T.ink }}>{r.job}</td>
                 <td className="px-4 py-3 font-mono" style={{ color: r.skills ? T.ink : T.info }}>
-                  {r.skills || "—"}
+                  {r.skills || "-"}
                 </td>
                 <td className="px-4 py-3">
-                  {r.conf ? <ConfidenceBadge value={r.conf} /> : <span style={{ color: T.info }}>—</span>}
+                  {r.conf ? <ConfidenceBadge value={r.conf} /> : <span style={{ color: T.info }}>-</span>}
                 </td>
                 <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
                 <td className="px-4 py-3">
@@ -189,7 +190,7 @@ function AIExtractionPage() {
                 <X size={18} />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto divide-y" style={{ borderColor: T.cloud }}>
+            <div className="flex-1 overflow-y-auto divide-y divide-[#E4EAF2]" >
               <div className="px-5 py-4">
                 <div className="text-[12px] font-medium uppercase tracking-wider mb-3" style={{ color: T.info }}>
                   标准岗位候选
@@ -200,8 +201,7 @@ function AIExtractionPage() {
                 ].map((c, i) => (
                   <div key={i} className="flex items-center gap-3 py-2">
                     <div className="w-4 h-4 rounded-full border-2 flex-shrink-0"
-                      style={{ borderColor: c.selected ? T.teal : T.border,
-                        background: c.selected ? T.teal : "transparent" }} />
+                       />
                     <span className="flex-1 text-[13px]" style={{ color: T.ink }}>{c.name}</span>
                     <ConfidenceBadge value={c.conf} />
                   </div>

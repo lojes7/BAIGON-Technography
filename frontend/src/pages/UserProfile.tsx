@@ -226,7 +226,7 @@ function UserProfilePage() {
       <div className="grid gap-5" style={{ gridTemplateColumns: role === "admin" ? "7fr 3fr" : "1fr" }}>
         {/* 左：最近操作记录 */}
         {role === "admin" && <Card title="最近操作记录">
-          <div className="divide-y" style={{ borderColor: T.cloud, maxHeight: 360, overflowY: "auto" }}>
+          <div className="divide-y divide-[#E4EAF2]" >
             {recentLogs.length > 0 ? recentLogs.map((entry) => {
               const col = entry.level === "ERROR" ? T.risk : entry.level === "WARNING" ? T.pending : T.stable;
               return (
@@ -234,9 +234,9 @@ function UserProfilePage() {
                   <span className="text-[11px] font-mono px-1.5 py-0.5 rounded flex-shrink-0"
                     style={{ color: col, background: `${col}18` }}>{entry.level}</span>
                   <span className="flex-1 text-[13px] truncate" style={{ color: T.ink }}>{entry.detail || entry.requestUrl || "操作记录"}</span>
-                  <span className="text-[11px] max-w-[180px] truncate font-mono" style={{ color: T.info }}>{entry.requestUrl || "—"}</span>
+                  <span className="text-[11px] max-w-[180px] truncate font-mono" style={{ color: T.info }}>{entry.requestUrl || "-"}</span>
                   <span className="font-mono text-[11px] flex-shrink-0" style={{ color: T.info }}>
-                    {entry.createdAt ? new Date(entry.createdAt).toLocaleTimeString("zh-CN", { hour12: false }) : "—"}
+                    {entry.createdAt ? new Date(entry.createdAt).toLocaleTimeString("zh-CN", { hour12: false }) : "-"}
                   </span>
                 </div>
               );

@@ -1,5 +1,5 @@
 const T = {
-  ink: "#19324D",      
+  ink: "#092f58",      
   teal: "#338fb1",     // Primary-600 品牌主色
   bg: "#f0f6f4",       // Neutral-100 全局背景（冷灰）
   cloud: "#c7def5",    // 表头/浅底

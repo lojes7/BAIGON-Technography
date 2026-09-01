@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import T from "../constants/tokens";
+import P from "../constants/palette";
 import { PageHeader, Card, StatusBadge, ConfidenceBadge } from "../components/ui";
 
 function RelationEvidencePage() {
@@ -25,9 +26,9 @@ function RelationEvidencePage() {
       <Card>
         <table className="w-full text-[13px]">
           <thead>
-            <tr style={{ background: T.cloud }}>
+            <tr style={{ background: P.sky }}>
               {["colFrom","colType","colTo","colSources","colConfidence","colStatus","colActions"].map(k => (
-                <th key={k} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: T.info }}>{t(`page.relationEvidence.${k}`)}</th>
+                <th key={k} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: P.primaryDeep }}>{t(`page.relationEvidence.${k}`)}</th>
               ))}
             </tr>
           </thead>

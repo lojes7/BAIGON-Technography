@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { Upload, Users, FileText } from "lucide-react";
 import T from "../constants/tokens";
+import P from "../constants/palette";
 import { useAuth } from "../auth/AuthContext";
 import { PageHeader, Btn, Card, MetricCard, StatusBadge } from "../components/ui";
 
@@ -42,9 +43,9 @@ export default function StudentAffairsDashboard() {
       <Card title={t("page.studentAffairsDashboard.recentImports2")}>
         <table className="w-full text-[13px]">
           <thead>
-            <tr style={{ background: T.cloud }}>
+            <tr style={{ background: P.sky }}>
               {["时间", "类型", "文件名", "状态"].map(h => (
-                <th key={h} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: T.info }}>{h}</th>
+                <th key={h} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: P.primaryDeep }}>{h}</th>
               ))}
             </tr>
           </thead>

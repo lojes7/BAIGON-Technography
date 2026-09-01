@@ -327,8 +327,8 @@ function GraphBrowserPage() {
     <div className="flex flex-col gap-4 h-full min-h-0">
       <PageHeader
         breadcrumbs={[t("nav.graph"), t("nav.graphBrowser")]}
-        title="新一代信息技术岗位全景图谱"
-        description={`「${centerDomainName}」领域独立图谱 · 各领域分图浏览 · 颗粒度至技能点 · 节点大小=需求热度与熟练度要求 · Mock 演示数据`}
+        title="岗位全景图谱"
+        description={`「${centerDomainName}」领域独立图谱 · 各领域分图浏览 · 颗粒度至技能点 · 节点大小=需求热度与熟练度要求`}
         actions={
           <>
             <div className="relative" key="export-menu">

@@ -3,13 +3,14 @@ import { useState, useRef } from "react";
 import { toast } from "sonner";
 import { Upload, Search, ChevronDown, X } from "lucide-react";
 import T from "../constants/tokens";
+import P from "../constants/palette";
 import { importUsers } from "../services/student-affair";
 import { PageHeader, Btn, Card } from "../components/ui";
 
 const students = [
   { id: "S1001", name: "张三", major: "计算机科学", grade: "2023", class: "计科1", advisor: "李老师", matchScore: "72%", lastDiagnosis: "2026-07-12", hasResume: true },
   { id: "S1002", name: "李四", major: "软件工程", grade: "2023", class: "软工2", advisor: "张教授", matchScore: "65%", lastDiagnosis: "2026-06-20", hasResume: true },
-  { id: "S1003", name: "王五", major: "人工智能", grade: "2024", class: "智能1", advisor: "陈老师", matchScore: "—", lastDiagnosis: "—", hasResume: false },
+  { id: "S1003", name: "王五", major: "人工智能", grade: "2024", class: "智能1", advisor: "陈老师", matchScore: "-", lastDiagnosis: "-", hasResume: false },
   { id: "S1004", name: "赵六", major: "计算机科学", grade: "2023", class: "计科1", advisor: "李老师", matchScore: "58%", lastDiagnosis: "2026-05-15", hasResume: true },
 ];
 
@@ -63,9 +64,9 @@ export default function StudentManagement() {
       <Card>
         <table className="w-full text-[13px]">
           <thead>
-            <tr style={{ background: T.cloud }}>
+            <tr style={{ background: P.sky }}>
               {[t("page.studentManagement.colId3"), t("page.studentManagement.colName2"), t("page.studentManagement.major"), t("page.studentManagement.grade"), t("page.studentManagement.className"), t("common.operate")].map(h => (
-                <th key={h} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: T.info }}>{h}</th>
+                <th key={h} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: P.primaryDeep }}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -109,7 +110,7 @@ export default function StudentManagement() {
               </div>
               <button onClick={() => setDetailOpen(null)} style={{ color: T.info }}><X size={18} /></button>
             </div>
-            <div className="flex-1 overflow-y-auto divide-y" style={{ borderColor: T.cloud }}>
+            <div className="flex-1 overflow-y-auto divide-y divide-[#E4EAF2]" >
               <div className="px-5 py-4 space-y-2 text-[13px]">
                 {[
                   [t("page.studentManagement.colId3"), detailOpen.id],
@@ -146,7 +147,7 @@ export default function StudentManagement() {
                       {detailOpen.hasResume ? "是" : "否"}
                     </span>
                   </div>
-                  {detailOpen.lastDiagnosis !== "—" && (
+                  {detailOpen.lastDiagnosis !== "-" && (
                     <div><span style={{ color: T.info }}>最近诊断：</span>
                       <span style={{ color: T.ink }}>{detailOpen.lastDiagnosis} · 匹配度 {detailOpen.matchScore}</span>
                     </div>

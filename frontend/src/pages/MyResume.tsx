@@ -227,8 +227,8 @@ export default function MyResume() {
     }
   };
 
-  const fmtSize = (n: number | null) => (n == null ? "—" : n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${(n / 1024).toFixed(0)} KB`);
-  const fmtTime = (s: string) => (s ? new Date(s).toLocaleString() : "—");
+  const fmtSize = (n: number | null) => (n == null ? "-" : n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${(n / 1024).toFixed(0)} KB`);
+  const fmtTime = (s: string) => (s ? new Date(s).toLocaleString() : "-");
   const isEdited = resume?.source === "EDITED";
 
   return (
@@ -476,7 +476,7 @@ function ResumeSections({ fields }: { fields: ResumeFields }) {
 
 function dateRange(start: string, end: string) {
   if (!start && !end) return "";
-  return `${start || "—"} ~ ${end || "—"}`;
+  return `${start || "-"} ~ ${end || "-"}`;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -495,7 +495,7 @@ function KV({ title, sub, date, desc }: { title: string; sub?: string; date?: st
   return (
     <div className="p-3 rounded-lg text-[13px] mb-2" style={{ background: P.bgSoft, border: `1px solid ${P.border}`, borderLeft: `3px solid ${P.sky}` }}>
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="font-medium" style={{ color: P.ink }}>{title || "—"}</span>
+        <span className="font-medium" style={{ color: P.ink }}>{title || "-"}</span>
         {sub && <span style={{ color: P.muted }}>· {sub}</span>}
         {date && <span className="ml-auto font-mono text-[11px]" style={{ color: P.faint }}>{date}</span>}
       </div>

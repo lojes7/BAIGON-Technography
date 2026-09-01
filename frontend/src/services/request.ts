@@ -1,6 +1,6 @@
 import axios, { type AxiosError } from "axios";
 import { toast } from "sonner";
-import { parseJson } from "./lossless";
+import { parseJson, sanitizeNode } from "./lossless";
 
 // ── 创建 axios 实例 ──
 const request = axios.create({
@@ -25,9 +25,14 @@ request.interceptors.request.use((config) => {
   return config;
 });
 
-// ── 响应拦截器：统一错误处理 ──
+// ── 响应拦截器：统一清洗 + 错误处理 ──
 request.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (response.data && typeof response.data === "object") {
+      response.data = sanitizeNode(response.data);
+    }
+    return response;
+  },
   (error: AxiosError<{ code?: number }>) => {
     if (error.response) {
       const { status } = error.response;

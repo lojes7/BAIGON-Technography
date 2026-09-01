@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import DirectoryPicker from "../components/job-analysis/DirectoryPicker";
 import { Btn, Card, PageHeader, UnderlineTabs } from "../components/ui";
-import T from "../constants/tokens";
+import P from "../constants/palette";
 import { isHttpErrorStatus } from "../services/http-error";
 import { getJobAnalysisTask, listJobAnalysisTasks, reviewJobAnalysisTask } from "../services/job-analysis";
 import type {
@@ -224,6 +224,26 @@ export default function JobAnalysisPage() {
         description="确认岗位对应的专业、职业，并逐条审核 JD 技能分析结果"
       />
 
+      {/* KPI 统计行 */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="rounded-2xl p-5 flex flex-col text-white relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${P.primary} 0%, ${P.primaryDeep} 100%)`, minHeight: 120 }}>
+          <div className="absolute -right-8 -top-10 w-32 h-32 rounded-full" style={{ background: "rgba(255,255,255,0.07)" }} />
+          <span className="text-[13px]" style={{ color: "rgba(255,255,255,0.85)" }}>分析任务总数</span>
+          <div className="text-[30px] font-mono font-semibold leading-tight mt-1">{items.length}</div>
+          <span className="mt-auto inline-flex w-fit text-[11px] px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.16)", color: "#fff" }}>全量拉取本地分组</span>
+        </div>
+        {[
+          { label: "待复核", value: items.filter((i) => i.reviewStatus === "PENDING").length, chip: "需人工确认", bg: P.amberBg, color: P.amber },
+          { label: "已通过", value: items.filter((i) => i.reviewStatus === "PASSED").length, chip: "已归一", bg: P.greenBg, color: P.green },
+        ].map((k) => (
+          <div key={k.label} className="bg-white rounded-2xl p-5 flex flex-col" style={{ border: `1px solid ${P.border}`, minHeight: 120 }}>
+            <span className="text-[13px]" style={{ color: P.muted }}>{k.label}</span>
+            <div className="text-[30px] font-mono font-semibold leading-tight mt-1" style={{ color: P.ink }}>{k.value}</div>
+            <span className="mt-auto inline-flex w-fit text-[11px] px-2 py-0.5 rounded-full" style={{ background: k.bg, color: k.color }}>{k.chip}</span>
+          </div>
+        ))}
+      </div>
+
       <UnderlineTabs
         sections={[
           {
@@ -253,53 +273,51 @@ export default function JobAnalysisPage() {
 
       <Card>
         {loading ? (
-          <div className="px-4 py-12 text-center text-[13px]" style={{ color: T.info }}>{t("common.loading")}</div>
+          <div className="px-4 py-12 text-center text-[13px]" style={{ color: P.muted }}>{t("common.loading")}</div>
         ) : visibleItems.length === 0 ? (
-          <div className="px-4 py-12 text-center text-[13px]" style={{ color: T.info }}>暂无岗位分析任务</div>
+          <div className="px-4 py-12 text-center text-[13px]" style={{ color: P.muted }}>暂无岗位分析任务</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[980px] text-[13px]">
               <thead>
-                <tr style={{ background: T.cloud }}>
-                  <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: T.info }}>ID</th>
-                  <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: T.info }}>岗位名称</th>
-                  <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: T.info }}>岗位原专业</th>
+                <tr style={{ background: P.sky }}>
+                  <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: P.primaryDeep }}>岗位名称</th>
+                  <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: P.primaryDeep }}>岗位原专业</th>
                   {taskStatusFilter === "processing" && (
-                    <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: T.info }}>分析进度</th>
+                    <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: P.primaryDeep }}>分析进度</th>
                   )}
-                  <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: T.info }}>审核状态</th>
-                  <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: T.info }}>确认结果</th>
-                  <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: T.info }}>创建时间</th>
-                  <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: T.info }}>操作</th>
+                  <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: P.primaryDeep }}>确认结果</th>
+                  <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: P.primaryDeep }}>创建时间</th>
+                  <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: P.primaryDeep }}>审核状态</th>
+                  <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: P.primaryDeep }}>操作</th>
                 </tr>
               </thead>
               <tbody>
                 {visibleItems.map((item) => (
-                  <tr key={item.id} className="transition-colors hover:bg-gray-50" style={{ borderTop: `1px solid ${T.cloud}` }}>
-                    <td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{item.id}</td>
-                    <td className="px-4 py-3 font-medium" style={{ color: T.ink }}>{item.jobName || "—"}</td>
-                    <td className="max-w-44 px-4 py-3 text-[12px]" style={{ color: T.info }}>{item.jobMajor || "—"}</td>
+                  <tr key={item.id} className="transition-colors hover:bg-gray-50" style={{ borderTop: `1px solid ${P.border}` }}>
+                    <td className="px-4 py-3 font-medium" style={{ color: P.ink }}>{item.jobName || "-"}</td>
+                    <td className="max-w-44 px-4 py-3 text-[12px]" style={{ color: P.muted }}>{item.jobMajor || "-"}</td>
                     {taskStatusFilter === "processing" && (
-                      <td className="px-4 py-3 text-[11px] leading-5" style={{ color: T.info }}>
-                        <div>专业：{TASK_STATUS_LABEL[item.majorAnalysisStatus] || item.majorAnalysisStatus || "—"}</div>
-                        <div>职业：{TASK_STATUS_LABEL[item.occupationAnalysisStatus] || item.occupationAnalysisStatus || "—"}</div>
-                        <div>JD：{TASK_STATUS_LABEL[item.jdAnalysisStatus] || item.jdAnalysisStatus || "—"}</div>
+                      <td className="px-4 py-3 text-[11px] leading-5" style={{ color: P.muted }}>
+                        <div>专业：{TASK_STATUS_LABEL[item.majorAnalysisStatus] || item.majorAnalysisStatus || "-"}</div>
+                        <div>职业：{TASK_STATUS_LABEL[item.occupationAnalysisStatus] || item.occupationAnalysisStatus || "-"}</div>
+                        <div>JD：{TASK_STATUS_LABEL[item.jdAnalysisStatus] || item.jdAnalysisStatus || "-"}</div>
                       </td>
                     )}
+                    <td className="px-4 py-3 font-mono text-[11px] leading-5" style={{ color: P.muted }}>
+                      <div>专业：{item.selectedMajorId || "-"}</div>
+                      <div>职业：{item.selectedOccupationId || "-"}</div>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-[12px]" style={{ color: P.muted }}>
+                      {item.createdAt?.slice(0, 10) || "-"}
+                    </td>
                     <td className="px-4 py-3">
                       <ReviewStatus status={item.reviewStatus} />
-                    </td>
-                    <td className="px-4 py-3 font-mono text-[11px] leading-5" style={{ color: T.info }}>
-                      <div>专业：{item.selectedMajorId || "—"}</div>
-                      <div>职业：{item.selectedOccupationId || "—"}</div>
-                    </td>
-                    <td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>
-                      {item.createdAt?.slice(0, 10) || "—"}
                     </td>
                     <td className="px-4 py-3">
                       <button
                         className="flex items-center gap-1 text-[12px] font-medium disabled:opacity-50"
-                        style={{ color: T.teal }}
+                        style={{ color: P.primary }}
                         disabled={openingId === item.id}
                         onClick={() => void openDetail(item.id)}
                       >
@@ -320,21 +338,21 @@ export default function JobAnalysisPage() {
             className="ml-auto flex h-full w-[720px] flex-col overflow-y-auto bg-white shadow-xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="sticky top-0 z-10 flex items-center justify-between bg-white px-5 py-4" style={{ borderBottom: `1px solid ${T.cloud}` }}>
+            <div className="sticky top-0 z-10 flex items-center justify-between bg-white px-5 py-4" style={{ borderBottom: `1px solid ${P.skySoft}` }}>
               <div>
-                <h3 className="text-[15px] font-medium" style={{ color: T.ink }}>
+                <h3 className="text-[15px] font-medium" style={{ color: P.ink }}>
                   {detail.task.jobName || `任务 #${detail.task.id}`}
                 </h3>
-                <div className="mt-0.5 text-[12px]" style={{ color: T.info }}>
-                  专业 {detail.task.jobMajor || "—"} · 任务 {TASK_STATUS_LABEL[detail.task.taskStatus] || detail.task.taskStatus} · 模型 {detail.task.modelName || "—"}
+                <div className="mt-0.5 text-[12px]" style={{ color: P.muted }}>
+                  专业 {detail.task.jobMajor || "-"} · 任务 {TASK_STATUS_LABEL[detail.task.taskStatus] || detail.task.taskStatus} · 模型 {detail.task.modelName || "-"}
                 </div>
               </div>
-              <button onClick={closeDetail} style={{ color: T.info }}><X size={18} /></button>
+              <button onClick={closeDetail} style={{ color: P.muted }}><X size={18} /></button>
             </div>
 
             <div className="flex-1 space-y-6 px-5 py-4">
               {!reviewable && (
-                <div className="rounded-md px-3 py-2 text-[12px]" style={{ background: T.cloud, color: T.info }}>
+                <div className="rounded-md px-3 py-2 text-[12px]" style={{ background: P.skySoft, color: P.muted }}>
                   {detail.task.reviewStatus !== "PENDING"
                     ? "该任务已完成审核，当前为只读状态。"
                     : "分析任务尚未成功完成，暂不能提交审核。"}
@@ -386,11 +404,11 @@ export default function JobAnalysisPage() {
               </DirectorySection>
 
               <section>
-                <div className="mb-2 text-[12px] font-medium" style={{ color: T.info }}>
+                <div className="mb-2 text-[12px] font-medium" style={{ color: P.muted }}>
                   技能结果审核（{detail.results.length} 项，提交时需全部覆盖）
                 </div>
                 {detail.results.length === 0 ? (
-                  <div className="py-6 text-center text-[13px]" style={{ color: T.info }}>
+                  <div className="py-6 text-center text-[13px]" style={{ color: P.muted }}>
                     本任务没有技能分析结果，可直接确认专业与职业
                   </div>
                 ) : (
@@ -410,7 +428,7 @@ export default function JobAnalysisPage() {
               </section>
             </div>
 
-            <div className="flex shrink-0 justify-end gap-2 px-5 py-4" style={{ borderTop: `1px solid ${T.cloud}` }}>
+            <div className="flex shrink-0 justify-end gap-2 px-5 py-4" style={{ borderTop: `1px solid ${P.skySoft}` }}>
               <Btn variant="secondary" onClick={closeDetail}>{reviewable ? "取消" : "关闭"}</Btn>
               {reviewable && (
                 <Btn onClick={() => void submitReview()} disabled={submitting}>
@@ -436,7 +454,7 @@ function ReviewStatus({ status }: { status: string }) {
         color: passed ? "#166534" : rejected ? "#991b1b" : "#854d0e",
       }}
     >
-      {REVIEW_STATUS_LABEL[status] || status || "—"}
+      {REVIEW_STATUS_LABEL[status] || status || "-"}
     </span>
   );
 }
@@ -460,13 +478,13 @@ function DirectorySection({
 }) {
   return (
     <section className="space-y-2">
-      <div className="text-[12px] font-medium" style={{ color: T.info }}>{title}</div>
+      <div className="text-[12px] font-medium" style={{ color: P.muted }}>{title}</div>
       {!disabled && (
         <div>
-          <div className="mb-1 text-[11px]" style={{ color: T.info }}>{candidateLabel}</div>
+          <div className="mb-1 text-[11px]" style={{ color: P.muted }}>{candidateLabel}</div>
           <select
             className="w-full rounded-md px-3 py-2 text-[13px] outline-none"
-            style={{ background: T.cloud, border: `1px solid ${T.border}`, color: T.ink }}
+            style={{ background: P.skySoft, border: `1px solid ${P.border}`, color: P.ink }}
             value={String(value)}
             onChange={(event) => {
               const candidate = candidates.find((item) => String(item.id) === event.target.value);
@@ -486,7 +504,7 @@ function DirectorySection({
         </div>
       )}
       <div>
-        {!disabled && <div className="mb-1 text-[11px]" style={{ color: T.info }}>完整目录选择</div>}
+        {!disabled && <div className="mb-1 text-[11px]" style={{ color: P.muted }}>完整目录选择</div>}
         {children}
       </div>
     </section>
@@ -508,12 +526,12 @@ function SkillReviewItem({ result, review, disabled, onAction, onField }: {
   ];
 
   return (
-    <div className="space-y-2 rounded-lg p-3" style={{ background: T.cloud, border: `1px solid ${T.border}` }}>
+    <div className="space-y-2 rounded-lg p-3" style={{ background: P.skySoft, border: `1px solid ${P.border}` }}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-medium" style={{ color: T.ink }}>{result.skillName}</div>
-          <div className="mt-0.5 text-[12px]" style={{ color: T.info }}>熟练度：{result.skillProficiency || "—"}</div>
-          {result.evidence && <div className="mt-0.5 text-[12px]" style={{ color: T.info }}>证据：{result.evidence}</div>}
+          <div className="text-[13px] font-medium" style={{ color: P.ink }}>{result.skillName}</div>
+          <div className="mt-0.5 text-[12px]" style={{ color: P.muted }}>熟练度：{result.skillProficiency || "-"}</div>
+          {result.evidence && <div className="mt-0.5 text-[12px]" style={{ color: P.muted }}>证据：{result.evidence}</div>}
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {actions.map((item) => (
@@ -521,9 +539,9 @@ function SkillReviewItem({ result, review, disabled, onAction, onField }: {
               key={item.key}
               className="rounded px-2 py-1 text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-60"
               style={{
-                border: `1px solid ${action === item.key ? T.teal : T.border}`,
-                color: action === item.key ? "white" : T.ink,
-                background: action === item.key ? T.teal : "white",
+                border: `1px solid ${action === item.key ? P.primary : P.border}`,
+                color: action === item.key ? "white" : P.ink,
+                background: action === item.key ? P.primary : "white",
               }}
               disabled={disabled}
               onClick={() => onAction(item.key)}
@@ -532,7 +550,7 @@ function SkillReviewItem({ result, review, disabled, onAction, onField }: {
         </div>
       </div>
       {action === "APPROVE_WITH_EDIT" && (
-        <div className="space-y-2 pt-1" style={{ borderTop: `1px dashed ${T.border}` }}>
+        <div className="space-y-2 pt-1" style={{ borderTop: `1px dashed ${P.border}` }}>
           <div className="grid grid-cols-2 gap-2">
             <Field label="技能名称" value={review?.skillName ?? ""} maxLength={100} disabled={disabled} onChange={(value) => onField("skillName", value)} />
             <ProficiencyField value={review?.skillProficiency ?? ""} disabled={disabled} onChange={(value) => onField("skillProficiency", value)} />
@@ -559,10 +577,10 @@ function Field({
 }) {
   return (
     <div>
-      <label className="mb-1 block text-[11px]" style={{ color: T.info }}>{label}</label>
+      <label className="mb-1 block text-[11px]" style={{ color: P.muted }}>{label}</label>
       <input
         className="w-full rounded px-2 py-1.5 text-[13px] outline-none disabled:opacity-70"
-        style={{ background: "white", border: `1px solid ${T.border}`, color: T.ink }}
+        style={{ background: "white", border: `1px solid ${P.border}`, color: P.ink }}
         value={value}
         maxLength={maxLength}
         disabled={disabled}
@@ -580,10 +598,10 @@ function ProficiencyField({ value, disabled, onChange }: {
   const normalized = value.toUpperCase();
   return (
     <div>
-      <label className="mb-1 block text-[11px]" style={{ color: T.info }}>熟练度</label>
+      <label className="mb-1 block text-[11px]" style={{ color: P.muted }}>熟练度</label>
       <select
         className="w-full rounded px-2 py-1.5 text-[13px] outline-none disabled:opacity-70"
-        style={{ background: "white", border: `1px solid ${T.border}`, color: T.ink }}
+        style={{ background: "white", border: `1px solid ${P.border}`, color: P.ink }}
         value={PROFICIENCIES.includes(normalized as typeof PROFICIENCIES[number]) ? normalized : ""}
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}

@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import { CheckCircle } from "lucide-react";
 import T from "../constants/tokens";
+import P from "../constants/palette";
 import { getComboEvolution } from "../services/analytics";
 import type { ComboEvolutionData, ComboEvidenceJob } from "../types/api";
 import { PageHeader, Card } from "../components/ui";
@@ -137,7 +138,7 @@ function SkillCombosPage() {
         </Card>
 
         <Card title="变化排行" className="col-span-2">
-          <div className="divide-y" style={{ borderColor: T.cloud }}>
+          <div className="divide-y divide-[#E4EAF2]" >
             {changes.length === 0 && !loading ? (
               <div className="px-4 py-8 text-center text-[13px]" style={{ color: T.info }}>暂无变化</div>
             ) : (
@@ -174,9 +175,9 @@ function SkillCombosPage() {
         ) : (
           <table className="w-full text-[13px]">
             <thead>
-              <tr style={{ background: T.cloud }}>
+              <tr style={{ background: P.sky }}>
                 {["岗位名称", ...networkNodes.filter((n) => !n.center).slice(0, 5).map((n) => n.name), "共现数"].map(h => (
-                  <th key={h} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: T.info }}>{h}</th>
+                  <th key={h} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: P.primaryDeep }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -188,7 +189,7 @@ function SkillCombosPage() {
                     <td key={sk.skill_id} className="px-4 py-3 text-center">
                       {row.skill_ids.includes(sk.skill_id)
                         ? <CheckCircle size={14} style={{ color: T.emerging, margin: "0 auto" }} />
-                        : <span style={{ color: T.cloud }}>—</span>}
+                        : <span style={{ color: T.cloud }}>-</span>}
                     </td>
                   ))}
                   <td className="px-4 py-3 font-mono font-medium" style={{ color: T.ink }}>{row.cooccurrence_count}</td>

@@ -153,11 +153,11 @@ function NodeDetailPanel({ detail, loading, onClose, onNeighborClick, onEvidence
         style={{ borderBottom: `1px solid ${T.border}` }}>
         {[
           { label: "需求热度", value: `${(node.demandLevel * 100).toFixed(0)}%`, color: T.teal },
-          { label: "覆盖率", value: node.coverage != null ? `${(node.coverage * 100).toFixed(1)}%` : "—", color: T.emerging },
-          { label: "关联岗位", value: node.relatedJobCount != null ? String(node.relatedJobCount) : "—", color: "#2563EB" },
-          { label: "涉及企业", value: node.companyCount != null ? String(node.companyCount) : "—", color: "#7C3AED" },
-          { label: "样本数量", value: node.sampleCount != null ? String(node.sampleCount) : "—", color: T.pending },
-          { label: "节点中心性", value: statistics.centrality != null ? statistics.centrality.toFixed(3) : "—", color: T.stable },
+          { label: "覆盖率", value: node.coverage != null ? `${(node.coverage * 100).toFixed(1)}%` : "-", color: T.emerging },
+          { label: "关联岗位", value: node.relatedJobCount != null ? String(node.relatedJobCount) : "-", color: "#2563EB" },
+          { label: "涉及企业", value: node.companyCount != null ? String(node.companyCount) : "-", color: "#7C3AED" },
+          { label: "样本数量", value: node.sampleCount != null ? String(node.sampleCount) : "-", color: T.pending },
+          { label: "节点中心性", value: statistics.centrality != null ? statistics.centrality.toFixed(3) : "-", color: T.stable },
         ].map((m, i) => (
           <div key={i} className="flex items-center justify-between">
             <span className="text-[11.5px]" style={{ color: T.info }}>{m.label}</span>

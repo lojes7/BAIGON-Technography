@@ -435,9 +435,9 @@ export default function EmergingJobsPage() {
                 <SectionTitle title="萌芽证据" hint="支撑该岗位定义的招聘证据样本" />
                 <table className="w-full text-[12.5px]" style={{ border: `1px solid ${P.border}` }}>
                   <thead>
-                    <tr style={{ background: P.skySoft }}>
+                    <tr style={{ background: P.sky }}>
                       {["企业", "招聘岗位", "来源平台", "发布日期"].map((h) => (
-                        <th key={h} className="px-3.5 py-2 text-left font-medium text-[11.5px]" style={{ color: P.muted }}>{h}</th>
+                        <th key={h} className="px-3.5 py-2 text-left font-medium text-[11.5px]" style={{ color: P.primaryDeep }}>{h}</th>
                       ))}
                     </tr>
                   </thead>

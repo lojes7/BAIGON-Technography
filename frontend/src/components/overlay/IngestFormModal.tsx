@@ -304,9 +304,9 @@ export default function IngestFormModal() {
               <div className="rounded-xl overflow-x-auto" style={{ border: `1px solid ${P.border}` }}>
                 <table className="w-full min-w-[640px] text-[13px]">
                   <thead>
-                    <tr style={{ background: P.skySoft }}>
+                    <tr style={{ background: P.sky }}>
                       {["职位", "公司", "城市", "薪资", "发布日期"].map((header) => (
-                        <th key={header} className="px-3 py-2 text-left font-medium text-[12px]" style={{ color: P.muted }}>{header}</th>
+                        <th key={header} className="px-3 py-2 text-left font-medium text-[12px]" style={{ color: P.primaryDeep }}>{header}</th>
                       ))}
                     </tr>
                   </thead>
@@ -314,10 +314,10 @@ export default function IngestFormModal() {
                     {parsedJobs.slice(0, 20).map((job, index) => (
                       <tr key={`${job.job_name}-${index}`} style={{ borderTop: `1px solid ${P.border}` }}>
                         <td className="px-3 py-2 font-medium" style={{ color: P.ink }}>{job.job_name}</td>
-                        <td className="px-3 py-2" style={{ color: P.muted }}>{job.company_name || "—"}</td>
-                        <td className="px-3 py-2" style={{ color: P.muted }}>{job.city || "—"}</td>
-                        <td className="px-3 py-2" style={{ color: P.muted }}>{job.salary || "—"}</td>
-                        <td className="px-3 py-2 whitespace-nowrap font-mono text-[12px]" style={{ color: P.muted }}>{job.publish_date || "—"}</td>
+                        <td className="px-3 py-2" style={{ color: P.muted }}>{job.company_name || "-"}</td>
+                        <td className="px-3 py-2" style={{ color: P.muted }}>{job.city || "-"}</td>
+                        <td className="px-3 py-2" style={{ color: P.muted }}>{job.salary || "-"}</td>
+                        <td className="px-3 py-2 whitespace-nowrap font-mono text-[12px]" style={{ color: P.muted }}>{job.publish_date || "-"}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -279,9 +279,9 @@ export default function JobUpdatesPage() {
                         <div className="overflow-x-auto rounded-lg" style={{ border: `1px solid ${P.border}` }}>
                           <table className="w-full min-w-[680px] text-[13px]">
                             <thead>
-                              <tr style={{ background: P.skySoft }}>
+                              <tr style={{ background: P.sky }}>
                                 {["变更类型", "能力项", "能力要求变化", "变更依据", "数据来源"].map((h) => (
-                                  <th key={h} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: P.muted }}>{h}</th>
+                                  <th key={h} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: P.primaryDeep }}>{h}</th>
                                 ))}
                               </tr>
                             </thead>

@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import T from "../constants/tokens";
+import P from "../constants/palette";
 const exportBatches = [
   { id: "EXP-20260701", range: "2025H2—2026H1", tables: 9, records: "12,486", status: "succeeded", date: "2026-07-01" },
   { id: "EXP-20260615", range: "2025H1—2025H2", tables: 9, records: "8,302", status: "succeeded", date: "2026-06-15" },
@@ -17,9 +18,9 @@ function ExportHistoryPage() {
     <div className="flex flex-col gap-5">
       <PageHeader breadcrumbs={[t("nav.delivery"), t("nav.exportHistory")]} title={t("page.exportHistory.title")} description={t("page.exportHistory.desc")} />
       <Card>
-        <table className="w-full text-[13px]"><thead><tr style={{ background: T.cloud }}>
+        <table className="w-full text-[13px]"><thead><tr style={{ background: P.sky }}>
           {["colBatchId","colRange","colTables","colRecords","colDate","colOperator","colStatus","colActions"].map(k => (
-            <th key={k} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: T.info }}>{t(`page.exportHistory.${k}`)}</th>
+            <th key={k} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: P.primaryDeep }}>{t(`page.exportHistory.${k}`)}</th>
           ))}</tr></thead>
           <tbody>{history.map((b, i) => (
             <tr key={i} className="hover:bg-gray-50 transition-colors" style={{ borderTop: `1px solid ${T.cloud}` }}>

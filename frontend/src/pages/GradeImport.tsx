@@ -3,6 +3,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Upload, Download, Info } from "lucide-react";
 import T from "../constants/tokens";
+import P from "../constants/palette";
 import { PageHeader, Btn, Card, StatusBadge } from "../components/ui";
 
 const previewData = [
@@ -10,7 +11,7 @@ const previewData = [
   { id: "S1001", name: "张三", course: "Java程序设计", score: 78, valid: true },
   { id: "S1002", name: "李四", course: "数据库原理", score: 92, valid: true },
   { id: "S1003", name: "王五", course: "操作系统", score: 105, valid: false, reason: "超出范围" },
-  { id: "S1099", name: "—", course: "数据库原理", score: 88, valid: false, reason: "学号不存在" },
+  { id: "S1099", name: "-", course: "数据库原理", score: 88, valid: false, reason: "学号不存在" },
 ];
 
 const importHistory = [
@@ -56,9 +57,9 @@ export default function GradeImport() {
             </div>
             <table className="w-full text-[13px]">
               <thead>
-                <tr style={{ background: T.cloud }}>
+                <tr style={{ background: P.sky }}>
                   {["学号", "姓名", "课程名", "成绩", "验证"].map(h => (
-                    <th key={h} className="px-4 py-2 text-left font-medium text-[12px]" style={{ color: T.info }}>{h}</th>
+                    <th key={h} className="px-4 py-2 text-left font-medium text-[12px]" style={{ color: P.primaryDeep }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -117,9 +118,9 @@ export default function GradeImport() {
       <Card title={t("page.gradeImport.importHistory2")}>
         <table className="w-full text-[13px]">
           <thead>
-            <tr style={{ background: T.cloud }}>
+            <tr style={{ background: P.sky }}>
               {["时间", "文件名", "记录数", "状态"].map(h => (
-                <th key={h} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: T.info }}>{h}</th>
+                <th key={h} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: P.primaryDeep }}>{h}</th>
               ))}
             </tr>
           </thead>

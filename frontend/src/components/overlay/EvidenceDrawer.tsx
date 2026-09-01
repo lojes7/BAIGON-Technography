@@ -34,7 +34,7 @@ function EvidenceDrawer({
             已确认 {items.filter(i => i.status === "confirmed").length} · 待复核 {items.filter(i => i.status !== "confirmed").length}
           </span>
         </div>
-        <div className="flex-1 overflow-y-auto divide-y" style={{ borderColor: T.cloud }}>
+        <div className="flex-1 overflow-y-auto divide-y divide-[#E4EAF2]" >
           {items.map((item, i) => (
             <div key={i} className="px-5 py-4">
               <div

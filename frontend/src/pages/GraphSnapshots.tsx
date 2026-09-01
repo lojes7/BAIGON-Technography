@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Download, ArrowRight } from "lucide-react";
 import T from "../constants/tokens";
+import P from "../constants/palette";
 import { getGraphComparison } from "../services/analytics";
 import type { GraphComparisonData } from "../types/api";
 import { PageHeader, Btn, Card, MetricCard } from "../components/ui";
@@ -54,25 +55,25 @@ function GraphSnapshotsPage() {
       </div>
 
       <div className="grid grid-cols-4 gap-4">
-        <MetricCard title={t("page.graphSnapshots.newNodes")} value={loading ? "—" : String(s?.added_skills ?? "—")} trend={{ label: t("page.graphSnapshots.newNodesTrend"), up: true }} />
-        <MetricCard title={t("page.graphSnapshots.removedNodes")} value={loading ? "—" : String(s?.removed_skills ?? "—")} trend={{ label: t("page.graphSnapshots.removedNodesTrend"), up: false }} />
-        <MetricCard title={t("page.graphSnapshots.newEdges")} value={loading ? "—" : String(s?.added_relations ?? "—")} trend={{ label: t("page.graphSnapshots.newEdgesTrend"), up: true }} />
-        <MetricCard title={t("page.graphSnapshots.weakenedEdges")} value={loading ? "—" : String(s?.weakened_relations ?? "—")} trend={{ label: t("page.graphSnapshots.weakenedEdgesTrend"), up: false }} />
+        <MetricCard title={t("page.graphSnapshots.newNodes")} value={loading ? "-" : String(s?.added_skills ?? "-")} trend={{ label: t("page.graphSnapshots.newNodesTrend"), up: true }} />
+        <MetricCard title={t("page.graphSnapshots.removedNodes")} value={loading ? "-" : String(s?.removed_skills ?? "-")} trend={{ label: t("page.graphSnapshots.removedNodesTrend"), up: false }} />
+        <MetricCard title={t("page.graphSnapshots.newEdges")} value={loading ? "-" : String(s?.added_relations ?? "-")} trend={{ label: t("page.graphSnapshots.newEdgesTrend"), up: true }} />
+        <MetricCard title={t("page.graphSnapshots.weakenedEdges")} value={loading ? "-" : String(s?.weakened_relations ?? "-")} trend={{ label: t("page.graphSnapshots.weakenedEdgesTrend"), up: false }} />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <Card title={`${t("page.graphSnapshots.baseGraph")} · ${base}`}>
           <div className="px-2 pb-3" style={{ height: 300 }}><MiniGraph removedIds={[]} /></div>
           <div className="px-4 pb-3 text-[12px] flex items-center gap-4" style={{ color: T.info }}>
-            <span>{t("page.graphSnapshots.nodes")}<span className="font-mono font-medium" style={{ color: T.ink }}>{data?.base_graph.nodes.length ?? "—"}</span></span>
-            <span>{t("page.graphSnapshots.edges")}<span className="font-mono font-medium" style={{ color: T.ink }}>{data?.base_graph.edges.length ?? "—"}</span></span>
+            <span>{t("page.graphSnapshots.nodes")}<span className="font-mono font-medium" style={{ color: T.ink }}>{data?.base_graph.nodes.length ?? "-"}</span></span>
+            <span>{t("page.graphSnapshots.edges")}<span className="font-mono font-medium" style={{ color: T.ink }}>{data?.base_graph.edges.length ?? "-"}</span></span>
           </div>
         </Card>
         <Card title={`${t("page.graphSnapshots.compareGraph")} · ${compare}`}>
           <div className="px-2 pb-3" style={{ height: 300 }}><MiniGraph newIds={[]} /></div>
           <div className="px-4 pb-3 text-[12px] flex items-center gap-4" style={{ color: T.info }}>
-            <span>{t("page.graphSnapshots.nodes")}<span className="font-mono font-medium" style={{ color: T.ink }}>{data?.compare_graph.nodes.length ?? "—"}</span></span>
-            <span>{t("page.graphSnapshots.edges")}<span className="font-mono font-medium" style={{ color: T.ink }}>{data?.compare_graph.edges.length ?? "—"}</span></span>
+            <span>{t("page.graphSnapshots.nodes")}<span className="font-mono font-medium" style={{ color: T.ink }}>{data?.compare_graph.nodes.length ?? "-"}</span></span>
+            <span>{t("page.graphSnapshots.edges")}<span className="font-mono font-medium" style={{ color: T.ink }}>{data?.compare_graph.edges.length ?? "-"}</span></span>
           </div>
         </Card>
       </div>
@@ -81,7 +82,7 @@ function GraphSnapshotsPage() {
         {changes.length === 0 && !loading ? (
           <div className="px-4 py-8 text-center text-[13px]" style={{ color: T.info }}>暂无变化数据</div>
         ) : (
-          <table className="w-full text-[13px]"><thead><tr style={{ background: T.cloud }}>{["colType","colName","colDetail","colConfidence"].map(k => (<th key={k} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: T.info }}>{t(`page.graphSnapshots.${k}`)}</th>))}</tr></thead>
+          <table className="w-full text-[13px]"><thead><tr style={{ background: P.sky }}>{["colType","colName","colDetail","colConfidence"].map(k => (<th key={k} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: P.primaryDeep }}>{t(`page.graphSnapshots.${k}`)}</th>))}</tr></thead>
             <tbody>
               {changes.map((row, i) => {
                 // 确定变化类型

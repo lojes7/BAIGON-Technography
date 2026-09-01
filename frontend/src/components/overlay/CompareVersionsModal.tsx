@@ -73,8 +73,8 @@ function CompareVersionsModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Diff list */}
-        <div className="overflow-y-auto divide-y mx-5 mb-4 rounded-lg"
-          style={{ maxHeight: 320, borderColor: T.cloud, border: `1px solid ${T.border}` }}>
+        <div className="overflow-y-auto divide-y divide-[#E4EAF2] mx-5 mb-4 rounded-lg"
+          style={{ maxHeight: 320, border: `1px solid ${T.border}` }}>
           {filtered.map((item, i) => {
             const col = opColor[item.op];
             return (

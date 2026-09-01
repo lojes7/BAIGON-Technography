@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Eye, ChevronRight, Search, Crosshair, AlertCircle } from "lucide-react";
 import T from "../constants/tokens";
+import P from "../constants/palette";
 import { runAnalysis } from "../services/student";
 import { getJobList, getJobAbilities } from "../services/jobs";
 import { getMajorList } from "../services/dict";
@@ -136,11 +137,11 @@ export default function SkillAnalysisPage() {
           ) : (
             <table className="w-full text-[13px]">
               <thead>
-                <tr style={{ background: T.cloud }}>
-                  <th className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: T.info }}>岗位名称</th>
-                  <th className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: T.info }}>企业</th>
-                  <th className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: T.info }}>城市</th>
-                  <th className="px-4 py-2.5 text-center font-medium text-[12px]" style={{ color: T.info }}>操作</th>
+                <tr style={{ background: P.sky }}>
+                  <th className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: P.primaryDeep }}>岗位名称</th>
+                  <th className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: P.primaryDeep }}>企业</th>
+                  <th className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: P.primaryDeep }}>城市</th>
+                  <th className="px-4 py-2.5 text-center font-medium text-[12px]" style={{ color: P.primaryDeep }}>操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -248,8 +249,8 @@ export default function SkillAnalysisPage() {
           <Card title="能力对比">
             {analysis.comparison?.length > 0 ? (
               <table className="w-full text-[13px]">
-                <thead><tr style={{ background: T.cloud }}>
-                  {["能力","市场要求","你的水平","状态"].map(h => <th key={h} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: T.info }}>{h}</th>)}
+                <thead><tr style={{ background: P.sky }}>
+                  {["能力","市场要求","你的水平","状态"].map(h => <th key={h} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: P.primaryDeep }}>{h}</th>)}
                 </tr></thead>
                 <tbody>
                   {analysis.comparison.map((c, i) => (

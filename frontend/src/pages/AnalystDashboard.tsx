@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { ArrowRight } from "lucide-react";
 import T from "../constants/tokens";
+import P from "../constants/palette";
 import { useAuth } from "../auth/AuthContext";
 import { PageHeader, Btn, Card, MetricCard } from "../components/ui";
 import { getAbilityGraph, getEvolutionEvents } from "../services/analytics";
@@ -74,22 +75,22 @@ export default function AnalystDashboard() {
       <div className="grid grid-cols-4 gap-4">
         <MetricCard
           title={t("page.analystDashboard.graphNodes2")}
-          value={loading ? "—" : (graphSummary?.node_count?.toLocaleString() ?? "—")}
+          value={loading ? "-" : (graphSummary?.node_count?.toLocaleString() ?? "-")}
           sub={graphSummary ? `${graphSummary.job_count} 岗位 · ${graphSummary.skill_count} 技能` : "加载中"}
         />
         <MetricCard
           title={t("page.analystDashboard.pendingRelations")}
-          value={loading ? "—" : `${graphSummary?.edge_count ?? "—"} 条`}
+          value={loading ? "-" : `${graphSummary?.edge_count ?? "-"} 条`}
           sub={graphSummary ? `${graphSummary.family_count} 个岗位族` : "加载中"}
         />
         <MetricCard
           title={t("page.analystDashboard.evoEvents2")}
-          value={loading ? "—" : `${recentEvents.length} 条`}
+          value={loading ? "-" : `${recentEvents.length} 条`}
           sub="近期演化事件"
         />
         <MetricCard
           title={t("page.analystDashboard.dataCoverage2")}
-          value={loading ? "—" : graphSummary ? `${graphSummary.tool_count} 工具` : "—"}
+          value={loading ? "-" : graphSummary ? `${graphSummary.tool_count} 工具` : "-"}
           sub="图谱覆盖的工具数"
         />
       </div>
@@ -102,9 +103,9 @@ export default function AnalystDashboard() {
         ) : (
           <table className="w-full text-[13px]">
             <thead>
-              <tr style={{ background: T.cloud }}>
+              <tr style={{ background: P.sky }}>
                 {["优先级", "类型", "内容", "变化幅度"].map(h => (
-                  <th key={h} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: T.info }}>{h}</th>
+                  <th key={h} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: P.primaryDeep }}>{h}</th>
                 ))}
               </tr>
             </thead>

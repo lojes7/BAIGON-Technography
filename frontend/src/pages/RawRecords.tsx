@@ -26,9 +26,12 @@ const P = {
   amber: "#D98E1F",
   amberBg: "#FBF1DC",
   red: "#E25C4A",
+  redBg: "#FBEAE7",
   border: "#E4EAF2",
   bg: "#F3F6FB",
 } as const;
+
+const nv = (v?: string | null) => (v && v !== "null" && v !== "undefined" ? v : "");
 
 /* 近 30 天采集趋势（mock，后续接 /data-source/stats 聚合接口） */
 const trend30 = (() => {
@@ -54,14 +57,6 @@ const platformStats = [
   { name: "拉勾", pct: 4, count: "514", color: "#E25C4A" },
   { name: "其他渠道", pct: 1, count: "132", color: P.faint },
 ];
-
-const PLATFORM_TONE: Record<string, string> = {
-  "智联招聘": P.primary,
-  "BOSS直聘": "#2E9E9A",
-  "前程无忧": "#7468CE",
-  "猎聘": "#D98E1F",
-  "拉勾": P.red,
-};
 
 function KpiCard({ children, onClick, featured = false }: {
   children: React.ReactNode; onClick?: () => void; featured?: boolean;
@@ -511,7 +506,7 @@ export default function RawRecordsPage() {
         ) : (
           <table className="w-full table-fixed text-[13px]">
             <thead>
-              <tr style={{ background: P.skySoft }}>
+              <tr style={{ background: P.sky }}>
                 {isReviewer && (
                   <th className="w-10 px-2 py-2.5">
                     <input type="checkbox" className="accent-[#3996b7] cursor-pointer"
@@ -529,7 +524,7 @@ export default function RawRecordsPage() {
                   { key: "colReviewStatus", width: "w-[12%]", align: "center" },
                   { key: "colActions", width: "w-[12%]", align: "center" },
                 ].map((col) => (
-                  <th key={col.key} className={`${col.width} px-2 py-2.5 ${col.align === "center" ? "text-center" : "text-left"} font-medium text-[12px] whitespace-nowrap`} style={{ color: P.muted }}>
+                  <th key={col.key} className={`${col.width} px-2 py-2.5 ${col.align === "center" ? "text-center" : "text-left"} font-medium text-[12px] whitespace-nowrap`} style={{ color: P.primaryDeep }}>
                     {t(`page.rawRecords.${col.key}`)}
                   </th>
                 ))}
@@ -547,13 +542,7 @@ export default function RawRecordsPage() {
                       </td>
                     )}
                     <td className="px-2 py-2.5">
-                      <span className="flex items-center gap-2 min-w-0">
-                        <span className="w-6 h-6 rounded-md flex items-center justify-center text-[10px] font-medium text-white flex-shrink-0"
-                          style={{ background: PLATFORM_TONE[r.source_platform] ?? P.faint }}>
-                          {(r.source_platform || "?").slice(0, 1)}
-                        </span>
-                        <span className="text-[12px] truncate" style={{ color: P.muted }} title={r.source_platform}>{r.source_platform || "-"}</span>
-                      </span>
+                      <span className="text-[12px] truncate block" style={{ color: P.muted }} title={r.source_platform}>{r.source_platform || "-"}</span>
                     </td>
                     <td className="px-2 py-2.5 font-medium truncate" style={{ color: T.ink }} title={r.job_name || undefined}>{r.job_name || "-"}</td>
                     <td className="px-2 py-2.5 truncate" style={{ color: T.ink }} title={r.company_name || undefined}>{r.company_name || "-"}</td>
@@ -718,151 +707,197 @@ export default function RawRecordsPage() {
         </div>
       )}
 
-      {/* ==================== 详情抽屉（原始 vs 清洗后 双栏 diff） ==================== */}
+      {/* ==================== 详情抽屉（分组字段 + 底部固定操作条） ==================== */}
       {detail && (
         <div className="fixed inset-0 z-50 flex" style={{ background: "rgba(25,50,77,0.3)" }} onClick={() => { setDetail(null); setSourceDetail(null); setCleanedDetail(null); setEditing(false); }}>
           <div className="ml-auto w-[720px] shrink-0 max-w-[calc(100vw-24px)] h-full bg-white shadow-xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-4 flex-shrink-0" style={{ borderBottom: `1px solid ${T.cloud}` }}>
-              <div className="flex items-center gap-3">
+            {/* 头部：标题 + 审核状态 */}
+            <div className="flex items-center justify-between gap-3 px-5 py-4 flex-shrink-0" style={{ borderBottom: `1px solid ${P.border}` }}>
+              <div className="flex items-center gap-3 min-w-0">
                 {viewDiff && (
-                  <button onClick={() => setViewDiff(false)} className="flex items-center gap-1 text-[13px]" style={{ color: T.teal }}>
+                  <button onClick={() => setViewDiff(false)} className="flex items-center gap-1 text-[13px] whitespace-nowrap flex-shrink-0" style={{ color: P.primary }}>
                     <ArrowLeft size={16} />{t("page.rawRecords.back")}
                   </button>
                 )}
-                <h3 className="text-[15px] font-medium" style={{ color: T.ink }}>{viewDiff ? t("page.rawRecords.diffTitle") : t("page.rawRecords.detailTitle")}</h3>
+                <div className="min-w-0">
+                  <h3 className="text-[15px] font-medium truncate" style={{ color: P.ink }}>
+                    {viewDiff ? t("page.rawRecords.diffTitle") : (nv(cleanedDetail?.job_name ?? detail.job_name) || t("page.rawRecords.detailTitle"))}
+                  </h3>
+                  {!viewDiff && (
+                    <div className="text-[12px] mt-0.5 truncate" style={{ color: P.faint }}>
+                      {[nv(cleanedDetail?.company_name ?? detail.company_name), nv(cleanedDetail?.source_platform ?? detail.source_platform)].filter(Boolean).join(" · ")}
+                    </div>
+                  )}
+                </div>
               </div>
-              <button onClick={() => { setDetail(null); setSourceDetail(null); setCleanedDetail(null); setViewDiff(false); setEditing(false); }} style={{ color: T.info }}><X size={18} /></button>
+              <div className="flex items-center gap-3 flex-shrink-0">
+                {!viewDiff && <StatusBadge status={detail.review_status} />}
+                <button onClick={() => { setDetail(null); setSourceDetail(null); setCleanedDetail(null); setViewDiff(false); setEditing(false); }} style={{ color: P.faint }}><X size={18} /></button>
+              </div>
             </div>
 
             {viewDiff ? (
               // 原始 vs 清洗后 diff 对比视图（充满抽屉内容区）
               <div className="flex-1 flex flex-col px-5 py-4 min-h-0 overflow-hidden">
                 {diffLoading ? (
-                  <div className="py-8 text-center text-[13px]" style={{ color: T.info }}>{t("common.loading")}</div>
+                  <div className="py-8 text-center text-[13px]" style={{ color: P.muted }}>{t("common.loading")}</div>
                 ) : sourceDetail && cleanedDetail ? (
                   <DiffViewer rows={buildDiffRows(t, sourceDetail, cleanedDetail)} />
                 ) : (
-                  <div className="py-8 text-center text-[13px]" style={{ color: T.info }}>{t("page.rawRecords.noDiffData")}</div>
+                  <div className="py-8 text-center text-[13px]" style={{ color: P.muted }}>{t("page.rawRecords.noDiffData")}</div>
                 )}
               </div>
             ) : (
-              // 字段详情视图：展示清洗后数据各字段 + 查看原始记录/编辑 + 复核操作
-              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-                {editing ? (
-                  /* ── 编辑态：替换详情展示，保存后以修改后内容通过复核 ── */
-                  <div className="flex min-h-full flex-col space-y-3">
-                    <div className="text-[12px] font-medium" style={{ color: T.info }}>{t("page.rawRecords.editFields")}</div>
-                    <div className="text-[11px]" style={{ color: T.info }}>{t("page.rawRecords.editHint")}</div>
-                    <div className="grid grid-cols-2 gap-3">
-                      {([
-                        ["jobName", t("page.rawRecords.jobName")],
-                        ["companyName", t("page.rawRecords.companyName")],
-                        ["salary", t("page.rawRecords.jobSalary")],
-                        ["city", t("page.rawRecords.jobCity")],
-                        ["education", t("page.rawRecords.jobEdu")],
-                        ["experience", t("page.rawRecords.jobExp")],
-                      ] as [keyof EditForm, string][]).map(([k, label]) => (
-                        <div key={k}>
-                          <label className="text-[11px] block mb-1" style={{ color: T.info }}>{label}</label>
-                          <input className="w-full px-2.5 py-1.5 rounded text-[13px] outline-none"
-                            style={{ background: "white", border: `1px solid ${T.border}`, color: T.ink }}
-                            value={editForm[k]} onChange={e => setEditField(k, e.target.value)} />
-                        </div>
-                      ))}
-                    </div>
-                    <div className="flex flex-1 flex-col">
-                      <label className="text-[11px] block mb-1" style={{ color: T.info }}>{t("page.rawRecords.jobDesc")}</label>
-                      <textarea className="w-full flex-1 min-h-[240px] px-2.5 py-2 rounded text-[13px] leading-relaxed outline-none resize-none"
-                        style={{ background: "white", border: `1px solid ${T.border}`, color: T.ink }}
-                        value={editForm.jobDescription} onChange={e => setEditField("jobDescription", e.target.value)} />
-                    </div>
-                    <div className="flex shrink-0 justify-end gap-2">
-                      <Btn variant="secondary" size="sm" onClick={cancelEdit}>{t("page.rawRecords.cancelEdit")}</Btn>
-                      <Btn size="sm" onClick={submitEdit} disabled={savingEdit}>{savingEdit ? t("page.rawRecords.saving") : t("page.rawRecords.saveEdit")}</Btn>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <DetailSection title={t("page.rawRecords.basicInfo")} items={[
-                      [t("page.rawRecords.jobName"), cleanedDetail?.job_name ?? detail.job_name ?? "-"],
-                      [t("page.rawRecords.companyName"), cleanedDetail?.company_name ?? detail.company_name ?? "-"],
-                      [t("page.rawRecords.jobSalary"), cleanedDetail?.salary ?? "-"],
-                      [t("page.rawRecords.jobCity"), cleanedDetail?.city ?? "-"],
-                      [t("page.rawRecords.jobProvince"), cleanedDetail?.province ?? "-"],
-                      [t("page.rawRecords.jobExp"), cleanedDetail?.experience ?? "-"],
-                      [t("page.rawRecords.jobEdu"), cleanedDetail?.education ?? "-"],
-                      [t("page.rawRecords.jobMajor"), cleanedDetail?.major ?? "-"],
-                      [t("page.rawRecords.jobNature"), cleanedDetail?.nature ?? "-"],
-                      [t("page.rawRecords.jobTags"), cleanedDetail?.tags ?? "-"],
-                      [t("page.rawRecords.jobCompanySize"), cleanedDetail?.company_size ?? "-"],
-                      [t("page.rawRecords.sourcePlatform"), cleanedDetail?.source_platform ?? detail.source_platform ?? "-"],
-                      [t("page.rawRecords.jobSourceUrl"), cleanedDetail?.source_url ?? "-"],
-                      [t("page.rawRecords.publishDate"), (cleanedDetail?.publish_date ?? detail.publish_date)?.slice(0, 10) ?? "-"],
-                      [t("page.rawRecords.reviewStatus"), <StatusBadge status={detail.review_status} />],
-                      [t("page.rawRecords.reviewDate"), cleanedDetail?.reviewed_at?.slice(0, 10) ?? "-"],
-                      [t("page.rawRecords.createDate"), detail.created_at?.slice(0, 10) ?? "-"],
-                    ]} />
-
-                    {/* 职位描述 */}
-                    {cleanedDetail?.job_description && (
-                      <div>
-                        <div className="text-[12px] font-medium mb-2" style={{ color: T.ink }}>{t("page.rawRecords.jobDesc")}</div>
-                        <div className="rounded-md p-4 text-[14px] leading-relaxed whitespace-pre-wrap max-h-80 overflow-y-auto"
-                          style={{ background: T.cloud, color: T.ink, border: `1px solid ${T.border}` }}>
-                          {cleanedDetail.job_description}
-                        </div>
+              <>
+                {/* 字段详情（滚动区） */}
+                <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+                  {editing ? (
+                    /* ── 编辑态：替换详情展示，保存后以修改后内容通过复核 ── */
+                    <div className="flex min-h-full flex-col space-y-3">
+                      <div className="text-[12px] font-medium" style={{ color: P.muted }}>{t("page.rawRecords.editFields")}</div>
+                      <div className="text-[11px]" style={{ color: P.faint }}>{t("page.rawRecords.editHint")}</div>
+                      <div className="grid grid-cols-2 gap-3">
+                        {([
+                          ["jobName", t("page.rawRecords.jobName")],
+                          ["companyName", t("page.rawRecords.companyName")],
+                          ["salary", t("page.rawRecords.jobSalary")],
+                          ["city", t("page.rawRecords.jobCity")],
+                          ["education", t("page.rawRecords.jobEdu")],
+                          ["experience", t("page.rawRecords.jobExp")],
+                        ] as [keyof EditForm, string][]).map(([k, label]) => (
+                          <div key={k}>
+                            <label className="text-[11px] block mb-1" style={{ color: P.faint }}>{label}</label>
+                            <input className="w-full px-2.5 py-1.5 rounded text-[13px] outline-none"
+                              style={{ background: "white", border: `1px solid ${P.border}`, color: P.ink }}
+                              value={editForm[k]} onChange={e => setEditField(k, e.target.value)} />
+                          </div>
+                        ))}
                       </div>
-                    )}
+                      <div className="flex flex-1 flex-col">
+                        <label className="text-[11px] block mb-1" style={{ color: P.faint }}>{t("page.rawRecords.jobDesc")}</label>
+                        <textarea className="w-full flex-1 min-h-[240px] px-2.5 py-2 rounded text-[13px] leading-relaxed outline-none resize-none"
+                          style={{ background: "white", border: `1px solid ${P.border}`, color: P.ink }}
+                          value={editForm.jobDescription} onChange={e => setEditField("jobDescription", e.target.value)} />
+                      </div>
+                      <div className="flex shrink-0 justify-end gap-2">
+                        <Btn variant="secondary" size="sm" onClick={cancelEdit}>{t("page.rawRecords.cancelEdit")}</Btn>
+                        <Btn size="sm" onClick={submitEdit} disabled={savingEdit}>{savingEdit ? t("page.rawRecords.saving") : t("page.rawRecords.saveEdit")}</Btn>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {/* 岗位信息 */}
+                      <section>
+                        <div className="text-[12px] font-medium mb-2" style={{ color: P.faint }}>{t("page.rawRecords.groupJob")}</div>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[13px]">
+                          {([
+                            [t("page.rawRecords.jobName"), cleanedDetail?.job_name ?? detail.job_name],
+                            [t("page.rawRecords.companyName"), cleanedDetail?.company_name ?? detail.company_name],
+                            [t("page.rawRecords.jobSalary"), cleanedDetail?.salary],
+                            [t("page.rawRecords.jobCity"), cleanedDetail?.city],
+                            [t("page.rawRecords.jobProvince"), cleanedDetail?.province],
+                            [t("page.rawRecords.jobEdu"), cleanedDetail?.education],
+                            [t("page.rawRecords.jobExp"), cleanedDetail?.experience],
+                            [t("page.rawRecords.jobMajor"), cleanedDetail?.major],
+                            [t("page.rawRecords.jobNature"), cleanedDetail?.nature],
+                            [t("page.rawRecords.jobTags"), cleanedDetail?.tags],
+                            [t("page.rawRecords.jobCompanySize"), cleanedDetail?.company_size],
+                          ] as [string, string | null | undefined][]).map(([k, v]) => (
+                            <div key={k} className="flex justify-between min-w-0" style={{ borderBottom: `1px dashed ${P.border}` }}>
+                              <span className="flex-shrink-0" style={{ color: P.faint }}>{k}</span>
+                              <span className="text-right truncate ml-3" style={{ color: P.ink }} title={nv(v) || undefined}>{nv(v) || "-"}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
 
-                    {/* 查看原始记录 + 编辑 */}
-                    <div className="pt-1 flex items-center gap-2">
+                      {/* 来源与审核 */}
+                      <section>
+                        <div className="text-[12px] font-medium mb-2" style={{ color: P.faint }}>{t("page.rawRecords.groupSource")}</div>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[13px]">
+                          {([
+                            [t("page.rawRecords.sourcePlatform"), nv(cleanedDetail?.source_platform ?? detail.source_platform)],
+                            [t("page.rawRecords.publishDate"), (cleanedDetail?.publish_date ?? detail.publish_date)?.slice(0, 10)],
+                            [t("page.rawRecords.createDate"), detail.created_at?.slice(0, 10)],
+                            [t("page.rawRecords.reviewDate"), cleanedDetail?.reviewed_at?.slice(0, 10)],
+                            [t("page.rawRecords.reviewedBy"), nv(cleanedDetail?.reviewed_by)],
+                            [t("page.rawRecords.colId"), detail.id],
+                          ] as [string, string | null | undefined][]).map(([k, v]) => (
+                            <div key={k} className="flex justify-between min-w-0" style={{ borderBottom: `1px dashed ${P.border}` }}>
+                              <span className="flex-shrink-0" style={{ color: P.faint }}>{k}</span>
+                              <span className={`text-right truncate ml-3 ${k === t("page.rawRecords.colId") ? "font-mono text-[12px]" : ""}`}
+                                style={{ color: P.ink }} title={nv(v) || undefined}>{nv(v) || "-"}</span>
+                            </div>
+                          ))}
+                          {/* 溯源编号（整行） */}
+                          <div className="col-span-2 flex justify-between items-center min-w-0" style={{ borderBottom: `1px dashed ${P.border}` }}>
+                            <span className="flex-shrink-0" style={{ color: P.faint }}>{t("page.rawRecords.traceId")}</span>
+                            <span className="ml-3 truncate font-mono text-[12px]" style={{ color: P.ink }} title={nv(cleanedDetail?.trace_id)}>
+                              {nv(cleanedDetail?.trace_id) || "-"}
+                            </span>
+                          </div>
+                          {/* 来源链接（整行，可点击跳转） */}
+                          {(() => {
+                            const url = nv(cleanedDetail?.source_url);
+                            return (
+                              <div className="col-span-2 flex justify-between items-center min-w-0" style={{ borderBottom: `1px dashed ${P.border}` }}>
+                                <span className="flex-shrink-0" style={{ color: P.faint }}>{t("page.rawRecords.jobSourceUrl")}</span>
+                                {url ? (
+                                  <a href={url} target="_blank" rel="noreferrer noopener"
+                                    className="ml-3 truncate hover:underline" style={{ color: P.primary }} title={url}>{url}</a>
+                                ) : (
+                                  <span className="ml-3" style={{ color: P.ink }}>-</span>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </section>
+
+                      {/* 职位描述 */}
+                      {nv(cleanedDetail?.job_description) && (
+                        <div>
+                          <div className="text-[12px] font-medium mb-2" style={{ color: P.faint }}>{t("page.rawRecords.jobDesc")}</div>
+                          <div className="rounded-lg p-4 text-[14px] leading-relaxed whitespace-pre-wrap max-h-72 overflow-y-auto"
+                            style={{ background: P.bg, color: P.ink, border: `1px solid ${P.border}` }}>
+                            {nv(cleanedDetail?.job_description)}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* 底部固定操作条：左=溯源/编辑，右=审核（小尺寸，不换行） */}
+                {!editing && (
+                  <div className="flex items-center justify-between gap-3 px-5 py-3 flex-shrink-0" style={{ borderTop: `1px solid ${P.border}`, background: "#FAFBFD" }}>
+                    <div className="flex items-center gap-2 min-w-0">
                       <Btn size="sm" icon={FileText} onClick={() => setViewDiff(true)}>{t("page.rawRecords.viewOriginalRecord")}</Btn>
                       {isReviewer && detail.review_status !== "REVIEW_PASSED" && (
                         <Btn size="sm" variant="secondary" icon={Pencil} onClick={openEdit}>{t("page.rawRecords.edit")}</Btn>
                       )}
                     </div>
-                  </>
-                )}
-
-                {/* 审核操作：通过 / 驳回 */}
-                {!editing && isReviewer && detail.review_status !== "REVIEW_PASSED" && (
-                  <div className="flex flex-col gap-2 pt-4" style={{ borderTop: `1px solid ${T.cloud}` }}>
-                    <div className="text-[12px] font-medium" style={{ color: T.info }}>{t("page.rawRecords.reviewActions")}</div>
-                    <div className="flex gap-2">
-                      <button className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-[13px] font-medium transition-all hover:opacity-80"
-                        style={{ background: "#E6F5F1", color: "#1A6B4E", border: `1px solid #B8E0D2` }}
-                        onClick={() => handleReview(detail.id, "REVIEW_PASSED")}>
-                        <ShieldCheck size={15} />{t("page.rawRecords.approve")}
-                      </button>
-                      <button className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-[13px] font-medium transition-all hover:opacity-80"
-                        style={{ background: "#FAECEC", color: "#8B1A1A", border: `1px solid #E8C0C0` }}
-                        onClick={() => handleReview(detail.id, "REVIEW_REJECT")}>
-                        <X size={15} />{t("page.rawRecords.reject")}
-                      </button>
-                    </div>
+                    {isReviewer && detail.review_status !== "REVIEW_PASSED" && (
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <button className="px-3 py-1.5 rounded-lg text-[12px] font-medium whitespace-nowrap inline-flex items-center gap-1 transition-all hover:opacity-80"
+                          style={{ background: P.redBg, color: P.red, border: `1px solid rgba(226,92,74,0.28)` }}
+                          onClick={() => handleReview(detail.id, "REVIEW_REJECT")}>
+                          <X size={13} />{t("page.rawRecords.reject")}
+                        </button>
+                        <button className="px-3 py-1.5 rounded-lg text-[12px] font-medium whitespace-nowrap inline-flex items-center gap-1 transition-all hover:opacity-80"
+                          style={{ background: P.greenBg, color: P.green, border: `1px solid rgba(21,154,108,0.28)` }}
+                          onClick={() => handleReview(detail.id, "REVIEW_PASSED")}>
+                          <ShieldCheck size={13} />{t("page.rawRecords.approve")}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
+              </>
             )}
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function DetailSection({ title, items }: { title: string; items: [string, React.ReactNode][] }) {
-  return (
-    <div>
-      <div className="text-[12px] font-medium mb-2" style={{ color: T.ink }}>{title}</div>
-      <div className="rounded-md p-3 space-y-2 text-[13px]" style={{ background: T.cloud }}>
-        {items.map(([k, v], i) => (
-          <div key={i} className="flex justify-between items-center">
-            <span style={{ color: T.info }}>{k}</span>
-            <span className="font-medium" style={{ color: T.ink }}>{v}</span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

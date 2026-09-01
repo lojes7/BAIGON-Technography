@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, FileSearch, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
-import T from "../constants/tokens";
+import P from "../constants/palette";
 import { useAuth } from "../auth/AuthContext";
 import { getEvolutionEvents, getEvolutionEventDetail } from "../services/analytics";
 import type { EvolutionEventItem, EvolutionEventDetail } from "../types/api";
@@ -93,10 +93,10 @@ function EvolutionEventsPage() {
   };
 
   const typeColors: Record<string, string> = {
-    EMERGING: T.emerging, emerging: T.emerging,
-    RISING: T.stable, rising: T.stable,
-    STABLE: T.info, stable: T.info,
-    DECLINING: T.declining, declining: T.declining,
+    EMERGING: P.green, emerging: P.green,
+    RISING: P.primary, rising: P.primary,
+    STABLE: P.muted, stable: P.muted,
+    DECLINING: P.red, declining: P.red,
   };
 
   const totalPages = Math.ceil(total / 20);
@@ -109,6 +109,27 @@ function EvolutionEventsPage() {
         description={t("page.evolutionEvents.desc")}
       />
 
+      {/* KPI 统计行 */}
+      <div className="grid grid-cols-4 gap-4">
+        <div className="rounded-2xl p-5 flex flex-col text-white relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${P.primary} 0%, ${P.primaryDeep} 100%)`, minHeight: 120 }}>
+          <div className="absolute -right-8 -top-10 w-32 h-32 rounded-full" style={{ background: "rgba(255,255,255,0.07)" }} />
+          <span className="text-[13px]" style={{ color: "rgba(255,255,255,0.85)" }}>事件总数</span>
+          <div className="text-[30px] font-mono font-semibold leading-tight mt-1">{events.length}</div>
+          <span className="mt-auto inline-flex w-fit text-[11px] px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.16)", color: "#fff" }}>{DEFAULT_PERIOD} 周期</span>
+        </div>
+        {[
+          { label: "新兴", value: events.filter((e) => e.event_type === "EMERGING").length, chip: "新出现", bg: P.greenBg, color: P.green },
+          { label: "上升", value: events.filter((e) => e.event_type === "RISING").length, chip: "热度增长", bg: P.skySoft, color: P.primary },
+          { label: "衰退", value: events.filter((e) => e.event_type === "DECLINING").length, chip: "需关注", bg: P.redBg, color: P.red },
+        ].map((k) => (
+          <div key={k.label} className="bg-white rounded-2xl p-5 flex flex-col" style={{ border: `1px solid ${P.border}`, minHeight: 120 }}>
+            <span className="text-[13px]" style={{ color: P.muted }}>{k.label}</span>
+            <div className="text-[30px] font-mono font-semibold leading-tight mt-1" style={{ color: P.ink }}>{k.value}</div>
+            <span className="mt-auto inline-flex w-fit text-[11px] px-2 py-0.5 rounded-full" style={{ background: k.bg, color: k.color }}>{k.chip}</span>
+          </div>
+        ))}
+      </div>
+
       {/* 筛选器 */}
       <div className="flex items-center gap-3">
         {EVENT_TYPE_OPTIONS.map((opt) => (
@@ -116,16 +137,16 @@ function EvolutionEventsPage() {
             key={opt.value}
             className="px-3 py-2 rounded-md text-[13px] cursor-pointer transition-colors"
             style={{
-              border: `1px solid ${eventType === opt.value ? T.teal : T.border}`,
-              color: eventType === opt.value ? T.teal : T.ink,
-              background: eventType === opt.value ? `${T.teal}10` : "white",
+              border: `1px solid ${eventType === opt.value ? P.primary : P.border}`,
+              color: eventType === opt.value ? P.primary : P.ink,
+              background: eventType === opt.value ? `${P.primary}10` : "white",
             }}
             onClick={() => { setEventType(opt.value); setPage(1); }}
           >
             {opt.label}
           </button>
         ))}
-        <span className="ml-auto text-[12px]" style={{ color: T.info }}>
+        <span className="ml-auto text-[12px]" style={{ color: P.muted }}>
           共 {total} 条事件
         </span>
       </div>
@@ -133,9 +154,9 @@ function EvolutionEventsPage() {
       {/* 事件列表 */}
       <div className="flex flex-col gap-3">
         {loading ? (
-          <div className="text-center py-12 text-[13px]" style={{ color: T.info }}>正在加载演化事件...</div>
+          <div className="text-center py-12 text-[13px]" style={{ color: P.muted }}>正在加载演化事件...</div>
         ) : events.length === 0 ? (
-          <div className="text-center py-12 text-[13px]" style={{ color: T.info }}>
+          <div className="text-center py-12 text-[13px]" style={{ color: P.muted }}>
             暂无演化事件数据，请确认后端统计分析服务已接入
           </div>
         ) : (
@@ -148,27 +169,27 @@ function EvolutionEventsPage() {
                 <div className="px-5 py-4">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex items-center gap-3 flex-wrap">
-                      <span className="text-[15px] font-medium" style={{ color: T.ink }}>{evt.skill_name}</span>
+                      <span className="text-[15px] font-medium" style={{ color: P.ink }}>{evt.skill_name}</span>
                       <span className="text-[11px] px-2 py-0.5 rounded font-medium"
-                        style={{ color: typeColors[typeKey] || T.info, background: `${typeColors[typeKey] || T.info}18` }}>
+                        style={{ color: typeColors[typeKey] || P.muted, background: `${typeColors[typeKey] || P.muted}18` }}>
                         {EVENT_TYPE_OPTIONS.find((o) => o.value === typeKey)?.label || typeKey}
                       </span>
                       <StatusBadge status={evt.event_type === "EMERGING" || evt.event_type === "DECLINING" ? "needs_review" : "confirmed"} />
                     </div>
-                    <div className="flex items-center gap-3 flex-shrink-0 text-[12px]" style={{ color: T.info }}>
+                    <div className="flex items-center gap-3 flex-shrink-0 text-[12px]" style={{ color: P.muted }}>
                       <span className="font-mono">{evt.event_key}</span>
                       <span>{evt.base_period} → {evt.compare_period}</span>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-6 mt-3 text-[13px]">
-                    <span>覆盖率 <span className="font-mono font-medium" style={{ color: T.ink }}>{evt.current_coverage.toFixed(1)}%</span></span>
+                    <span>覆盖率 <span className="font-mono font-medium" style={{ color: P.ink }}>{evt.current_coverage.toFixed(1)}%</span></span>
                     <span>变化 <span className="font-mono font-medium"
-                      style={{ color: up ? T.emerging : T.declining }}>
+                      style={{ color: up ? P.green : P.red }}>
                       {up ? "+" : ""}{evt.change_pp.toFixed(1)}pp
                     </span></span>
-                    <span>企业数 <span className="font-mono font-medium" style={{ color: T.ink }}>{evt.company_count}</span></span>
-                    <span>样本 <span className="font-mono font-medium" style={{ color: T.ink }}>{evt.sample_count}</span></span>
+                    <span>企业数 <span className="font-mono font-medium" style={{ color: P.ink }}>{evt.company_count}</span></span>
+                    <span>样本 <span className="font-mono font-medium" style={{ color: P.ink }}>{evt.sample_count}</span></span>
                   </div>
 
                   {/* 展开详情 */}
@@ -176,15 +197,15 @@ function EvolutionEventsPage() {
                     <div className="mt-4 space-y-4">
                       <Divider />
                       {detailLoading ? (
-                        <div className="text-center py-4 text-[13px]" style={{ color: T.info }}>加载详情中...</div>
+                        <div className="text-center py-4 text-[13px]" style={{ color: P.muted }}>加载详情中...</div>
                       ) : eventDetail ? (
                         <>
                           <div className="grid grid-cols-2 gap-4">
                             <div>
-                              <div className="text-[12px] font-medium uppercase tracking-wider mb-2" style={{ color: T.info }}>
+                              <div className="text-[12px] font-medium uppercase tracking-wider mb-2" style={{ color: P.muted }}>
                                 指标变化
                               </div>
-                              <div className="rounded-md p-3 text-[12px] space-y-1" style={{ background: T.cloud }}>
+                              <div className="rounded-md p-3 text-[12px] space-y-1" style={{ background: P.skySoft }}>
                                 {[
                                   ["基准周期", eventDetail.metrics.base_period],
                                   ["对比周期", eventDetail.metrics.compare_period],
@@ -195,24 +216,24 @@ function EvolutionEventsPage() {
                                   ["样本量", `${eventDetail.metrics.sample_count} 条`],
                                 ].map(([k, v], i) => (
                                   <div key={i} className="flex justify-between">
-                                    <span style={{ color: T.info }}>{k}</span>
-                                    <span className="font-mono font-medium" style={{ color: T.ink }}>{v}</span>
+                                    <span style={{ color: P.muted }}>{k}</span>
+                                    <span className="font-mono font-medium" style={{ color: P.ink }}>{v}</span>
                                   </div>
                                 ))}
                               </div>
                             </div>
                             <div>
                               <div className="text-[12px] font-medium uppercase tracking-wider mb-2"
-                                style={{ color: T.info }}>数据来源
+                                style={{ color: P.muted }}>数据来源
                                 <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded normal-case"
-                                  style={{ background: "#EBF2FA", color: T.stable }}>基于招聘证据</span>
+                                  style={{ background: "#EBF2FA", color: P.primary }}>基于招聘证据</span>
                               </div>
-                              <div className="rounded-md p-3 text-[12px] leading-relaxed" style={{ background: T.cloud, color: T.ink }}>
+                              <div className="rounded-md p-3 text-[12px] leading-relaxed" style={{ background: P.skySoft, color: P.ink }}>
                                 {eventDetail.evidence?.length
                                   ? `共关联 ${eventDetail.evidence.length} 条招聘证据，来自 ${new Set(eventDetail.evidence.map((e) => e.company_name)).size} 家企业`
                                   : "暂无证据数据"}
                                 {eventDetail.warnings?.length > 0 && (
-                                  <div className="mt-2 text-[11px]" style={{ color: T.pending }}>
+                                  <div className="mt-2 text-[11px]" style={{ color: P.amber }}>
                                     {eventDetail.warnings.join("；")}
                                   </div>
                                 )}
@@ -221,13 +242,13 @@ function EvolutionEventsPage() {
                           </div>
                         </>
                       ) : (
-                        <div className="text-center py-4 text-[13px]" style={{ color: T.info }}>暂无详细数据</div>
+                        <div className="text-center py-4 text-[13px]" style={{ color: P.muted }}>暂无详细数据</div>
                       )}
                     </div>
                   )}
 
                   <div className="flex items-center justify-between mt-3">
-                    <button className="text-[12px] flex items-center gap-1" style={{ color: T.teal }}
+                    <button className="text-[12px] flex items-center gap-1" style={{ color: P.primary }}
                       onClick={() => handleExpand(evt)}>
                       {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                       {isExpanded ? "收起详情" : "展开详情"}
@@ -263,7 +284,7 @@ function EvolutionEventsPage() {
           title={evidenceTarget.name}
           subtitle="演化事件证据"
           items={evidenceTarget.evidence?.length ? evidenceTarget.evidence.map((e) => ({
-            text: `${e.company_name} · ${e.job_name} · ${e.proficiency || "—"}`,
+            text: `${e.company_name} · ${e.job_name} · ${e.proficiency || "-"}`,
             source: e.source_platform,
             date: e.publish_date?.slice(0, 10) || "",
             job: e.job_name,

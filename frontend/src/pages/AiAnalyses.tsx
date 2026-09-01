@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useState, useEffect } from "react";
 import T from "../constants/tokens";
+import P from "../constants/palette";
 import { getAiAnalyses } from "../services/reviewer";
 import { getJobList } from "../services/jobs";
 import { getMajorList } from "../services/dict";
@@ -65,9 +66,9 @@ export default function AiAnalysesPage() {
         ) : (
           <table className="w-full text-[13px]">
             <thead>
-              <tr style={{ background: T.cloud }}>
+              <tr style={{ background: P.sky }}>
                 {["数据来源","对应岗位","任务状态","审核状态","创建时间"].map(h => (
-                  <th key={h} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: T.info }}>{h}</th>
+                  <th key={h} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: P.primaryDeep }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -88,7 +89,7 @@ export default function AiAnalysesPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3"><StatusBadge status={item.review_status} /></td>
-                  <td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{item.created_at?.slice(0, 10) || "—"}</td>
+                  <td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{item.created_at?.slice(0, 10) || "-"}</td>
                 </tr>
               ))}
             </tbody>

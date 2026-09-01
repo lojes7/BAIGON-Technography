@@ -342,14 +342,14 @@ export default function AutoImportPage() {
         />
         <MetricCard
           title="采集进度"
-          value={taskStatus === "idle" ? "—" : progress != null ? `${progress}%` : taskStatus === "running" ? "同步中" : "—"}
+          value={taskStatus === "idle" ? "-" : progress != null ? `${progress}%` : taskStatus === "running" ? "同步中" : "-"}
           sub={taskStatus === "running"
             ? `当前分类：${currentCategory || "初始化中"}`
             : taskStatus === "completed" ? "采集链路执行完毕" : undefined}
         />
         <MetricCard
           title="已清洗条数"
-          value={taskStatus === "idle" ? "—" : totalCleaned != null ? totalCleaned : taskStatus === "running" ? "同步中" : "—"}
+          value={taskStatus === "idle" ? "-" : totalCleaned != null ? totalCleaned : taskStatus === "running" ? "同步中" : "-"}
           sub="经清洗管道写入"
         />
         <MetricCard

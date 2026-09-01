@@ -226,9 +226,9 @@ function DataImportPage() {
           </div>
           <table className="w-full text-[13px]">
             <thead>
-              <tr style={{ background: P.skySoft }}>
+              <tr style={{ background: P.sky }}>
                 {["批次号", "来源", "样本数", "提交时间", "trace_id", "状态"].map((h) => (
-                  <th key={h} className="px-5 py-2 text-left font-medium text-[12px] first:pl-5" style={{ color: P.muted }}>{h}</th>
+                  <th key={h} className="px-5 py-2 text-left font-medium text-[12px] first:pl-5" style={{ color: P.primaryDeep }}>{h}</th>
                 ))}
               </tr>
             </thead>

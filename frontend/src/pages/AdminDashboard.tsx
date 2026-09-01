@@ -238,7 +238,7 @@ function AdminDashboard() {
             <div className="text-[15px] font-semibold" style={{ color: P.ink }}>技能演进信号</div>
             <span className="text-[12px] cursor-pointer font-medium" style={{ color: P.primary }} onClick={() => nav("evolution-trends")}>查看全部 →</span>
           </div>
-          <div className="divide-y" style={{ borderColor: P.bg }}>
+          <div className="divide-y divide-[#E4EAF2]" >
             {signals.map((s) => (
               <div key={s.name} className="flex items-center gap-3 px-5 py-[10px]">
                 {s.dir === "up"
@@ -316,7 +316,7 @@ function AdminDashboard() {
             <div className="text-[15px] font-semibold" style={{ color: P.ink }}>最近任务</div>
             <span className="text-[12px] cursor-pointer font-medium" style={{ color: P.primary }} onClick={() => nav("job-analysis")}>任务中心 →</span>
           </div>
-          <div className="divide-y" style={{ borderColor: P.bg }}>
+          <div className="divide-y divide-[#E4EAF2]" >
             {recentTasks.map((t) => (
               <div key={t.id} className="flex items-center gap-4 px-5 py-3 cursor-pointer transition-colors hover:bg-gray-50"
                 onClick={() => nav(t.target)}>

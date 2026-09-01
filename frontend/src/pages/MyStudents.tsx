@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useState, useEffect } from "react";
 import T from "../constants/tokens";
+import P from "../constants/palette";
 import { getTeacherStudents } from "../services/teacher";
 import { getDepartmentList } from "../services/admin";
 import type { TeacherStudentItem, DepartmentItem } from "../types/api";
@@ -43,9 +44,9 @@ export default function MyStudentsPage() {
         ) : (
           <table className="w-full text-[13px]">
             <thead>
-              <tr style={{ background: T.cloud }}>
+              <tr style={{ background: P.sky }}>
                 {["colUid","colName","colDept","colStatus","colCreated"].map(k => (
-                  <th key={k} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: T.info }}>{t(`page.myStudentsPage.${k}`)}</th>
+                  <th key={k} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: P.primaryDeep }}>{t(`page.myStudentsPage.${k}`)}</th>
                 ))}
               </tr>
             </thead>

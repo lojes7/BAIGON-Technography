@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DynamicGraphNode, DynamicGraphEdge } from "../types/dynamic-graph";
-import { nodeSizeOf } from "../constants/graph-theme";
 
 export interface SimNode extends Required<Pick<DynamicGraphNode, "x" | "y" | "vx" | "vy" | "radius">> {
   id: string;
   demandLevel: number;
-  requiredLevel?: string;
   fx: number | null;
   fy: number | null;
 }
@@ -50,9 +48,11 @@ const DEFAULTS = {
   demandRadiusFactor: 22,
 };
 
-/* 节点半径：需求热度（重要性）+ 熟练度要求 → 尺寸；中心恒星（46）始终最大 */
-export function defaultNodeRadius(demandLevel: number, requiredLevel?: string): number {
-  return nodeSizeOf(demandLevel, requiredLevel);
+/* 需求热度（重要性）→ 节点半径：0.65~1 线性映射到 min~max，放大节点间的尺寸差异 */
+export function defaultNodeRadius(demandLevel: number): number {
+  const { minRadius, maxRadius } = DEFAULTS;
+  const t = Math.min(1, Math.max(0, (demandLevel - 0.65) / 0.35));
+  return minRadius + t * (maxRadius - minRadius);
 }
 
 export function useForceSimulation(
@@ -60,14 +60,7 @@ export function useForceSimulation(
   inputEdges: DynamicGraphEdge[],
   options: ForceSimulationOptions,
 ) {
-  // 仅依赖原始值：保证 opts 跨渲染稳定，避免 step/effect 每帧重建导致无限更新
-  const opts = useMemo(() => ({ ...DEFAULTS, ...options }), [
-    options.width, options.height,
-    options.repulsionStrength, options.linkStrength, options.linkDistance,
-    options.gravityStrength, options.collisionRadiusPadding,
-    options.alphaDecay, options.velocityDecay,
-    options.minRadius, options.maxRadius, options.demandRadiusFactor,
-  ]);
+  const opts = { ...DEFAULTS, ...options };
   const rafRef = useRef<number | null>(null);
   const alphaRef = useRef(1);
   const [tick, setTick] = useState(0);
@@ -84,13 +77,12 @@ export function useForceSimulation(
     const idx = new Map<string, number>();
     for (let i = 0; i < n; i++) {
       const nd = inputNodes[i];
-      const radius = defaultNodeRadius(nd.demandLevel, nd.requiredLevel);
+      const radius = defaultNodeRadius(nd.demandLevel);
       idx.set(nd.id, i);
       const existing = simNodes.current.find((s) => s.id === nd.id);
       nodes[i] = {
         id: nd.id,
         demandLevel: nd.demandLevel,
-        requiredLevel: nd.requiredLevel,
         x: existing?.x ?? nd.x ?? width / 2 + (Math.random() - 0.5) * (width * 0.6),
         y: existing?.y ?? nd.y ?? height / 2 + (Math.random() - 0.5) * (height * 0.6),
         vx: existing?.vx ?? 0,
@@ -108,10 +100,7 @@ export function useForceSimulation(
       sourceId: e.source,
       targetId: e.target,
       strength: (opts.linkStrength ?? DEFAULTS.linkStrength) * (0.6 + 0.8 * (e.importance ?? 0.5)),
-      // weight 存在时直接作为弹簧自然长度（供恒星→关键技能等自定义连线使用）
-      distance: e.weight != null
-        ? e.weight
-        : (opts.linkDistance ?? DEFAULTS.linkDistance) / (0.6 + 0.6 * (e.importance ?? 0.5)),
+      distance: (opts.linkDistance ?? DEFAULTS.linkDistance) / (0.6 + 0.6 * (e.importance ?? 0.5)),
     }));
     simEdges.current = edges;
     alphaRef.current = 1;

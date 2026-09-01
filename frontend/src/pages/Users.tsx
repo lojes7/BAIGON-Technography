@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
 import T from "../constants/tokens";
+import P from "../constants/palette";
 import { listUsers, blockUser, unlockUser, getUniversities, getSchools, getDepartments } from "../services/user";
 import type { CurrentUser, OrganizationItem } from "../types/api";
 import { PageHeader, Btn, Card, Pagination } from "../components/ui";
@@ -125,8 +126,8 @@ function UsersPage() {
 
         {loading ? <div className="px-4 py-8 text-center text-[13px]" style={{ color: T.info }}>{t("common.loading")}</div>
         : users.length === 0 ? <div className="px-4 py-8 text-center text-[13px]" style={{ color: T.info }}>暂无用户</div>
-        : <table className="w-full text-[13px]"><thead><tr style={{ background: T.cloud }}>{["UID","姓名","角色","学院","系部","状态","操作"].map(h => (<th key={h} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: T.info }}>{h}</th>))}</tr></thead>
-        <tbody>{users.map(u => (<tr key={u.id} className="hover:bg-gray-50 transition-colors" style={{ borderTop: `1px solid ${T.cloud}` }}><td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{u.uid}</td><td className="px-4 py-3 font-medium" style={{ color: T.ink }}>{u.name || "—"}</td><td className="px-4 py-3 text-[12px]" style={{ color: T.info }}>{roleLabel(u.role)}</td><td className="px-4 py-3 text-[12px]" style={{ color: T.info }}>{u.school_name || "—"}</td><td className="px-4 py-3 text-[12px]" style={{ color: T.info }}>{u.department_name || "—"}</td><td className="px-4 py-3"><span className="text-[12px]" style={{ color: u.status === "NORMAL" ? T.emerging : T.risk }}>{u.status === "NORMAL" ? "正常" : "已封禁"}</span></td><td className="px-4 py-3"><button className="text-[12px] font-medium" style={{ color: T.pending }} onClick={() => handleToggleStatus(u)}>{u.status === "LOCKED" ? "解封" : "封禁"}</button></td></tr>))}</tbody></table>}
+        : <table className="w-full text-[13px]"><thead><tr style={{ background: P.sky }}>{["UID","姓名","角色","学院","系部","状态","操作"].map(h => (<th key={h} className="px-4 py-2.5 text-left font-medium text-[12px]" style={{ color: P.primaryDeep }}>{h}</th>))}</tr></thead>
+        <tbody>{users.map(u => (<tr key={u.id} className="hover:bg-gray-50 transition-colors" style={{ borderTop: `1px solid ${T.cloud}` }}><td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{u.uid}</td><td className="px-4 py-3 font-medium" style={{ color: T.ink }}>{u.name || "-"}</td><td className="px-4 py-3 text-[12px]" style={{ color: T.info }}>{roleLabel(u.role)}</td><td className="px-4 py-3 text-[12px]" style={{ color: T.info }}>{u.school_name || "-"}</td><td className="px-4 py-3 text-[12px]" style={{ color: T.info }}>{u.department_name || "-"}</td><td className="px-4 py-3"><span className="text-[12px]" style={{ color: u.status === "NORMAL" ? T.emerging : T.risk }}>{u.status === "NORMAL" ? "正常" : "已封禁"}</span></td><td className="px-4 py-3"><button className="text-[12px] font-medium" style={{ color: T.pending }} onClick={() => handleToggleStatus(u)}>{u.status === "LOCKED" ? "解封" : "封禁"}</button></td></tr>))}</tbody></table>}
 
         {total > 0 && (
           <div className="px-4 py-3">
@@ -154,7 +155,7 @@ function OrgList({ title, items }: { title: string; items: OrganizationItem[] })
       {items.length === 0 ? (
         <div className="text-[12px] py-4 text-center" style={{ color: T.info }}>暂无数据</div>
       ) : (
-        <div className="max-h-64 overflow-y-auto divide-y" style={{ border: `1px solid ${T.cloud}`, borderRadius: 8, borderColor: T.cloud }}>
+        <div className="max-h-64 overflow-y-auto divide-y divide-[#E4EAF2]" style={{ border: `1px solid ${T.cloud}`, borderRadius: 8 }}>
           {items.map(i => (
             <div key={i.id} className="px-3 py-2 text-[13px]" style={{ color: T.ink }}>{i.name}</div>
           ))}

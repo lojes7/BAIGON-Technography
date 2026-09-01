@@ -1,10 +1,9 @@
-// 岗位技能归一审核工作台：只暴露后端支持的三种互斥审核动作。
 import { useEffect, useState } from "react";
 import { CheckCircle, Eye, Loader2, Plus, Search, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Btn, Card, PageHeader, Pagination, UnderlineTabs } from "../components/ui";
-import T from "../constants/tokens";
+import P from "../constants/palette";
 import { isHttpErrorStatus } from "../services/http-error";
 import {
   getSkillResolutionTask,
@@ -259,8 +258,28 @@ function ReviewWorkbenchPage() {
         breadcrumbs={[t("nav.aiProcessing"), t("nav.reviewQueue")]}
         title="技能归一审核"
         description="将岗位分析产出的原始技能映射为规范技能，或创建新的规范技能"
-        actions={<span className="font-mono text-[13px]" style={{ color: T.info }}>共 {visibleItems.length} 项</span>}
+        actions={<span className="font-mono text-[13px]" style={{ color: P.muted }}>共 {visibleItems.length} 项</span>}
       />
+
+      {/* KPI 统计行 */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="rounded-2xl p-5 flex flex-col text-white relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${P.primary} 0%, ${P.primaryDeep} 100%)`, minHeight: 120 }}>
+          <div className="absolute -right-8 -top-10 w-32 h-32 rounded-full" style={{ background: "rgba(255,255,255,0.07)" }} />
+          <span className="text-[13px]" style={{ color: "rgba(255,255,255,0.85)" }}>归一任务总数</span>
+          <div className="text-[30px] font-mono font-semibold leading-tight mt-1">{items.length}</div>
+          <span className="mt-auto inline-flex w-fit text-[11px] px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.16)", color: "#fff" }}>全量拉取本地分组</span>
+        </div>
+        {[
+          { label: "待审核", value: items.filter((i) => i.reviewStatus === "PENDING").length, chip: "需人工确认", bg: P.amberBg, color: P.amber },
+          { label: "已归一", value: items.filter((i) => i.reviewStatus === "PASSED").length, chip: "已归一", bg: P.greenBg, color: P.green },
+        ].map((k) => (
+          <div key={k.label} className="bg-white rounded-2xl p-5 flex flex-col" style={{ border: `1px solid ${P.border}`, minHeight: 120 }}>
+            <span className="text-[13px]" style={{ color: P.muted }}>{k.label}</span>
+            <div className="text-[30px] font-mono font-semibold leading-tight mt-1" style={{ color: P.ink }}>{k.value}</div>
+            <span className="mt-auto inline-flex w-fit text-[11px] px-2 py-0.5 rounded-full" style={{ background: k.bg, color: k.color }}>{k.chip}</span>
+          </div>
+        ))}
+      </div>
 
       <UnderlineTabs
         sections={[
@@ -288,36 +307,36 @@ function ReviewWorkbenchPage() {
 
       <Card>
         {loading ? (
-          <div className="px-4 py-12 text-center text-[13px]" style={{ color: T.info }}>加载中…</div>
+          <div className="px-4 py-12 text-center text-[13px]" style={{ color: P.muted }}>加载中…</div>
         ) : visibleItems.length === 0 ? (
-          <div className="px-4 py-12 text-center text-[13px]" style={{ color: T.info }}>暂无符合条件的技能归一任务</div>
+          <div className="px-4 py-12 text-center text-[13px]" style={{ color: P.muted }}>暂无符合条件的技能归一任务</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[920px] text-[13px]">
               <thead>
-                <tr style={{ background: T.cloud }}>
+                <tr style={{ background: P.sky }}>
                   {["任务 ID", "岗位 ID", "原始技能", "AI 状态", "审核状态", "归一结果", "尝试次数", "创建时间", "操作"].map((heading) => (
-                    <th key={heading} className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: T.info }}>{heading}</th>
+                    <th key={heading} className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: P.primaryDeep }}>{heading}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {pagedItems.map((item) => (
-                  <tr key={item.id} className="transition-colors hover:bg-gray-50" style={{ borderTop: `1px solid ${T.cloud}` }}>
-                    <td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{item.id}</td>
-                    <td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{item.jobId}</td>
-                    <td className="px-4 py-3 font-medium" style={{ color: T.ink }}>{item.skillName || "—"}</td>
+                  <tr key={item.id} className="transition-colors hover:bg-gray-50" style={{ borderTop: `1px solid ${P.border}` }}>
+                    <td className="px-4 py-3 font-mono text-[12px]" style={{ color: P.muted }}>{item.id}</td>
+                    <td className="px-4 py-3 font-mono text-[12px]" style={{ color: P.muted }}>{item.jobId}</td>
+                    <td className="px-4 py-3 font-medium" style={{ color: P.ink }}>{item.skillName || "-"}</td>
                     <td className="px-4 py-3"><TaskStatus status={item.taskStatus} /></td>
                     <td className="px-4 py-3"><ReviewStatus status={item.reviewStatus} /></td>
-                    <td className="px-4 py-3 text-[12px]" style={{ color: T.info }}>
-                      {item.resolutionAction ? `${ACTION_LABEL[item.resolutionAction] || item.resolutionAction} · ${item.selectedSkillId || "新建"}` : "—"}
+                    <td className="px-4 py-3 text-[12px]" style={{ color: P.muted }}>
+                      {item.resolutionAction ? `${ACTION_LABEL[item.resolutionAction] || item.resolutionAction} · ${item.selectedSkillId || "新建"}` : "-"}
                     </td>
-                    <td className="px-4 py-3 text-[12px]" style={{ color: T.info }}>{item.attempts}</td>
-                    <td className="px-4 py-3 font-mono text-[12px]" style={{ color: T.info }}>{item.createdAt?.slice(0, 10) || "—"}</td>
+                    <td className="px-4 py-3 text-[12px]" style={{ color: P.muted }}>{item.attempts}</td>
+                    <td className="px-4 py-3 font-mono text-[12px]" style={{ color: P.muted }}>{item.createdAt?.slice(0, 10) || "-"}</td>
                     <td className="px-4 py-3">
                       <button
                         className="flex items-center gap-1 text-[12px] font-medium disabled:opacity-50"
-                        style={{ color: T.teal }}
+                        style={{ color: P.primary }}
                         disabled={openingId === item.id}
                         onClick={() => void openDetail(item.id)}
                       >
@@ -340,27 +359,27 @@ function ReviewWorkbenchPage() {
       {detail && (
         <div className="fixed inset-0 z-50 flex" style={{ background: "rgba(25,50,77,0.3)" }} onClick={closeDetail}>
           <div className="ml-auto flex h-full w-[680px] flex-col overflow-y-auto bg-white shadow-xl" onClick={(event) => event.stopPropagation()}>
-            <div className="sticky top-0 z-10 flex items-center justify-between bg-white px-5 py-4" style={{ borderBottom: `1px solid ${T.cloud}` }}>
+            <div className="sticky top-0 z-10 flex items-center justify-between bg-white px-5 py-4" style={{ borderBottom: `1px solid ${P.skySoft}` }}>
               <div>
-                <h2 className="text-[15px] font-medium" style={{ color: T.ink }}>技能归一任务 #{detail.task.id}</h2>
+                <h2 className="text-[15px] font-medium" style={{ color: P.ink }}>技能归一任务 #{detail.task.id}</h2>
                 <div className="mt-1 flex items-center gap-2"><TaskStatus status={detail.task.taskStatus} /><ReviewStatus status={detail.task.reviewStatus} /></div>
               </div>
-              <button onClick={closeDetail} style={{ color: T.info }}><X size={18} /></button>
+              <button onClick={closeDetail} style={{ color: P.muted }}><X size={18} /></button>
             </div>
 
             <div className="flex-1 space-y-5 px-5 py-4">
               <Card title="岗位技能原始信息">
                 <div className="space-y-3 px-4 py-3">
-                  <InfoRow label="技能名称" value={detail.jobSkill.skillName || detail.task.skillName || "—"} />
-                  <InfoRow label="熟练度" value={detail.jobSkill.skillProficiency || "—"} />
-                  <InfoRow label="证据" value={detail.jobSkill.evidence || "—"} />
-                  <InfoRow label="岗位 ID" value={detail.task.jobId || "—"} mono />
+                  <InfoRow label="技能名称" value={detail.jobSkill.skillName || detail.task.skillName || "-"} />
+                  <InfoRow label="熟练度" value={detail.jobSkill.skillProficiency || "-"} />
+                  <InfoRow label="证据" value={detail.jobSkill.evidence || "-"} />
+                  <InfoRow label="岗位 ID" value={detail.task.jobId || "-"} mono />
                   {detail.task.errorMsg && <InfoRow label="AI 错误" value={detail.task.errorMsg} danger />}
                 </div>
               </Card>
 
               {!canReview && (
-                <div className="rounded-md px-3 py-2 text-[12px]" style={{ background: T.cloud, color: T.info }}>
+                <div className="rounded-md px-3 py-2 text-[12px]" style={{ background: P.skySoft, color: P.muted }}>
                   {detail.task.reviewStatus === "PASSED"
                     ? `该任务已按“${ACTION_LABEL[detail.task.resolutionAction] || detail.task.resolutionAction}”完成归一，当前为只读状态。`
                     : "AI 任务仍在等待或运行中，候选生成完成后才能审核。"}
@@ -368,7 +387,7 @@ function ReviewWorkbenchPage() {
               )}
 
               <section className="space-y-3">
-                <div className="text-[12px] font-medium" style={{ color: T.info }}>归一动作</div>
+                <div className="text-[12px] font-medium" style={{ color: P.muted }}>归一动作</div>
                 <div className="grid grid-cols-3 gap-2">
                   <ActionButton
                     active={action === "SELECT_CANDIDATE"}
@@ -404,32 +423,32 @@ function ReviewWorkbenchPage() {
                   />
                 </div>
                 {detail.task.taskStatus === "FAILED" && detail.task.reviewStatus === "PENDING" && (
-                  <div className="text-[12px]" style={{ color: T.info }}>AI 处理失败，仍可选择现有规范技能或新建规范技能。</div>
+                  <div className="text-[12px]" style={{ color: P.muted }}>AI 处理失败，仍可选择现有规范技能或新建规范技能。</div>
                 )}
               </section>
 
               {action === "SELECT_CANDIDATE" && (
                 <section className="space-y-2">
-                  <div className="text-[12px] font-medium" style={{ color: T.info }}>AI 候选（按相似度排序）</div>
+                  <div className="text-[12px] font-medium" style={{ color: P.muted }}>AI 候选（按相似度排序）</div>
                   {detail.candidates.length === 0 ? (
-                    <div className="rounded-md px-3 py-6 text-center text-[13px]" style={{ background: T.cloud, color: T.info }}>暂无候选</div>
+                    <div className="rounded-md px-3 py-6 text-center text-[13px]" style={{ background: P.skySoft, color: P.muted }}>暂无候选</div>
                   ) : detail.candidates.map((candidate) => (
                     <button
                       type="button"
                       key={candidate.skillId}
                       className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left disabled:cursor-not-allowed"
                       style={{
-                        border: `1px solid ${String(selectedSkillId) === String(candidate.skillId) ? T.teal : T.border}`,
-                        background: String(selectedSkillId) === String(candidate.skillId) ? `${T.teal}10` : "white",
+                        border: `1px solid ${String(selectedSkillId) === String(candidate.skillId) ? P.primary : P.border}`,
+                        background: String(selectedSkillId) === String(candidate.skillId) ? `${P.primary}10` : "white",
                       }}
                       disabled={!canReview}
                       onClick={() => {
                         setSelectedSkillId(String(candidate.skillId));
                       }}
                     >
-                      <span className="font-mono text-[11px]" style={{ color: T.info }}>#{candidate.rank}</span>
-                      <span className="flex-1 text-[13px] font-medium" style={{ color: T.ink }}>{candidate.skillName}</span>
-                      <span className="font-mono text-[12px]" style={{ color: T.info }}>{(candidate.similarity * 100).toFixed(1)}%</span>
+                      <span className="font-mono text-[11px]" style={{ color: P.muted }}>#{candidate.rank}</span>
+                      <span className="flex-1 text-[13px] font-medium" style={{ color: P.ink }}>{candidate.skillName}</span>
+                      <span className="font-mono text-[12px]" style={{ color: P.muted }}>{(candidate.similarity * 100).toFixed(1)}%</span>
                     </button>
                   ))}
                 </section>
@@ -438,25 +457,25 @@ function ReviewWorkbenchPage() {
               {action === "SELECT_EXISTING" && (
                 <section className="space-y-4">
                   {detail.task.reviewStatus === "PASSED" && detail.task.selectedSkillId && (
-                    <div className="rounded-md px-3 py-2 font-mono text-[12px]" style={{ background: T.cloud, color: T.ink }}>
+                    <div className="rounded-md px-3 py-2 font-mono text-[12px]" style={{ background: P.skySoft, color: P.ink }}>
                       已选规范技能 ID：{detail.task.selectedSkillId}
                     </div>
                   )}
 
                   <div className="space-y-2">
                     <div>
-                      <div className="text-[12px] font-medium" style={{ color: T.info }}>相似技能 Top 5</div>
-                      <div className="mt-1 text-[11px]" style={{ color: T.info }}>
+                      <div className="text-[12px] font-medium" style={{ color: P.muted }}>相似技能 Top 5</div>
+                      <div className="mt-1 text-[11px]" style={{ color: P.muted }}>
                         仅使用待审技能向量计算最相似的 5 个已向量化规范技能。
                       </div>
                     </div>
-                    <div className="overflow-hidden rounded-md" style={{ border: `1px solid ${T.border}` }}>
+                    <div className="overflow-hidden rounded-md" style={{ border: `1px solid ${P.border}` }}>
                       {loadingSimilarSkills ? (
-                        <div className="flex items-center justify-center gap-2 px-3 py-8 text-[12px]" style={{ color: T.info }}>
+                        <div className="flex items-center justify-center gap-2 px-3 py-8 text-[12px]" style={{ color: P.muted }}>
                           <Loader2 size={13} className="animate-spin" />正在计算 Top 5…
                         </div>
                       ) : similarSkills.length === 0 ? (
-                        <div className="px-3 py-8 text-center text-[12px]" style={{ color: T.info }}>
+                        <div className="px-3 py-8 text-center text-[12px]" style={{ color: P.muted }}>
                           待审技能暂无可用向量，无法计算相似技能
                         </div>
                       ) : similarSkills.map((skill) => (
@@ -465,20 +484,20 @@ function ReviewWorkbenchPage() {
                           key={skill.skillId}
                           className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 disabled:cursor-not-allowed"
                           style={{
-                            background: String(selectedSkillId) === String(skill.skillId) ? `${T.teal}10` : "transparent",
-                            borderBottom: `1px solid ${T.cloud}`,
+                            background: String(selectedSkillId) === String(skill.skillId) ? `${P.primary}10` : "transparent",
+                            borderBottom: `1px solid ${P.skySoft}`,
                           }}
                           disabled={!canReview}
                           onClick={() => setSelectedSkillId(String(skill.skillId))}
                         >
-                          <span className="w-6 font-mono text-[11px]" style={{ color: T.info }}>#{skill.rank}</span>
-                          <span className="flex-1 text-[13px] font-medium" style={{ color: T.ink }}>{skill.skillName}</span>
+                          <span className="w-6 font-mono text-[11px]" style={{ color: P.muted }}>#{skill.rank}</span>
+                          <span className="flex-1 text-[13px] font-medium" style={{ color: P.ink }}>{skill.skillName}</span>
                           {detail.candidates.some((candidate) => String(candidate.skillId) === String(skill.skillId)) && (
-                            <span className="rounded px-1.5 py-0.5 text-[10px]" style={{ background: `${T.teal}12`, color: T.teal }}>
+                            <span className="rounded px-1.5 py-0.5 text-[10px]" style={{ background: `${P.primary}12`, color: P.primary }}>
                               AI 候选
                             </span>
                           )}
-                          <span className="w-14 text-right font-mono text-[11px]" style={{ color: T.info }}>
+                          <span className="w-14 text-right font-mono text-[11px]" style={{ color: P.muted }}>
                             {(skill.similarity * 100).toFixed(1)}%
                           </span>
                         </button>
@@ -486,21 +505,21 @@ function ReviewWorkbenchPage() {
                     </div>
                   </div>
 
-                  <div className="space-y-2 border-t pt-4" style={{ borderColor: T.cloud }}>
+                  <div className="space-y-2 border-t pt-4" style={{ borderColor: P.skySoft }}>
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <div className="text-[12px] font-medium" style={{ color: T.info }}>全部规范技能</div>
-                        <div className="mt-1 text-[11px]" style={{ color: T.info }}>
+                        <div className="text-[12px] font-medium" style={{ color: P.muted }}>全部规范技能</div>
+                        <div className="mt-1 text-[11px]" style={{ color: P.muted }}>
                           普通分页列表按技能名称稳定排序，可直接浏览；搜索仅用于可选筛选。
                         </div>
                       </div>
-                      <span className="shrink-0 font-mono text-[11px]" style={{ color: T.info }}>共 {skillTotal} 项</span>
+                      <span className="shrink-0 font-mono text-[11px]" style={{ color: P.muted }}>共 {skillTotal} 项</span>
                     </div>
                     {canReview && (
                       <div className="flex gap-2">
                         <input
                           className="h-9 flex-1 rounded-md px-3 text-[13px] outline-none"
-                          style={{ border: `1px solid ${T.border}`, color: T.ink }}
+                          style={{ border: `1px solid ${P.border}`, color: P.ink }}
                           placeholder="可选：按技能名称筛选"
                           value={keyword}
                           onChange={(event) => setKeyword(event.target.value)}
@@ -511,35 +530,35 @@ function ReviewWorkbenchPage() {
                         </Btn>
                       </div>
                     )}
-                    <div className="max-h-72 overflow-y-auto rounded-md" style={{ border: `1px solid ${T.border}` }}>
+                    <div className="max-h-72 overflow-y-auto rounded-md" style={{ border: `1px solid ${P.border}` }}>
                       {searching ? (
-                        <div className="flex items-center justify-center gap-2 px-3 py-8 text-[12px]" style={{ color: T.info }}>
+                        <div className="flex items-center justify-center gap-2 px-3 py-8 text-[12px]" style={{ color: P.muted }}>
                           <Loader2 size={13} className="animate-spin" />正在加载规范技能…
                         </div>
                       ) : skillResults.length === 0 ? (
-                        <div className="px-3 py-8 text-center text-[12px]" style={{ color: T.info }}>暂无符合条件的规范技能</div>
+                        <div className="px-3 py-8 text-center text-[12px]" style={{ color: P.muted }}>暂无符合条件的规范技能</div>
                       ) : skillResults.map((skill) => (
                           <button
                             type="button"
                             key={skill.id}
                             className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 disabled:cursor-not-allowed"
                             style={{
-                              background: String(selectedSkillId) === String(skill.id) ? `${T.teal}10` : "transparent",
-                              borderBottom: `1px solid ${T.cloud}`,
+                              background: String(selectedSkillId) === String(skill.id) ? `${P.primary}10` : "transparent",
+                              borderBottom: `1px solid ${P.skySoft}`,
                             }}
                             disabled={!canReview}
                             onClick={() => setSelectedSkillId(String(skill.id))}
                           >
-                            <span className="flex-1 text-[13px]" style={{ color: T.ink }}>{skill.name}</span>
+                            <span className="flex-1 text-[13px]" style={{ color: P.ink }}>{skill.name}</span>
                             {detail.candidates.some((candidate) => String(candidate.skillId) === String(skill.id)) && (
-                              <span className="rounded px-1.5 py-0.5 text-[10px]" style={{ background: `${T.teal}12`, color: T.teal }}>
+                              <span className="rounded px-1.5 py-0.5 text-[10px]" style={{ background: `${P.primary}12`, color: P.primary }}>
                                 AI 候选
                               </span>
                             )}
-                            <span className="font-mono text-[10px]" style={{ color: T.info }}>ID {skill.id}</span>
+                            <span className="font-mono text-[10px]" style={{ color: P.muted }}>ID {skill.id}</span>
                             <span className="rounded px-1.5 py-0.5 text-[10px]" style={{
-                              background: skill.is_embed ? `${T.emerging}12` : `${T.pending}12`,
-                              color: skill.is_embed ? T.emerging : T.pending,
+                              background: skill.is_embed ? `${P.green}12` : `${P.amber}12`,
+                              color: skill.is_embed ? P.green : P.amber,
                             }}>
                               {skill.is_embed ? "已向量化" : "未向量化"}
                             </span>
@@ -557,18 +576,18 @@ function ReviewWorkbenchPage() {
 
               {action === "CREATE_NEW" && (
                 <section className="space-y-2">
-                  <div className="text-[12px] font-medium" style={{ color: T.info }}>新规范技能名称</div>
+                  <div className="text-[12px] font-medium" style={{ color: P.muted }}>新规范技能名称</div>
                   {canReview ? (
                     <input
                       className="h-9 w-full rounded-md px-3 text-[13px] outline-none"
-                      style={{ border: `1px solid ${T.border}`, color: T.ink }}
+                      style={{ border: `1px solid ${P.border}`, color: P.ink }}
                       placeholder="请输入明确、去重后的规范技能名称"
                       value={newSkillName}
                       maxLength={100}
                       onChange={(event) => setNewSkillName(event.target.value)}
                     />
                   ) : (
-                    <div className="rounded-md px-3 py-2 text-[13px]" style={{ background: T.cloud, color: T.ink }}>
+                    <div className="rounded-md px-3 py-2 text-[13px]" style={{ background: P.skySoft, color: P.ink }}>
                       已通过本任务创建新规范技能
                     </div>
                   )}
@@ -576,7 +595,7 @@ function ReviewWorkbenchPage() {
               )}
             </div>
 
-            <div className="flex shrink-0 justify-end gap-2 px-5 py-4" style={{ borderTop: `1px solid ${T.cloud}` }}>
+            <div className="flex shrink-0 justify-end gap-2 px-5 py-4" style={{ borderTop: `1px solid ${P.skySoft}` }}>
               <Btn variant="secondary" onClick={closeDetail}>{canReview ? "取消" : "关闭"}</Btn>
               {canReview && (
                 <Btn disabled={submitting} onClick={() => void submit()}>
@@ -599,7 +618,7 @@ function TaskStatus({ status }: { status: string }) {
       background: failed ? "#fee2e2" : success ? "#dcfce7" : "#fef9c3",
       color: failed ? "#991b1b" : success ? "#166534" : "#854d0e",
     }}>
-      {TASK_STATUS_LABEL[status] || status || "—"}
+      {TASK_STATUS_LABEL[status] || status || "-"}
     </span>
   );
 }
@@ -611,7 +630,7 @@ function ReviewStatus({ status }: { status: string }) {
       background: passed ? "#dcfce7" : "#fef9c3",
       color: passed ? "#166534" : "#854d0e",
     }}>
-      {REVIEW_STATUS_LABEL[status] || status || "—"}
+      {REVIEW_STATUS_LABEL[status] || status || "-"}
     </span>
   );
 }
@@ -634,9 +653,9 @@ function ActionButton({
       type="button"
       className="flex items-center justify-center gap-1.5 rounded-md px-2 py-2 text-[12px] disabled:cursor-not-allowed disabled:opacity-40"
       style={{
-        border: `1px solid ${active ? T.teal : T.border}`,
-        color: active ? "white" : T.ink,
-        background: active ? T.teal : "white",
+        border: `1px solid ${active ? P.primary : P.border}`,
+        color: active ? "white" : P.ink,
+        background: active ? P.primary : "white",
       }}
       disabled={disabled}
       onClick={onClick}
@@ -654,8 +673,8 @@ function InfoRow({ label, value, mono = false, danger = false }: {
 }) {
   return (
     <div className="grid grid-cols-[90px_1fr] gap-3 text-[12px]">
-      <span style={{ color: T.info }}>{label}</span>
-      <span className={mono ? "font-mono" : ""} style={{ color: danger ? T.risk : T.ink }}>{value}</span>
+      <span style={{ color: P.muted }}>{label}</span>
+      <span className={mono ? "font-mono" : ""} style={{ color: danger ? P.red : P.ink }}>{value}</span>
     </div>
   );
 }
