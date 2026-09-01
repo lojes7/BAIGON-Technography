@@ -7,7 +7,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 import { useNav } from "../context/NavContext";
-import { DEMO_STATS } from "../services/demo-pool";
+import { useLiveStats } from "../services/live-stats";
 import { INGEST_CSV_COLUMNS } from "../features/ingest/csv";
 import IngestFormModal from "../components/overlay/IngestFormModal";
 
@@ -72,6 +72,8 @@ function KpiCard({ children, onClick, featured = false }: {
 function DataImportPage() {
   const { t } = useTranslation();
   const nav = useNav();
+  // 动态统计口径：演示池 + 真实数据（导入/复核后自动增长），与列表页脚同源
+  const stats = useLiveStats();
 
   return (
     <div className="flex flex-col gap-5">
@@ -92,17 +94,17 @@ function DataImportPage() {
               <ArrowUpRight size={14} color="#fff" />
             </span>
           </div>
-          <div className="text-[32px] font-mono font-semibold leading-tight mt-1">{DEMO_STATS.total}</div>
+          <div className="text-[32px] font-mono font-semibold leading-tight mt-1">{stats.total}</div>
           <div className="mt-auto flex items-center gap-2">
-            <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.16)", color: "#fff" }}>+{DEMO_STATS.todayNew} 今日</span>
-            <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.6)" }}>覆盖 {DEMO_STATS.directions} 大技术方向</span>
+            <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.16)", color: "#fff" }}>+{stats.todayNew} 今日</span>
+            <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.6)" }}>覆盖 {stats.directions} 大技术方向</span>
           </div>
         </KpiCard>
 
         {[
           { title: "注入批次", value: String(recentBatches.length), icon: Layers, chip: "08-01 起累计", bg: P.skySoft, color: P.primary },
-          { title: "待复核样本", value: String(DEMO_STATS.pending), icon: AlertTriangle, chip: `${DEMO_STATS.pendingHigh} 项高优先级`, bg: P.amberBg, color: P.amber, warn: true },
-          { title: "复核通过率", value: DEMO_STATS.passRate, icon: CheckCircle2, chip: "全量口径", bg: P.greenBg, color: P.green },
+          { title: "待复核样本", value: String(stats.pending), icon: AlertTriangle, chip: `${stats.pendingHigh} 项高优先级`, bg: P.amberBg, color: P.amber, warn: true },
+          { title: "复核通过率", value: stats.passRate, icon: CheckCircle2, chip: "全量口径", bg: P.greenBg, color: P.green },
         ].map((k) => (
           <KpiCard key={k.title} onClick={() => nav("raw-records")}>
             <div className="flex items-start justify-between">
@@ -179,9 +181,9 @@ function DataImportPage() {
               ))}
             </div>
             <div className="mt-4 space-y-1.5 text-[12px]" style={{ color: "rgba(255,255,255,0.65)" }}>
-              <div className="flex justify-between"><span>今日新增样本</span><span className="font-mono" style={{ color: "#fff" }}>+{DEMO_STATS.todayNew}</span></div>
-              <div className="flex justify-between"><span>最近一次采集</span><span className="font-mono" style={{ color: "#fff" }}>{DEMO_STATS.latestTime}</span></div>
-              <div className="flex justify-between"><span>最近 trace</span><span className="font-mono" style={{ color: "#9DBCE4" }}>{DEMO_STATS.latestTrace}</span></div>
+              <div className="flex justify-between"><span>今日新增样本</span><span className="font-mono" style={{ color: "#fff" }}>+{stats.todayNew}</span></div>
+              <div className="flex justify-between"><span>最近一次采集</span><span className="font-mono" style={{ color: "#fff" }}>{stats.latestTime}</span></div>
+              <div className="flex justify-between"><span>最近 trace</span><span className="font-mono" style={{ color: "#9DBCE4" }}>{stats.latestTrace}</span></div>
             </div>
           </div>
         </div>
@@ -191,23 +193,23 @@ function DataImportPage() {
       <div className="grid grid-cols-12 gap-4">
         <div className="col-span-4 bg-white rounded-2xl" style={{ border: `1px solid ${P.border}` }}>
           <div className="px-5 pt-4 pb-1">
-            <div className="text-[15px] font-semibold" style={{ color: P.ink }}>近 1 个月注入趋势</div>
+            <div className="text-[15px] font-semibold" style={{ color: P.ink }}>近 12 个月注入趋势</div>
             <div className="text-[12px] mt-0.5" style={{ color: P.faint }}>单位：条清洗后样本</div>
           </div>
           <div className="px-3 pb-3 pt-2">
             <ResponsiveContainer width="100%" height={168}>
-              <BarChart data={DEMO_STATS.trend} barSize={8}>
+              <BarChart data={stats.trend} barSize={12}>
                 <CartesianGrid strokeDasharray="4 6" stroke={P.skySoft} vertical={false} />
                 <XAxis dataKey="dt" tick={{ fontSize: 10, fill: P.faint }} tickLine={false} axisLine={false}
-                  tickFormatter={(v: string) => v.slice(8)} interval={4} />
+                  tickFormatter={(v: string) => v.slice(5)} interval={1} />
                 <YAxis tick={{ fontSize: 10, fill: P.faint }} tickLine={false} axisLine={false} width={26} allowDecimals={false} />
                 <Tooltip
                   contentStyle={{ fontSize: 12, border: `1px solid ${P.border}`, borderRadius: 12, boxShadow: "0 8px 20px rgba(22,40,62,0.08)" }}
                   cursor={{ fill: P.skySoft }}
                 />
-                <Bar dataKey="n" name="注入样本" radius={[4, 4, 4, 4]}>
-                  {DEMO_STATS.trend.map((_, i) => (
-                    <Cell key={i} fill={i === DEMO_STATS.trend.length - 1 ? P.primary : P.sky} />
+                <Bar dataKey="n" name="注入样本" radius={[6, 6, 6, 6]}>
+                  {stats.trend.map((_, i) => (
+                    <Cell key={i} fill={i === stats.trend.length - 1 ? P.primary : P.sky} />
                   ))}
                 </Bar>
               </BarChart>

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import T from "../constants/tokens";
 import {
   RELATION_COLOR,
-  CONFIDENCE_ALPHA,
   getNodeFill,
   TREND_COLOR,
   PROFICIENCY_LEVELS,
@@ -70,10 +69,22 @@ function project3D(
   const p = rotatePoint(x3 * expandScale, y3 * expandScale, z3 * expandScale, rotX, rotY);
   // camera / (camera - z * 1.15) → 近大远小透视因子（≈ 0.7 ~ 1.8）
   const perspective = camera / (camera - p.z * 1.15);
+  // 径向视觉均匀化：节点仍严格在球面上，仅重排投影落点半径。
+  // 球面均匀分布的投影半径 CDF 为 P(<r0)=1−√(1−r0²)（边缘密度发散）；
+  // 令 r'²=1−√(1−r0²) 对齐均匀圆盘 CDF（P(<r')=r'²）→ 视觉上里外密度一致。
+  // 轮廓半径不变（r0:0→0, 1→1），超球坐标（expandScale>1）保持线性不压缩。
+  const r0 = Math.hypot(p.x, p.y);
+  let radial = 1;
+  if (r0 < 1e-6) {
+    radial = Math.SQRT1_2;
+  } else if (r0 < 1) {
+    const cosT = Math.sqrt(1 - r0 * r0);
+    radial = Math.sqrt(1 - cosT) / r0;
+  }
   // 第二层：pixelScale 把 3D 坐标映射到屏幕像素
   return {
-    x: centerX + p.x * pixelScale * perspective,
-    y: centerY + p.y * pixelScale * perspective,
+    x: centerX + p.x * pixelScale * perspective * radial,
+    y: centerY + p.y * pixelScale * perspective * radial,
     projZ: p.z,
     perspScale: perspective,
   };
@@ -311,6 +322,9 @@ function AbilityGraphInner(
     return list;
   }, [inputEdges, skillIds]);
 
+  /* 子技能虚线箭头对应的普通边 id：这些边只由关键连线层渲染，普通边层跳过避免重叠 */
+  const subLinkEdgeIds = useMemo(() => new Set(subLinks.map((l) => l.edgeId)), [subLinks]);
+
   /* ===== 3D 球面节点初始化：中心领域固定球心，其余 Fibonacci 均匀分布在球面上 ===== */
   const sphericalNodes = useMemo<SphericalNode[]>(() => {
     if (inputNodes.length === 0) return [];
@@ -386,12 +400,6 @@ function AbilityGraphInner(
     return m;
   }, [inputNodes]);
 
-  const edgeById = useMemo(() => {
-    const m = new Map<string, DynamicGraphEdge>();
-    for (const e of inputEdges) m.set(e.id, e);
-    return m;
-  }, [inputEdges]);
-
   const neighborMap = useMemo(() => {
     const m = new Map<string, Set<string>>();
     for (const e of inputEdges) {
@@ -402,12 +410,6 @@ function AbilityGraphInner(
     }
     return m;
   }, [inputEdges]);
-
-  const edgeConnectsNodes = useCallback((edgeId: string, ids: Set<string>) => {
-    const e = edgeById.get(edgeId);
-    if (!e) return false;
-    return ids.has(e.source) && ids.has(e.target);
-  }, [edgeById]);
 
   /* ===== 视图切换（技术栈 / 熟练度级别）：未命中的节点淡出为背景 ===== */
   const stackActive = !!highlight.stackFilter && highlight.stackFilter !== "全部";
@@ -669,9 +671,12 @@ function AbilityGraphInner(
         <rect className="graph-bg" x={0} y={0} width={width} height={height} fill="url(#graph-grid)" />
 
         <g transform={`translate(${vx} ${vy}) scale(${vk})`}>
-          {/* 普通边层：无箭头，淡彩实线/虚线；技能相关边默认隐藏（仅保留关键连线） */}
+          {/* 普通边层：默认全部隐藏——密集球面只呈现节点，点击节点才显示连线。
+              规则：选中节点后仅展开与其直接相连的一跳连线；路径查询命中的边始终显示；
+              子技能 BROADER_THAN 边由关键连线层渲染为虚线箭头，此处跳过避免重叠 */}
           <g className="edges-layer">
             {inputEdges.map((orig) => {
+              if (subLinkEdgeIds.has(orig.id)) return null;
               const sIdx = sphericalNodes.findIndex((n) => n.id === orig.source);
               const tIdx = sphericalNodes.findIndex((n) => n.id === orig.target);
               if (sIdx < 0 || tIdx < 0) return null;
@@ -679,37 +684,18 @@ function AbilityGraphInner(
               const tNode = sphericalNodes[tIdx]!;
               const rt: RelationType = orig.relationType;
               const colorCfg = RELATION_COLOR[rt];
-              const showEdge =
-                visibleIds.has(orig.source) && visibleIds.has(orig.target) &&
-                edgeConnectsNodes(orig.id, visibleIds);
-              if (!showEdge) return null;
-
               const isOnPath = highlight.pathEdgeIds.has(orig.id);
-              /* 技能节点只通过关键连线呈现，其余技能相关边不再连接 */
-              const touchesSkill = skillIds.has(orig.source) || skillIds.has(orig.target);
-              if (touchesSkill && !isOnPath) return null;
-
-              const sel = highlight.selectedId && (orig.source === highlight.selectedId || orig.target === highlight.selectedId);
-              const hov = highlight.hoveredId && (orig.source === highlight.hoveredId || orig.target === highlight.hoveredId);
-              const dim = highlight.focusNeighborsOf && !(orig.source === highlight.focusNeighborsOf || orig.target === highlight.focusNeighborsOf);
-              const centerTouch = orig.source === highlight.centerDomainId || orig.target === highlight.centerDomainId;
-              const viewOff = viewActive && !(viewMatch(orig.source) && viewMatch(orig.target)) && !centerTouch;
-              const baseAlpha = CONFIDENCE_ALPHA[orig.confidence] ?? 0.6;
-              /* 选中节点存在时：非相关边淡出，衬托选中节点+邻居+连线的高亮 */
-              const focusDimmed = !!highlight.selectedId && !sel;
+              const touchesSelected = !!highlight.selectedId &&
+                (orig.source === highlight.selectedId || orig.target === highlight.selectedId);
+              if (!isOnPath && !touchesSelected) return null;
+              if (!visibleIds.has(orig.source) || !visibleIds.has(orig.target)) return null;
 
               const curved = rt === "RELATED_TO" || rt === "SIMILAR_TO";
               const path = edgePath(sNode.x, sNode.y, tNode.x, tNode.y, sNode.radius * sNode.perspScale, tNode.radius * tNode.perspScale, curved ? 0.16 : 0.04);
-              const strokeW = isOnPath ? 3.2 : sel ? 2.6 : hov ? 2.2 : rt === "REQUIRES" ? 1.4 : 1.1;
-              const stroke = isOnPath ? "#D6AE7E" : sel ? "#7C93B5" : colorCfg.stroke;
-              const opacity = dim ? 0.05
-                : viewOff ? 0.05
-                : focusDimmed ? 0.12
-                : isOnPath ? 1
-                : sel ? 0.95
-                : hov ? Math.max(0.6, baseAlpha)
-                : baseAlpha;
-              const dash = colorCfg.dash;
+              const strokeW = isOnPath ? 3.2 : 2.4;
+              const stroke = isOnPath ? "#D6AE7E" : "#7C93B5";
+              const opacity = isOnPath ? 1 : 0.95;
+              const dash = isOnPath ? undefined : colorCfg.dash;
 
               return (
                 <g key={orig.id}
@@ -722,10 +708,10 @@ function AbilityGraphInner(
                     style={{ pointerEvents: "stroke", cursor: "pointer" }} />
                   <path d={path.d} fill="none" stroke={stroke} strokeWidth={strokeW}
                     strokeLinecap="round"
-                    strokeDasharray={isOnPath || sel || hov ? undefined : dash}
+                    strokeDasharray={dash}
                     opacity={opacity}
                     style={{ pointerEvents: "none" }} />
-                  {showEdgeLabels && opacity > 0.5 && (
+                  {showEdgeLabels && (
                     <g style={{ pointerEvents: "none" }}>
                       <rect x={path.midX - 30} y={path.midY - 9} width={60} height={18} rx={9}
                         fill={colorCfg.labelBg} stroke={stroke} strokeWidth={0.8} opacity={0.9} />
@@ -740,46 +726,58 @@ function AbilityGraphInner(
             })}
           </g>
 
-          {/* 关键连线层：恒星→关键技能（淡彩实线箭头）、关键技能→子技能（浅色虚线箭头）
+          {/* 关键连线层：默认隐藏——点击恒星/关键技能/子技能（或路径查询命中）时才展开。
+              恒星→关键技能 = 淡彩实线箭头；关键技能→子技能 = 浅色虚线箭头。
               端点在节点边缘外收笔 + 节点层在其上，保证箭头不被覆盖 */}
           <g className="spokes-layer" style={{ pointerEvents: "none" }}>
             {centerDomainId && visibleIds.has(centerDomainId) && (() => {
               const star = sphericalNodes.find((n) => n.id === centerDomainId);
               if (!star) return null;
+              /* 点击驱动：选中恒星 → 展开全部辐条与子技能箭头；
+                 选中关键技能 → 展开其辐条与它的子技能箭头；
+                 选中子技能 → 展开指向它的虚线箭头；路径查询命中 → 对应连线以金色高亮 */
+              const selId = highlight.selectedId;
+              const spokeVisible = (sid: string) =>
+                selId === centerDomainId || selId === sid ||
+                highlight.pathNodeIds.has(centerDomainId) || highlight.pathNodeIds.has(sid);
+              const subVisible = (from: string, to: string, edgeId: string) =>
+                selId === centerDomainId || selId === from || selId === to ||
+                highlight.pathEdgeIds.has(edgeId);
               return (
                 <>
                   {KEY_SKILL_LIST.map((sid, i) => {
-                    if (!visibleIds.has(sid)) return null;
+                    if (!visibleIds.has(sid) || !spokeVisible(sid)) return null;
                     const nd = sphericalNodes.find((n) => n.id === sid);
                     if (!nd) return null;
                     const dim = linkDimmed(sid);
-                    /* 选中恒星或该关键技能时，此 spoke 高亮 */
-                    const sel = highlight.selectedId === centerDomainId || highlight.selectedId === sid;
-                    const focusDimmed = !!highlight.selectedId && !sel;
+                    const onPath = highlight.pathNodeIds.has(centerDomainId) && highlight.pathNodeIds.has(sid);
+                    const sel = selId === centerDomainId || selId === sid;
                     const seg = arrowLine(star.x, star.y, nd.x, nd.y, star.radius * star.perspScale, nd.radius * nd.perspScale);
-                    const color = STAR_SPOKE_COLORS[i % STAR_SPOKE_COLORS.length]!;
+                    const color = onPath ? "#D6AE7E" : STAR_SPOKE_COLORS[i % STAR_SPOKE_COLORS.length]!;
                     return (
                       <line key={sid} x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2}
-                        stroke={color} strokeWidth={sel ? 2.6 : dim ? 1 : 1.8} strokeLinecap="round"
-                        opacity={dim ? 0.08 : focusDimmed ? 0.18 : sel ? 1 : 0.9}
-                        markerEnd={`url(#spoke-arr-${i % STAR_SPOKE_COLORS.length})`} />
+                        stroke={color} strokeWidth={onPath || sel ? 2.6 : dim ? 1 : 1.8} strokeLinecap="round"
+                        opacity={onPath ? 1 : dim ? 0.08 : sel ? 1 : 0.9}
+                        markerEnd={onPath ? undefined : `url(#spoke-arr-${i % STAR_SPOKE_COLORS.length})`}
+                        filter={onPath ? "url(#glow)" : undefined} />
                     );
                   })}
                   {subLinks.map((l) => {
-                    if (!visibleIds.has(l.from) || !visibleIds.has(l.to)) return null;
+                    if (!visibleIds.has(l.from) || !visibleIds.has(l.to) || !subVisible(l.from, l.to, l.edgeId)) return null;
                     const from = sphericalNodes.find((n) => n.id === l.from);
                     const to = sphericalNodes.find((n) => n.id === l.to);
                     if (!from || !to) return null;
+                    const onPath = highlight.pathEdgeIds.has(l.edgeId);
                     const dim = linkDimmed(l.to) || linkDimmed(l.from);
-                    const sel = highlight.selectedId === l.from || highlight.selectedId === l.to;
-                    const focusDimmed = !!highlight.selectedId && !sel;
+                    const sel = selId === l.from || selId === l.to;
                     const seg = arrowLine(from.x, from.y, to.x, to.y, from.radius * from.perspScale, to.radius * to.perspScale);
                     return (
                       <line key={l.edgeId} x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2}
-                        stroke={SUB_ARROW_COLOR} strokeWidth={sel ? 2.2 : dim ? 1 : 1.5} strokeLinecap="round"
+                        stroke={onPath ? "#D6AE7E" : SUB_ARROW_COLOR} strokeWidth={onPath ? 3 : sel ? 2.2 : dim ? 1 : 1.5} strokeLinecap="round"
                         strokeDasharray="5 4"
-                        opacity={dim ? 0.08 : focusDimmed ? 0.18 : sel ? 1 : 0.95}
-                        markerEnd="url(#sub-arr)" />
+                        opacity={onPath ? 1 : dim ? 0.08 : sel ? 1 : 0.95}
+                        markerEnd={onPath ? undefined : "url(#sub-arr)"}
+                        filter={onPath ? "url(#glow)" : undefined} />
                     );
                   })}
                 </>

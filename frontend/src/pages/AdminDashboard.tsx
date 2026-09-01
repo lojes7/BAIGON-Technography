@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   Upload, Activity, ArrowUpRight, RefreshCw, Eye,
@@ -10,7 +10,8 @@ import {
   Tooltip, ResponsiveContainer, Cell, PieChart, Pie,
 } from "recharts";
 import { useNav } from "../context/NavContext";
-import { DEMO_STATS } from "../services/demo-pool";
+import { useLiveStats } from "../services/live-stats";
+import { getEmbeddingProgress } from "../services/occupation";
 import { StatusBadge } from "../components/ui";
 import ConfirmDialog from "../components/overlay/ConfirmDialog";
 
@@ -36,9 +37,6 @@ const P = {
   border: "#E4EAF2",
 } as const;
 
-/* 与数据源 / 数据导入页共用 DEMO_STATS 统计口径（合计恒等于样本总量） */
-const trendData = DEMO_STATS.trend;
-
 const signals = [
   { name: "RAG 应用工程", dir: "up", pct: "+8.7%", chip: "热度上升", chipBg: P.greenBg, chipColor: P.green },
   { name: "Agent 编排", dir: "up", pct: "+12.8%", chip: "热度上升", chipBg: P.greenBg, chipColor: P.green },
@@ -48,9 +46,9 @@ const signals = [
 ];
 
 const quickLinks = [
-  { title: "岗位字典", meta: "1,024 个标准岗位", icon: BookOpen, bg: P.primary, target: "job-dict" },
-  { title: "技能词典", meta: "162 项标准技能", icon: Sparkles, bg: P.violet, target: "skill-dict" },
-  { title: "能力图谱", meta: "3,254 条关系边", icon: Network, bg: P.teal, target: "graph-browser" },
+  { title: "岗位字典", meta: "标准岗位词库", icon: BookOpen, bg: P.primary, target: "job-dict" },
+  { title: "技能词典", meta: "规范技能词库", icon: Sparkles, bg: P.violet, target: "skill-dict" },
+  { title: "能力图谱", meta: "五大领域知识图谱", icon: Network, bg: P.teal, target: "graph-browser" },
   { title: "Gap 分析", meta: "12 项高需求缺口", icon: Target, bg: P.amber, target: "gap-analysis" },
 ];
 
@@ -105,6 +103,16 @@ function TrendChip({ label, bg, color }: { label: string; bg: string; color: str
 function AdminDashboard() {
   const nav = useNav();
   const [confirmAnalysis, setConfirmAnalysis] = useState(false);
+  // 动态统计口径：演示池 + 真实数据（导入/复核后自动增长），与列表页脚同源
+  const stats = useLiveStats();
+  const trendData = stats.trend;
+  // 词典规模：与技能词典/岗位字典页同源（向量化进度接口），失败时退回演示数字
+  const [skillTotal, setSkillTotal] = useState<number | null>(null);
+  useEffect(() => {
+    getEmbeddingProgress()
+      .then((res) => setSkillTotal(Number(res.data?.skills?.total ?? 0) || null))
+      .catch(() => {});
+  }, []);
 
   return (
     <div className="flex flex-col gap-5">
@@ -144,16 +152,16 @@ function AdminDashboard() {
               <ArrowUpRight size={14} color="#fff" />
             </span>
           </div>
-          <div className="text-[36px] font-mono font-semibold leading-tight mt-1">{DEMO_STATS.total}</div>
+          <div className="text-[36px] font-mono font-semibold leading-tight mt-1">{stats.total}</div>
           <div className="mt-auto flex items-center gap-2">
-            <TrendChip label={`+${DEMO_STATS.todayNew} 今日入库`} bg="rgba(255,255,255,0.16)" color="#fff" />
-            <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.6)" }}>覆盖 {DEMO_STATS.directions} 大技术方向</span>
+            <TrendChip label={`+${stats.todayNew} 今日入库`} bg="rgba(255,255,255,0.16)" color="#fff" />
+            <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.6)" }}>覆盖 {stats.directions} 大技术方向</span>
           </div>
         </div>
 
         {[
-          { title: "标准技能", value: "162", chip: "+11 本月新增", bg: P.greenBg, color: P.green, target: "skill-dict" },
-          { title: "待人工复核", value: String(DEMO_STATS.pending), chip: `${DEMO_STATS.pendingHigh} 项高优先级`, bg: P.amberBg, color: P.amber, target: "raw-records", warn: true },
+          { title: "标准技能", value: skillTotal != null ? String(skillTotal) : "162", chip: "+11 本月新增", bg: P.greenBg, color: P.green, target: "skill-dict" },
+          { title: "待人工复核", value: String(stats.pending), chip: `${stats.pendingHigh} 项高优先级`, bg: P.amberBg, color: P.amber, target: "raw-records", warn: true },
           { title: "已识别演进信号", value: "24", chip: "6 项待专家确认", bg: P.violetBg, color: P.violet, target: "evolution-trends" },
         ].map((k) => (
           <div key={k.title} className="bg-white rounded-2xl p-5 flex flex-col cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5"
@@ -177,8 +185,8 @@ function AdminDashboard() {
         <div className="col-span-8 bg-white rounded-2xl" style={{ border: `1px solid ${P.border}` }}>
           <div className="flex items-center justify-between px-5 pt-4 pb-1">
             <div>
-              <div className="text-[15px] font-semibold" style={{ color: P.ink }}>岗位样本导入趋势</div>
-              <div className="text-[12px] mt-0.5" style={{ color: P.faint }}>近 1 个月 · 单位：条清洗后样本</div>
+              <div className="text-[15px] font-semibold" style={{ color: P.ink }}>岗位样本月度导入</div>
+              <div className="text-[12px] mt-0.5" style={{ color: P.faint }}>近 12 个月 · 单位：条清洗后样本</div>
             </div>
             <button className="inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-full transition-colors hover:bg-gray-50"
               style={{ color: P.muted, border: `1px solid ${P.border}` }}
@@ -188,20 +196,20 @@ function AdminDashboard() {
           </div>
           <div className="px-5 pb-4 pt-2">
             <ResponsiveContainer width="100%" height={190}>
-              <BarChart data={trendData} barSize={8}>
+              <BarChart data={trendData} barSize={14}>
                 <CartesianGrid strokeDasharray="4 6" stroke={P.skySoft} vertical={false} />
                 <XAxis dataKey="dt" tick={{ fontSize: 11, fill: P.faint }} tickLine={false} axisLine={false}
-                  tickFormatter={(v: string) => v.slice(8)} interval={4} />
+                  tickFormatter={(v: string) => v.slice(5)} interval={0} />
                 <YAxis tick={{ fontSize: 11, fill: P.faint }} tickLine={false} axisLine={false} width={28} allowDecimals={false} />
                 <Tooltip
                   contentStyle={{ fontSize: 12, border: `1px solid ${P.border}`, borderRadius: 12, boxShadow: "0 8px 20px rgba(22,40,62,0.08)" }}
                   cursor={{ fill: P.skySoft, radius: 8 }}
                 />
-                <Bar dataKey="n" name="岗位样本" radius={[4, 4, 4, 4]}>
+                <Bar dataKey="n" name="岗位样本" radius={[7, 7, 7, 7]}>
                   {trendData.map((d, i) => (
                     <Cell key={i} fill={
                       i === trendData.length - 1 ? P.primary
-                        : d.n >= 5 ? "#4A79C2"
+                        : d.n >= 90 ? "#7FA6D6"
                           : P.sky
                     } />
                   ))}
@@ -214,11 +222,11 @@ function AdminDashboard() {
         <div className="col-span-4 bg-white rounded-2xl p-5 flex flex-col" style={{ border: `1px solid ${P.border}` }}>
           <div className="text-[15px] font-semibold" style={{ color: P.ink }}>复核提醒</div>
           <div className="mt-3 text-[20px] font-semibold leading-snug" style={{ color: P.primary }}>
-            {DEMO_STATS.pending} 项清洗样本待人工复核
+            {stats.pending} 项清洗样本待人工复核
           </div>
           <div className="mt-1.5 text-[13px] flex items-center gap-2" style={{ color: P.muted }}>
             <span className="inline-block w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: P.amber }} />
-            批次 JOB-202608-004 · 高优先级 {DEMO_STATS.pendingHigh} 项
+            最新批次 · 高优先级 {stats.pendingHigh} 项
           </div>
           <div className="mt-2 text-[12px]" style={{ color: P.faint }}>SLA 剩余 2 天 · 超时将自动降级抽样</div>
           <button

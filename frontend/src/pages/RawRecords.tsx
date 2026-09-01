@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import T from "../constants/tokens";
 import { useAuth } from "../auth/AuthContext";
 import { getDataSourceList, reviewDataSource, getCrawlerStatus, getSourceRecord, getDataSourceDetail, editAndApproveReview } from "../services/engineer";
-import { DEMO_STATS } from "../services/demo-pool";
+import { useLiveStats } from "../services/live-stats";
 import type { DataSourceItem, DataSourceDetail, SourceJobDetail } from "../types/api";
 import { Btn, Card, StatusBadge, Pagination } from "../components/ui";
 import DiffViewer, { type DiffRow } from "../components/diff/DiffViewer";
@@ -33,11 +33,6 @@ const P = {
 } as const;
 
 const nv = (v?: string | null) => (v && v !== "null" && v !== "undefined" ? v : "");
-
-/* 采集趋势与平台构成：与工作台 / 数据导入页共用 DEMO_STATS 统计口径（合计恒等于样本总量） */
-const trend30 = DEMO_STATS.trend;
-
-const platformStats = DEMO_STATS.platformStats;
 
 function KpiCard({ children, onClick, featured = false }: {
   children: React.ReactNode; onClick?: () => void; featured?: boolean;
@@ -68,6 +63,10 @@ export default function RawRecordsPage() {
   const { user } = useAuth();
   // 复核权限：ADMIN 与 DATA_REVIEWER（前端归一为 reviewer）均可处理清洗后岗位
   const isReviewer = user?.role === "admin" || user?.role === "reviewer";
+  // 动态统计口径：演示池 + 真实数据（导入/复核后自动增长），与列表页脚同源
+  const stats = useLiveStats();
+  const trend30 = stats.trend;
+  const platformStats = stats.platformStats;
 
   const [records, setRecords] = useState<DataSourceItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -346,17 +345,17 @@ export default function RawRecordsPage() {
               <ArrowUpRight size={14} color="#fff" />
             </span>
           </div>
-          <div className="text-[32px] font-mono font-semibold leading-tight mt-1">{loading ? "…" : total.toLocaleString()}</div>
+          <div className="text-[32px] font-mono font-semibold leading-tight mt-1">{stats.total.toLocaleString()}</div>
           <div className="mt-auto flex items-center gap-2">
-            <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.16)", color: "#fff" }}>今日 +{DEMO_STATS.todayNew}</span>
-            <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.6)" }}>覆盖 {DEMO_STATS.directions} 大技术方向</span>
+            <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.16)", color: "#fff" }}>今日 +{stats.todayNew}</span>
+            <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.6)" }}>覆盖 {stats.directions} 大技术方向</span>
           </div>
         </KpiCard>
 
         {[
-          { title: "待复核样本", value: String(DEMO_STATS.pending), chip: `${DEMO_STATS.pendingHigh} 项高优先级`, bg: P.amberBg, color: P.amber, warn: true, filter: "PENDING" },
-          { title: "复核通过率", value: DEMO_STATS.passRate, chip: "全量口径", bg: P.greenBg, color: P.green, filter: "PASSED" },
-          { title: "来源平台", value: String(DEMO_STATS.platformStats.length), chip: "爬虫 + CSV 注入", bg: P.skySoft, color: P.primary, filter: "" },
+          { title: "待复核样本", value: String(stats.pending), chip: `${stats.pendingHigh} 项高优先级`, bg: P.amberBg, color: P.amber, warn: true, filter: "PENDING" },
+          { title: "复核通过率", value: stats.passRate, chip: "全量口径", bg: P.greenBg, color: P.green, filter: "PASSED" },
+          { title: "来源平台", value: String(stats.platformStats.length), chip: "爬虫 + CSV 注入", bg: P.skySoft, color: P.primary, filter: "" },
         ].map((k) => (
           <KpiCard key={k.title} onClick={() => { setFilterStatus(k.filter); setPage(1); }}>
             <div className="flex items-start justify-between">
@@ -378,23 +377,23 @@ export default function RawRecordsPage() {
       <div className="grid grid-cols-12 gap-4">
         <div className="col-span-5 bg-white rounded-2xl" style={{ border: `1px solid ${P.border}` }}>
           <div className="px-5 pt-4 pb-1">
-            <div className="text-[15px] font-semibold" style={{ color: P.ink }}>近 1 个月采集趋势</div>
-            <div className="text-[12px] mt-0.5" style={{ color: P.faint }}>每日新增清洗后样本</div>
+            <div className="text-[15px] font-semibold" style={{ color: P.ink }}>近 12 个月采集趋势</div>
+            <div className="text-[12px] mt-0.5" style={{ color: P.faint }}>每月新增清洗后样本</div>
           </div>
           <div className="px-3 pb-3 pt-2">
             <ResponsiveContainer width="100%" height={190}>
-              <BarChart data={trend30} barSize={8}>
+              <BarChart data={trend30} barSize={12}>
                 <CartesianGrid strokeDasharray="4 6" stroke={P.skySoft} vertical={false} />
                 <XAxis dataKey="dt" tick={{ fontSize: 10, fill: P.faint }} tickLine={false} axisLine={false}
-                  tickFormatter={(v: string) => v.slice(8)} interval={4} />
+                  tickFormatter={(v: string) => v.slice(5)} interval={1} />
                 <YAxis tick={{ fontSize: 10, fill: P.faint }} tickLine={false} axisLine={false} width={26} />
                 <Tooltip
                   contentStyle={{ fontSize: 12, border: `1px solid ${P.border}`, borderRadius: 12, boxShadow: "0 8px 20px rgba(22,40,62,0.08)" }}
                   cursor={{ fill: P.skySoft }}
                 />
-                <Bar dataKey="n" name="新增样本" radius={[4, 4, 4, 4]}>
+                <Bar dataKey="n" name="新增样本" radius={[6, 6, 6, 6]}>
                   {trend30.map((d, i) => (
-                    <Cell key={i} fill={i === trend30.length - 1 ? P.primary : d.n >= 50 ? "#7FA6D6" : P.sky} />
+                    <Cell key={i} fill={i === trend30.length - 1 ? P.primary : d.n >= 90 ? "#7FA6D6" : P.sky} />
                   ))}
                 </Bar>
               </BarChart>
@@ -439,9 +438,9 @@ export default function RawRecordsPage() {
             </span>
           </div>
           <div className="mt-4 space-y-2.5 text-[12px]" style={{ color: "rgba(255,255,255,0.65)" }}>
-            <div className="flex justify-between"><span>今日新增样本</span><span className="font-mono" style={{ color: "#fff" }}>+{DEMO_STATS.todayNew}</span></div>
-            <div className="flex justify-between"><span>最近一次采集</span><span className="font-mono" style={{ color: "#fff" }}>{DEMO_STATS.latestTime}</span></div>
-            <div className="flex justify-between"><span>最近采集城市</span><span className="font-mono" style={{ color: "#fff" }}>{DEMO_STATS.latestCity}</span></div>
+            <div className="flex justify-between"><span>今日新增样本</span><span className="font-mono" style={{ color: "#fff" }}>+{stats.todayNew}</span></div>
+            <div className="flex justify-between"><span>最近一次采集</span><span className="font-mono" style={{ color: "#fff" }}>{stats.latestTime}</span></div>
+            <div className="flex justify-between"><span>最近采集城市</span><span className="font-mono" style={{ color: "#fff" }}>{stats.latestCity}</span></div>
             <div className="flex justify-between"><span>采集队列</span><span className="font-mono" style={{ color: "#fff" }}>12 个关键词</span></div>
           </div>
           <div className="mt-auto pt-3 text-[11px] leading-relaxed" style={{ color: "rgba(255,255,255,0.45)", borderTop: "1px dashed rgba(255,255,255,0.12)" }}>

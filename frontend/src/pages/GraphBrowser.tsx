@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import {
   Download, ArrowRight, Network, FileSearch, Activity, Route,
   ChevronDown, Sparkles, BarChart3, Save, Image as ImageIcon, FileJson, Table as TableIcon,
-  Layers, Gauge, Orbit,
+  Layers, Gauge, Orbit, MousePointerClick,
 } from "lucide-react";
 import T from "../constants/tokens";
 import { ENTITY_TYPE_LABEL, RELATION_TYPE_LABEL, type EntityType } from "../types/dynamic-graph";
@@ -614,6 +614,11 @@ function GraphBrowserPage() {
             </div>
 
             <div className="mt-2.5 flex flex-wrap items-center gap-x-5 gap-y-2.5 text-[11.5px]" style={{ color: T.info }}>
+              <div className="flex items-center gap-1.5 font-semibold" style={{ color: T.teal }}>
+                <MousePointerClick size={12} />
+                <span>默认隐藏连线 · 点击节点展开其关系连线（再点一次或点空白处收起）</span>
+              </div>
+              <Divider className="mx-1 hidden lg:block" style={{ width: 1, height: 14 }} />
               <div className="flex items-center gap-1.5 font-semibold mr-1" style={{ color: T.teal }}>
                 <Gauge size={12} />
                 <span>熟练度要求（节点大小加成）：</span>

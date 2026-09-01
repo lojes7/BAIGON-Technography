@@ -41,6 +41,11 @@ async function request<T>(url: string, init?: RequestInit): Promise<ApiResponse<
   return parseJson(text) as ApiResponse<T>;
 }
 
+// 数据变化后刷新全局 KPI（动态统计口径）；动态 import 避免与 live-stats 形成静态循环依赖
+function refreshStats() {
+  void import("./live-stats").then((m) => m.refreshLiveStats()).catch(() => {});
+}
+
 // ═══════════════════ 爬虫操作 ═══════════════════
 
 // 启动采集参数
@@ -100,6 +105,9 @@ export async function ingestData(jobs: IngestJob[]) {
     method: "POST",
     headers: hdrs(),
     body: JSON.stringify({ jobs: payload }),
+  }).then((res) => {
+    refreshStats(); // 新样本落库 → 工作台/导入/数据源三页 KPI 同步增长
+    return res;
   });
 }
 
@@ -155,20 +163,32 @@ export async function getSourceRecord(id: string) {
 // 复核通过；演示记录在内存中流转审核状态
 export async function approveReview(id: string) {
   const demo = applyDemoReview(id, "REVIEW_PASSED");
-  if (demo) return { code: 200, data: { job: demo } } satisfies ApiResponse<{ job: DataSourceDetail }>;
+  if (demo) {
+    refreshStats(); // 演示记录审核同样改变待复核/通过率口径
+    return { code: 200, data: { job: demo } } satisfies ApiResponse<{ job: DataSourceDetail }>;
+  }
   return request<{ job: DataSourceDetail }>(`${BASE}/data-source/${id}/review`, {
     method: "POST",
     headers: hdrs(),
+  }).then((res) => {
+    refreshStats();
+    return res;
   });
 }
 
 // 复核拒绝；演示记录在内存中流转审核状态
 export async function rejectReview(id: string) {
   const demo = applyDemoReview(id, "REVIEW_REJECT");
-  if (demo) return { code: 200, data: { job: demo } } satisfies ApiResponse<{ job: DataSourceDetail }>;
+  if (demo) {
+    refreshStats();
+    return { code: 200, data: { job: demo } } satisfies ApiResponse<{ job: DataSourceDetail }>;
+  }
   return request<{ job: DataSourceDetail }>(`${BASE}/data-source/${id}/review`, {
     method: "DELETE",
     headers: hdrs(),
+  }).then((res) => {
+    refreshStats();
+    return res;
   });
 }
 
@@ -183,11 +203,17 @@ export async function editAndApproveReview(id: string, edits: {
   jobDescription?: string;
 }) {
   const demo = applyDemoReview(id, "REVIEW_PASSED", edits);
-  if (demo) return { code: 200, data: { job: demo } } satisfies ApiResponse<{ job: DataSourceDetail }>;
+  if (demo) {
+    refreshStats();
+    return { code: 200, data: { job: demo } } satisfies ApiResponse<{ job: DataSourceDetail }>;
+  }
   return request<{ job: DataSourceDetail }>(`${BASE}/data-source/${id}/review`, {
     method: "PUT",
     headers: hdrs(),
     body: JSON.stringify(edits),
+  }).then((res) => {
+    refreshStats();
+    return res;
   });
 }
 
