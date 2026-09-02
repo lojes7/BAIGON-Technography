@@ -5,6 +5,7 @@ import T from "./constants/tokens";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import LoginPage from "./auth/LoginPage";
 import { Sidebar, AppHeader, NotificationPanel } from "./components/layout";
+import useOverflowCellTitles from "./hooks/useOverflowCellTitles";
 
 // Pages
 import DashboardPage from "./pages/Dashboard";
@@ -56,6 +57,7 @@ import LandingPage from "./pages/LandingPage";
 function AppLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  useOverflowCellTitles();
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: T.bg,

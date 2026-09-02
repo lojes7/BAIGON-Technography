@@ -13,6 +13,7 @@
     "test:review-contracts": "node --experimental-strip-types --test tests/review-id-contract.test.mjs",
     "test:id-contracts": "node --experimental-strip-types --test tests/id-reference-contract.test.mjs",
     "test:ingest": "node --experimental-strip-types --test tests/ingest-csv.test.mjs",
+    "test:tables": "node --test tests/table-layout-contract.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

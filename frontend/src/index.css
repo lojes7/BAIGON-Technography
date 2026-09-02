@@ -92,6 +92,43 @@ p {
   margin: 0;
 }
 
+/*
+ * 数据表统一使用固定列布局，任何单元格都不能再被长文本撑宽。
+ * 确有特殊排版需求的非数据表可显式设置 data-table-layout="auto" 退出。
+ */
+table:not([data-table-layout="auto"]) {
+  width: 100%;
+  table-layout: fixed;
+}
+
+table:not([data-table-layout="auto"]) th,
+table:not([data-table-layout="auto"]) td {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 嵌套容器也必须服从单元格宽度，否则父级只能裁切而不会显示省略号。 */
+table:not([data-table-layout="auto"]) th > *,
+table:not([data-table-layout="auto"]) td > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+table:not([data-table-layout="auto"]) :is(th, td) > :is(div, p, span, a) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 少数确需换行的单元格内容可以显式声明，不影响整张表的固定列宽。 */
+table:not([data-table-layout="auto"]) [data-table-wrap] {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
 code,
 .counter {
   font-family: var(--mono);

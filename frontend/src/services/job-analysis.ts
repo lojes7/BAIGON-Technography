@@ -96,22 +96,32 @@ async function request<T>(url: string, init?: RequestInit): Promise<ApiResponse<
   return parseJson(await res.text()) as ApiResponse<T>;
 }
 
-function nullableId(value: JsonId | undefined): string | null {
-  return value === undefined || value === 0 || value === "0" ? null : String(value);
+function positiveId(value: unknown, label: string): string {
+  const normalized = String(value ?? "").trim();
+  if (!/^[1-9]\d*$/.test(normalized)) {
+    throw new Error(`${label}不是有效的正整数 ID`);
+  }
+  return normalized;
+}
+
+function nullableId(value: JsonId | null | undefined): string | null {
+  return value === undefined || value === null || value === 0 || value === "0"
+    ? null
+    : positiveId(value, "可选资源 ID");
 }
 
 function nullableText(value: string | undefined): string | null {
   return value || null;
 }
 
-function uniqueIds(ids: Array<string | number>) {
-  return Array.from(new Set(ids.map(String).filter(Boolean)));
+function uniqueIds(ids: Array<string | number>, label: string) {
+  return Array.from(new Set(ids.map((id) => positiveId(id, label))));
 }
 
 function normalizeTask(raw: RawTaskSummary = {}): JobAnalysisTaskSummary {
   return {
-    id: String(raw.id ?? ""),
-    jobId: String(raw.jobId ?? ""),
+    id: positiveId(raw.id, "岗位分析任务 ID"),
+    jobId: positiveId(raw.jobId, "岗位 ID"),
     taskStatus: raw.taskStatus ?? "",
     reviewStatus: raw.reviewStatus ?? "",
     selectedOccupationId: nullableId(raw.selectedOccupationId),
@@ -128,8 +138,8 @@ function normalizeTask(raw: RawTaskSummary = {}): JobAnalysisTaskSummary {
 
 function normalizeCandidate(raw: RawCandidate): JobAnalysisCandidate {
   return {
-    id: String(raw.id ?? ""),
-    occupationId: String(raw.occupationId ?? ""),
+    id: positiveId(raw.id, "职业候选 ID"),
+    occupationId: positiveId(raw.occupationId, "职业 ID"),
     rank: raw.rank ?? 0,
     similarity: raw.similarity ?? 0,
   };
@@ -137,8 +147,8 @@ function normalizeCandidate(raw: RawCandidate): JobAnalysisCandidate {
 
 function normalizeMajorCandidate(raw: RawMajorCandidate): JobAnalysisMajorCandidate {
   return {
-    id: String(raw.id ?? ""),
-    majorId: String(raw.majorId ?? ""),
+    id: positiveId(raw.id, "专业候选 ID"),
+    majorId: positiveId(raw.majorId, "专业 ID"),
     rank: raw.rank ?? 0,
     similarity: raw.similarity ?? 0,
   };
@@ -146,8 +156,8 @@ function normalizeMajorCandidate(raw: RawMajorCandidate): JobAnalysisMajorCandid
 
 function normalizeResult(raw: RawResult): JobAnalysisResult {
   return {
-    id: String(raw.id ?? ""),
-    jobId: String(raw.jobId ?? ""),
+    id: positiveId(raw.id, "岗位分析结果 ID"),
+    jobId: positiveId(raw.jobId, "岗位 ID"),
     skillName: raw.skillName ?? "",
     skillProficiency: raw.skillProficiency ?? "",
     evidence: raw.evidence ?? "",
@@ -166,8 +176,11 @@ async function lookupResource<R, T extends { id: string }>(
   path: string,
   ids: Array<string | number>,
   normalize: (raw: R) => T,
+  label: string,
 ) {
-  const requestedIds = uniqueIds(ids);
+  // Gateway 的 lookup 契约只接受 1 至 200 个正 int64；无效引用必须在浏览器端拦截，
+  // 不能继续发出一个必然返回 400 的请求并掩盖真正的数据契约问题。
+  const requestedIds = uniqueIds(ids, label);
   if (requestedIds.length === 0) return [];
   const suffix = path ? `/${path}` : "";
   const response = await request<RawLookupData<R>>(`${BASE}${suffix}/lookup`, {
@@ -181,19 +194,19 @@ async function lookupResource<R, T extends { id: string }>(
 }
 
 export async function lookupJobAnalysisTasks(ids: Array<string | number>) {
-  return lookupResource("", ids, normalizeTask);
+  return lookupResource("", ids, normalizeTask, "岗位分析任务 ID");
 }
 
 export async function lookupJobAnalysisOccupationCandidates(ids: Array<string | number>) {
-  return lookupResource("occupation-candidates", ids, normalizeCandidate);
+  return lookupResource("occupation-candidates", ids, normalizeCandidate, "职业候选 ID");
 }
 
 export async function lookupJobAnalysisMajorCandidates(ids: Array<string | number>) {
-  return lookupResource("major-candidates", ids, normalizeMajorCandidate);
+  return lookupResource("major-candidates", ids, normalizeMajorCandidate, "专业候选 ID");
 }
 
 export async function lookupJobAnalysisResults(ids: Array<string | number>) {
-  return lookupResource("results", ids, normalizeResult);
+  return lookupResource("results", ids, normalizeResult, "岗位分析结果 ID");
 }
 
 // 列表只取当前服务端页，再按 ID 批量补齐任务摘要，禁止前端扫描全部分页。
@@ -225,7 +238,7 @@ export async function listJobAnalysisTasks(params?: {
     `${BASE}?${query}`,
     { headers: hdrs() },
   );
-  const ids = (index.data.ids ?? []).map(String);
+  const ids = uniqueIds(index.data.ids ?? [], "岗位分析任务 ID");
   const items = await lookupJobAnalysisTasks(ids);
   const jobs = await lookupJobs(items.map((item) => item.jobId));
   return {
@@ -242,7 +255,8 @@ export async function listJobAnalysisTasks(params?: {
 
 // 任务详情只携带资源 ID；候选与结果分别通过批量详情接口解析。
 export async function getJobAnalysisTask(id: string | number) {
-  const response = await request<RawTaskDetail>(`${BASE}/${id}`, { headers: hdrs() });
+  const taskId = positiveId(id, "岗位分析任务 ID");
+  const response = await request<RawTaskDetail>(`${BASE}/${taskId}`, { headers: hdrs() });
   const raw = response.data;
   const [candidates, majorCandidates, results, jobs] = await Promise.all([
     lookupJobAnalysisOccupationCandidates((raw.candidateIds ?? []).map(String)),
@@ -264,10 +278,23 @@ export async function getJobAnalysisTask(id: string | number) {
 
 // 写接口只返回任务引用；页面在成功后显式刷新所需详情或当前列表页。
 export async function reviewJobAnalysisTask(id: string | number, body: ReviewJobAnalysisParams) {
-  const response = await request<{ id?: JsonId }>(`${BASE}/${id}/review`, {
+  const taskId = positiveId(id, "岗位分析任务 ID");
+  const normalizedBody = {
+    ...body,
+    majorId: positiveId(body.majorId, "专业 ID"),
+    occupationId: positiveId(body.occupationId, "职业 ID"),
+    skillReviews: body.skillReviews.map((item) => ({
+      ...item,
+      resultId: positiveId(item.resultId, "岗位分析结果 ID"),
+    })),
+  };
+  const response = await request<{ id?: JsonId }>(`${BASE}/${taskId}/review`, {
     method: "PUT",
     headers: hdrs(true),
-    body: stringifyNumericIdBody(body, ["majorId", "occupationId", "resultId"]),
+    body: stringifyNumericIdBody(normalizedBody, ["majorId", "occupationId", "resultId"]),
   });
-  return { ...response, data: { id: String(response.data.id ?? "") } } as ApiResponse<{ id: string }>;
+  return {
+    ...response,
+    data: { id: positiveId(response.data.id, "岗位分析任务 ID") },
+  } as ApiResponse<{ id: string }>;
 }

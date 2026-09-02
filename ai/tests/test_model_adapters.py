@@ -48,6 +48,17 @@ class FakeFunctionCompletions:
         return SimpleNamespace(choices=[SimpleNamespace(message=message)])
 
 
+class FakeContentOnlyCompletions:
+    """模拟供应商把结构化结果错误地放入正文且未返回 tool_calls。"""
+
+    def __init__(self, content: str):
+        self.content = content
+
+    def create(self, **_kwargs):
+        message = SimpleNamespace(content=self.content, tool_calls=None)
+        return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+
+
 class FakeEmbeddings:
     """模拟乱序返回，用于验证适配器会按 index 排序。"""
 
@@ -92,6 +103,7 @@ class ModelAdapterTest(unittest.TestCase):
         self.assertEqual(
             completions.request["timeout"], model_config.provider_default_timeout_seconds
         )
+        self.assertNotIn("extra_body", completions.request)
 
     def test_embedding_batch_restores_input_order(self):
         embeddings = FakeEmbeddings()
@@ -121,6 +133,7 @@ class ModelAdapterTest(unittest.TestCase):
             "JD 原文",
             temperature=0.1,
             response_function=response_function,
+            thinking="disabled",
         )
 
         self.assertEqual(arguments.output, '{"education":"Master","skills":[]}')
@@ -134,6 +147,26 @@ class ModelAdapterTest(unittest.TestCase):
             completions.request["tool_choice"],
             {"type": "function", "name": "submit_analysis"},
         )
+        self.assertEqual(
+            completions.request["extra_body"],
+            {"thinking": {"type": "disabled"}},
+        )
+
+    def test_spark_model_rejects_content_when_function_call_is_missing(self):
+        """正文中的 JSON 即使看似完整也不能绕过函数调用契约。"""
+        completions = FakeContentOnlyCompletions('{"skills":[]}')
+        client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+        model = SparkModel(api_password="test", client=client)
+
+        with self.assertRaisesRegex(RuntimeError, "未返回唯一的结构化函数调用"):
+            model.question(
+                "系统提示",
+                "JD 原文",
+                response_function={
+                    "name": "submit_analysis",
+                    "parameters": {"type": "object"},
+                },
+            )
 
     def test_spark_model_rejects_unexpected_function(self):
         completions = FakeFunctionCompletions("{}", function_name="other_function")

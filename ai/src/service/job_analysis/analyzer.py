@@ -104,7 +104,8 @@ def analyze_job_description(
         JOB_ANALYSIS_SYSTEM_PROMPT,
         normalized_jd,
         temperature=0.1,
-        max_tokens=4096,
+        # 长 JD 可能抽取出数十项技能，给完整函数参数保留足够输出空间。
+        max_tokens=8192,
         response_function=JOB_ANALYSIS_RESPONSE_FUNCTION,
         # 长 JD 的结构化分析使用独立期限，不能沿用普通问答的 25 秒。
         timeout_seconds=model_config.provider_job_analysis_timeout_seconds,

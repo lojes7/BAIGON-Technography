@@ -88,6 +88,24 @@ test("岗位分析在发请求前拒绝后端不支持的 RUNNING 状态", async
   assert.equal(requested, false);
 });
 
+test("岗位分析在发请求前拒绝空值与非数字资源 ID", async () => {
+  let requested = false;
+  globalThis.fetch = async () => {
+    requested = true;
+    throw new Error("不应发出请求");
+  };
+
+  await assert.rejects(
+    jobAnalysis.lookupJobAnalysisTasks([""]),
+    /岗位分析任务 ID不是有效的正整数 ID/,
+  );
+  await assert.rejects(
+    jobAnalysis.getJobAnalysisTask("demo-task"),
+    /岗位分析任务 ID不是有效的正整数 ID/,
+  );
+  assert.equal(requested, false);
+});
+
 test("岗位分析审核只消费任务 ID 响应", async () => {
   let captured;
   globalThis.fetch = async (url, init = {}) => {
