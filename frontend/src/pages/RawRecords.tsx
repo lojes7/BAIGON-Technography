@@ -9,6 +9,7 @@ import T from "../constants/tokens";
 import { useAuth } from "../auth/AuthContext";
 import { getDataSourceList, reviewDataSource, getCrawlerStatus, getSourceRecord, getDataSourceDetail, editAndApproveReview } from "../services/engineer";
 import { useLiveStats } from "../services/live-stats";
+import { DEMO_STATS } from "../services/demo-pool";
 import type { DataSourceItem, DataSourceDetail, SourceJobDetail } from "../types/api";
 import { Btn, Card, StatusBadge, Pagination } from "../components/ui";
 import DiffViewer, { type DiffRow } from "../components/diff/DiffViewer";
@@ -58,14 +59,17 @@ function KpiCard({ children, onClick, featured = false }: {
 
 type ReviewPhase = "idle" | "confirm" | "progress" | "result";
 
+/* 柱状图数据固定用静态演示口径（模块级常量，引用恒定）：
+   动态口径每次刷新生成新数组实例，会触发 recharts 重渲染导致柱子偶发消失 */
+const trend30 = DEMO_STATS.trend;
+
 export default function RawRecordsPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
   // 复核权限：ADMIN 与 DATA_REVIEWER（前端归一为 reviewer）均可处理清洗后岗位
   const isReviewer = user?.role === "admin" || user?.role === "reviewer";
-  // 动态统计口径：演示池 + 真实数据（导入/复核后自动增长），与列表页脚同源
+  // 动态统计口径：KPI 数字用演示池 + 真实数据（与列表页脚同源）；柱状图固定用静态 trend30
   const stats = useLiveStats();
-  const trend30 = stats.trend;
   const platformStats = stats.platformStats;
 
   const [records, setRecords] = useState<DataSourceItem[]>([]);
@@ -101,7 +105,7 @@ export default function RawRecordsPage() {
 
   useEffect(() => { fetchRecords(); }, [page, filterStatus]);
 
-  // 仅在爬虫运行时轮询，停止后自动取消
+  // 仅在自动采集运行时轮询，停止后自动取消
   useEffect(() => {
     let pollRef: ReturnType<typeof setInterval> | null = null;
 
@@ -355,7 +359,7 @@ export default function RawRecordsPage() {
         {[
           { title: "待复核样本", value: String(stats.pending), chip: `${stats.pendingHigh} 项高优先级`, bg: P.amberBg, color: P.amber, warn: true, filter: "PENDING" },
           { title: "复核通过率", value: stats.passRate, chip: "全量口径", bg: P.greenBg, color: P.green, filter: "PASSED" },
-          { title: "来源平台", value: String(stats.platformStats.length), chip: "爬虫 + CSV 注入", bg: P.skySoft, color: P.primary, filter: "" },
+          { title: "来源平台", value: String(stats.platformStats.length), chip: "平台采集 + CSV 注入", bg: P.skySoft, color: P.primary, filter: "" },
         ].map((k) => (
           <KpiCard key={k.title} onClick={() => { setFilterStatus(k.filter); setPage(1); }}>
             <div className="flex items-start justify-between">
@@ -391,7 +395,7 @@ export default function RawRecordsPage() {
                   contentStyle={{ fontSize: 12, border: `1px solid ${P.border}`, borderRadius: 12, boxShadow: "0 8px 20px rgba(22,40,62,0.08)" }}
                   cursor={{ fill: P.skySoft }}
                 />
-                <Bar dataKey="n" name="新增样本" radius={[6, 6, 6, 6]}>
+                <Bar dataKey="n" name="新增样本" radius={[6, 6, 6, 6]} isAnimationActive={false}>
                   {trend30.map((d, i) => (
                     <Cell key={i} fill={i === trend30.length - 1 ? P.primary : d.n >= 90 ? "#7FA6D6" : P.sky} />
                   ))}
@@ -434,7 +438,7 @@ export default function RawRecordsPage() {
             <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full"
               style={{ background: crawlerRunning ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.08)" }}>
               <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: crawlerRunning ? "#5EEAB5" : "#8B99AB" }} />
-              {crawlerRunning ? "爬虫运行中" : "已停止"}
+              {crawlerRunning ? "自动采集运行中" : "已停止"}
             </span>
           </div>
           <div className="mt-4 space-y-2.5 text-[12px]" style={{ color: "rgba(255,255,255,0.65)" }}>
@@ -690,7 +694,8 @@ export default function RawRecordsPage() {
       {/* ==================== 详情抽屉（分组字段 + 底部固定操作条） ==================== */}
       {detail && (
         <div className="fixed inset-0 z-50 flex" style={{ background: "rgba(25,50,77,0.3)" }} onClick={() => { setDetail(null); setSourceDetail(null); setCleanedDetail(null); setEditing(false); }}>
-          <div className="ml-auto w-[720px] shrink-0 max-w-[calc(100vw-24px)] h-full bg-white shadow-xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+          {/* 详情视图 600px（减少留白）；diff 对比视图保持 720px 不变 */}
+          <div className={`ml-auto shrink-0 max-w-[calc(100vw-24px)] h-full bg-white shadow-xl flex flex-col overflow-hidden ${viewDiff ? "w-[720px]" : "w-[600px]"}`} onClick={e => e.stopPropagation()}>
             {/* 头部：标题 + 审核状态 */}
             <div className="flex items-center justify-between gap-3 px-5 py-4 flex-shrink-0" style={{ borderBottom: `1px solid ${P.border}` }}>
               <div className="flex items-center gap-3 min-w-0">
@@ -911,7 +916,7 @@ function buildDiffRows(
     const v = obj[key];
     if (v == null) return "";
     const s = String(v).trim();
-    // 空值字面量（爬虫可能把空字段写成 "null"/"None"/"undefined"）统一归一化为空
+    // 空值字面量（采集端可能把空字段写成 "null"/"None"/"undefined"）统一归一化为空
     const lower = s.toLowerCase();
     if (s === "" || lower === "null" || lower === "none" || lower === "undefined") return "";
     return s;

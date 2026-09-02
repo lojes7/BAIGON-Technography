@@ -51,6 +51,7 @@ import LearningPath from "./pages/LearningPath";
 import TeacherManagement from "./pages/TeacherManagement";
 import StudentManagement from "./pages/StudentManagement";
 import GradeImport from "./pages/GradeImport";
+import LandingPage from "./pages/LandingPage";
 
 function AppLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -96,15 +97,28 @@ function AdminAuditLogRoute() {
   return <AuditLogPage />;
 }
 
+/**
+ * 根路径路由：
+ * - 未登录 → 着陆页（产品介绍 + 右上角登录/注册）
+ * - 已登录 → 直接跳转到工作台（/dashboard）
+ */
+function IndexRoute() {
+  const { user } = useAuth();
+  if (user) return <Navigate to="/dashboard" replace />;
+  return <LandingPage />;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <Routes>
+          <Route path="/landing" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route index element={<IndexRoute />} />
           <Route element={<ProtectedRoute />}>
-            <Route index element={<DashboardPage />} />
             <Route path="dashboard" element={<DashboardPage />} />
+            <Route path="home" element={<Navigate to="/dashboard" replace />} />
             <Route path="extraction-tasks" element={<AIExtractionPage />} />
             <Route path="review-queue" element={<ReviewWorkbenchPage />} />
             <Route path="skill-dict" element={<SkillDictionaryPage />} />

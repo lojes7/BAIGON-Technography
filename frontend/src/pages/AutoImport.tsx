@@ -80,18 +80,18 @@ export default function AutoImportPage() {
     return () => document.removeEventListener("mousedown", onDown);
   }, [catOpen]);
 
-  // 页面初始化时检查爬虫是否正在运行
+  // 页面初始化时检查自动采集任务是否正在运行
   useEffect(() => {
     getCrawlerStatus().then(res => {
       if (res.data.status === "running") {
         const stored = localStorage.getItem("crawl_start_time");
         if (stored) {
           setTaskStatus("running");
-          addLog("检测到爬虫正在运行，恢复状态监控", "info");
+          addLog("检测到自动采集正在运行，恢复状态监控", "info");
         } else {
           localStorage.setItem("crawl_start_time", String(Date.now()));
           setTaskStatus("running");
-          addLog("检测到爬虫正在运行，恢复状态监控", "info");
+          addLog("检测到自动采集正在运行，恢复状态监控", "info");
         }
       }
     }).catch(() => {});
@@ -106,7 +106,7 @@ export default function AutoImportPage() {
     return () => clearInterval(id);
   }, [taskStatus]);
 
-  // 轮询爬虫状态：同步进度字段 + 变化时写入实时日志
+  // 轮询采集任务状态：同步进度字段 + 变化时写入实时日志
   useEffect(() => {
     if (taskStatus !== "running") {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
@@ -184,7 +184,7 @@ export default function AutoImportPage() {
       await stopCrawler();
       setTaskStatus("stopped");
       localStorage.removeItem("crawl_start_time");
-      addLog("爬虫已手动停止", "warn");
+      addLog("采集任务已手动停止", "warn");
       toast(tt("crawlStop"));
     } catch (err) {
       const msg = (err as Error)?.message || "未知错误";

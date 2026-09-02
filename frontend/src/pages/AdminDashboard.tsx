@@ -11,6 +11,7 @@ import {
 } from "recharts";
 import { useNav } from "../context/NavContext";
 import { useLiveStats } from "../services/live-stats";
+import { DEMO_STATS } from "../services/demo-pool";
 import { getEmbeddingProgress } from "../services/occupation";
 import { StatusBadge } from "../components/ui";
 import ConfirmDialog from "../components/overlay/ConfirmDialog";
@@ -36,6 +37,10 @@ const P = {
   tealBg: "#E0F2F1",
   border: "#E4EAF2",
 } as const;
+
+/* 柱状图数据固定用静态演示口径（模块级常量，引用恒定）：
+   动态口径每次刷新生成新数组实例，会触发 recharts 重渲染导致柱子偶发消失 */
+const trendData = DEMO_STATS.trend;
 
 const signals = [
   { name: "RAG 应用工程", dir: "up", pct: "+8.7%", chip: "热度上升", chipBg: P.greenBg, chipColor: P.green },
@@ -103,9 +108,8 @@ function TrendChip({ label, bg, color }: { label: string; bg: string; color: str
 function AdminDashboard() {
   const nav = useNav();
   const [confirmAnalysis, setConfirmAnalysis] = useState(false);
-  // 动态统计口径：演示池 + 真实数据（导入/复核后自动增长），与列表页脚同源
+  // 动态统计口径：KPI 数字用演示池 + 真实数据（与列表页脚同源）；柱状图固定用静态 trendData
   const stats = useLiveStats();
-  const trendData = stats.trend;
   // 词典规模：与技能词典/岗位字典页同源（向量化进度接口），失败时退回演示数字
   const [skillTotal, setSkillTotal] = useState<number | null>(null);
   useEffect(() => {
@@ -205,7 +209,7 @@ function AdminDashboard() {
                   contentStyle={{ fontSize: 12, border: `1px solid ${P.border}`, borderRadius: 12, boxShadow: "0 8px 20px rgba(22,40,62,0.08)" }}
                   cursor={{ fill: P.skySoft, radius: 8 }}
                 />
-                <Bar dataKey="n" name="岗位样本" radius={[7, 7, 7, 7]}>
+                <Bar dataKey="n" name="岗位样本" radius={[7, 7, 7, 7]} isAnimationActive={false}>
                   {trendData.map((d, i) => (
                     <Cell key={i} fill={
                       i === trendData.length - 1 ? P.primary

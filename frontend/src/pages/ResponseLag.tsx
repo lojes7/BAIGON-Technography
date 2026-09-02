@@ -34,7 +34,7 @@ function ResponseLagPage() {
       />
 
       {/* KPI 统计行 */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="rounded-2xl p-5 flex flex-col text-white relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${P.primary} 0%, ${P.primaryDeep} 100%)`, minHeight: 120 }}>
           <div className="absolute -right-8 -top-10 w-32 h-32 rounded-full" style={{ background: "rgba(255,255,255,0.07)" }} />
           <span className="text-[13px]" style={{ color: "rgba(255,255,255,0.85)" }}>平均方案响应时滞</span>
@@ -43,6 +43,8 @@ function ResponseLagPage() {
         </div>
         {[
           { label: "平均证据响应时滞", value: "16.8 个月", chip: "需加速", bg: P.redBg, color: P.red },
+          { label: "未响应能力", value: `${lagSkills.filter((s) => !s.plan).length} 项`, chip: "待方案更新", bg: P.amberBg, color: P.amber },
+          { label: "已闭环能力", value: `${lagSkills.filter((s) => s.evidence).length} 项`, chip: "信号→方案→证据", bg: P.greenBg, color: P.green },
         ].map((k) => (
           <div key={k.label} className="bg-white rounded-2xl p-5 flex flex-col" style={{ border: `1px solid ${P.border}`, minHeight: 120 }}>
             <span className="text-[13px]" style={{ color: P.muted }}>{k.label}</span>

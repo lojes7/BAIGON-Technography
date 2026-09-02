@@ -1,5 +1,5 @@
-// 新版 API：爬虫与数据治理
-// 爬虫：POST/GET/DELETE /api/auth/crawl
+// 新版 API：数据采集与治理
+// 采集：POST/GET/DELETE /api/auth/crawl
 // 数据源：POST /api/auth/data-source（列表）, GET /api/auth/data-source/{id}（详情）,
 //         GET /api/auth/data-source/{id}/source（原始记录追溯）,
 //         POST/DELETE/PUT /api/auth/data-source/{id}/review（复核通过/拒绝/修改后通过）
@@ -46,7 +46,7 @@ function refreshStats() {
   void import("./live-stats").then((m) => m.refreshLiveStats()).catch(() => {});
 }
 
-// ═══════════════════ 爬虫操作 ═══════════════════
+// ═══════════════════ 采集操作 ═══════════════════
 
 // 启动采集参数
 export interface StartCrawlParams {
@@ -140,6 +140,22 @@ export async function getDataSourceList(params?: DataSourceListParams): Promise<
     code: 200,
     data: mergeDemoPage(real, filterDemoSources(params), page, pageSize),
   };
+}
+
+// 查询后端原始 total（不走演示补位），供 live-stats 统一口径使用
+export async function getDataSourceRealTotal(reviewStatus: string): Promise<number> {
+  const res = await request<PaginatedData<DataSourceItem>>(`${BASE}/data-source`, {
+    method: "POST",
+    headers: hdrs(),
+    body: JSON.stringify({
+      page: 0,
+      pageSize: 1,
+      reviewStatus,
+      publishDateFrom: "",
+      publishDateTo: "",
+    }),
+  });
+  return res.data?.total ?? 0;
 }
 
 // 查看清洗后岗位详情；演示记录由本地数据池合成

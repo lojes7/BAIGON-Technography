@@ -632,7 +632,7 @@ export interface DataSourceListParams {
 
 // ── 模拟采集（ingest）模块 ──
 
-// 单条注入岗位数据（字段与爬虫产出 JobRecord 一致，snake_case）
+// 单条注入岗位数据（字段与采集产出 JobRecord 一致，snake_case）
 export interface IngestJob {
   publish_date?: string;
   source_platform?: string;

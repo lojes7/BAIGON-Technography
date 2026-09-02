@@ -1163,7 +1163,7 @@ export default function JobsPage() {
                   <div />
                   <div className="rounded-lg px-3 py-2" style={{ background: P.bg, border: `1px solid ${P.border}` }}>
                     <div className="text-[12px] font-semibold" style={{ color: P.ink }}>原始数据</div>
-                    <div className="text-[10.5px] mt-0.5" style={{ color: P.faint }}>爬虫抓取 · 未清洗</div>
+                    <div className="text-[10.5px] mt-0.5" style={{ color: P.faint }}>自动采集 · 未清洗</div>
                   </div>
                   <div className="rounded-lg px-3 py-2" style={{ background: P.bg, border: `1px solid ${P.border}` }}>
                     <div className="text-[12px] font-semibold" style={{ color: P.ink }}>数据源数据</div>

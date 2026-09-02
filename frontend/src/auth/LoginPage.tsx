@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import { register } from "../services/auth";
@@ -12,7 +12,17 @@ type Mode = "login" | "register";
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [mode, setMode] = useState<Mode>("login");
+  // 若从着陆页「免费注册」按钮跳转，自动切换到注册标签
+  const initialMode: Mode =
+    typeof sessionStorage !== "undefined" &&
+    sessionStorage.getItem("baigon_landing_auth_mode") === "register"
+      ? "register"
+      : "login";
+  const [mode, setMode] = useState<Mode>(initialMode);
+  useEffect(() => {
+    // 消费一次即清，避免后续每次登录都跳到注册
+    sessionStorage.removeItem("baigon_landing_auth_mode");
+  }, []);
   const [loginUid, setLoginUid] = useState("admin");
   const [loginPass, setLoginPass] = useState("");
   const [showLoginPass, setShowLoginPass] = useState(false);

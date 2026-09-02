@@ -3,6 +3,8 @@ import {
   AlertCircle,
   RefreshCw,
   Search,
+  X,
+  Eye,
 } from "lucide-react";
 import { Btn, Card, PageHeader, Pagination } from "../components/ui";
 import T from "../constants/tokens";
@@ -77,6 +79,15 @@ function levelColor(level: string): string {
   return T.stable;
 }
 
+function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-baseline gap-3">
+      <span className="text-[11px] w-16 shrink-0" style={{ color: P.muted }}>{label}</span>
+      <span className="flex-1 min-w-0 break-all" style={{ color: P.ink }}>{value}</span>
+    </div>
+  );
+}
+
 export default function AuditLogPage() {
   const [source, setSource] = useState<AuditLogSource>("occupation");
   const [draftFilters, setDraftFilters] = useState<Filters>(EMPTY_FILTERS);
@@ -90,6 +101,7 @@ export default function AuditLogPage() {
   const [userKeyword, setUserKeyword] = useState("");
   const [usersLoading, setUsersLoading] = useState(false);
   const [userSearchError, setUserSearchError] = useState("");
+  const [selected, setSelected] = useState<AuditLogItem | null>(null);
 
   const loadLogs = useCallback(async () => {
     // 让 Effect 只负责调度异步同步点，避免同步级联渲染。
@@ -312,43 +324,53 @@ export default function AuditLogPage() {
 
       <Card>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1120px] text-[12px]">
+          <table className="w-full text-[12px]">
             <thead>
               <tr style={{ background: P.sky }}>
-                {["时间", "操作人", "级别", "请求", "操作详情", "IP", "Trace ID"].map((header) => (
-                  <th key={header} className="px-4 py-2.5 text-left font-medium" style={{ color: P.primaryDeep }}>{header}</th>
-                ))}
+                <th className="text-left font-medium px-4 py-2.5" style={{ color: P.primaryDeep }}>时间</th>
+                <th className="text-left font-medium px-4 py-2.5" style={{ color: P.primaryDeep }}>操作人</th>
+                <th className="text-left font-medium px-4 py-2.5" style={{ color: P.primaryDeep }}>级别</th>
+                <th className="text-left font-medium px-4 py-2.5" style={{ color: P.primaryDeep }}>请求</th>
+                <th className="text-left font-medium px-4 py-2.5 w-[88px]" style={{ color: P.primaryDeep }}>操作</th>
               </tr>
             </thead>
             <tbody>
               {!loading && result.items.map((item) => {
                 const color = levelColor(item.level);
+                const isActive = selected?.id === item.id;
                 return (
-                  <tr key={item.id} className="align-top" style={{ borderTop: `1px solid ${T.cloud}` }}>
-                    <td className="px-4 py-3 whitespace-nowrap" style={{ color: T.info }}>{formatTime(item.createdAt)}</td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium" style={{ color: T.ink }}>{item.userName || "system"}</div>
-                      <div className="font-mono text-[10px] mt-0.5" style={{ color: T.info }}>
-                        {item.userType ? `${roleLabel(item.userType)} · ` : ""}{item.userId}
-                      </div>
+                  <tr
+                    key={item.id}
+                    className="cursor-pointer transition-colors"
+                    style={{ borderTop: `1px solid ${T.cloud}`, background: isActive ? `${T.teal}0a` : undefined }}
+                    onClick={() => setSelected(item)}
+                  >
+                    <td className="px-4 py-2 whitespace-nowrap" style={{ color: T.info }}>{formatTime(item.createdAt)}</td>
+                    <td className="px-4 py-2 truncate" title={item.userName ? `${item.userName} · ${roleLabel(item.userType)} · ${item.userId}` : undefined}>
+                      <span className="font-medium" style={{ color: T.ink }}>{item.userName || "system"}</span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-2 whitespace-nowrap">
                       <span className="px-2 py-0.5 rounded font-mono text-[11px]" style={{ color, background: `${color}16` }}>{item.level}</span>
                     </td>
-                    <td className="px-4 py-3 max-w-64">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-mono text-[10px] px-1.5 py-0.5 rounded" style={{ background: T.cloud, color: T.ink }}>
+                    <td className="px-4 py-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="font-mono text-[10px] px-1.5 py-0.5 rounded shrink-0" style={{ background: T.cloud, color: T.ink }}>
                           {item.requestMethod || "-"}
                         </span>
                         <span className="font-mono truncate" title={item.requestUrl} style={{ color: T.info }}>{item.requestUrl || "-"}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 max-w-80">
-                      <div style={{ color: T.ink }}>{item.detail || "-"}</div>
-                      {item.errorMsg && <div className="mt-1 break-words" style={{ color: T.risk }}>{item.errorMsg}</div>}
+                    <td className="px-4 py-2 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 text-[12px] px-2 py-1 rounded-md transition-colors"
+                        style={{ color: P.primary, background: `${P.primary}0a` }}
+                        onClick={() => setSelected(item)}
+                      >
+                        <Eye size={13} />
+                        详情
+                      </button>
                     </td>
-                    <td className="px-4 py-3 font-mono whitespace-nowrap" style={{ color: T.info }}>{item.userIp || "-"}</td>
-                    <td className="px-4 py-3 font-mono max-w-44 break-all" style={{ color: T.info }}>{item.traceId || "-"}</td>
                   </tr>
                 );
               })}
@@ -369,6 +391,94 @@ export default function AuditLogPage() {
           />
         </div>
       </Card>
+
+      {/* ==================== 详情抽屉 ==================== */}
+      {selected && (
+        <div className="fixed inset-0 z-50 flex" style={{ background: "rgba(25,50,77,0.3)" }}
+          onClick={() => setSelected(null)}>
+          <div className="ml-auto w-[600px] shrink-0 max-w-[calc(100vw-24px)] h-full bg-white shadow-xl flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}>
+            {/* 头部 */}
+            <div className="flex items-center justify-between gap-3 px-5 py-4 flex-shrink-0" style={{ borderBottom: `1px solid ${P.border}` }}>
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="px-2 py-0.5 rounded font-mono text-[11px]"
+                  style={{ color: levelColor(selected.level), background: `${levelColor(selected.level)}16` }}>
+                  {selected.level}
+                </span>
+                <div className="min-w-0">
+                  <div className="text-[14px] font-semibold truncate" style={{ color: P.ink }}>审计日志详情</div>
+                  <div className="text-[11px] font-mono mt-0.5" style={{ color: P.muted }}>{selected.id}</div>
+                </div>
+              </div>
+              <button onClick={() => setSelected(null)} style={{ color: P.faint }}><X size={18} /></button>
+            </div>
+
+            {/* 滚动内容 */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6">
+              {/* 请求信息 */}
+              <section>
+                <div className="text-[12px] font-semibold mb-3" style={{ color: P.muted }}>请求信息</div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-[13px]">
+                  <DetailRow label="请求方法" value={
+                    <span className="font-mono px-1.5 py-0.5 rounded" style={{ background: T.cloud, color: T.ink }}>
+                      {selected.requestMethod || "-"}
+                    </span>
+                  } />
+                  <DetailRow label="来源服务" value={selected.sourceService || "-"} />
+                  <div className="col-span-2">
+                    <div className="text-[11px]" style={{ color: P.muted, marginBottom: 2 }}>请求路径</div>
+                    <div className="font-mono text-[12px] break-all rounded px-2 py-1.5"
+                      style={{ background: "#F5F8FB", color: P.ink, border: `1px solid ${P.border}` }}>
+                      {selected.requestUrl || "-"}
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* 操作详情 */}
+              <section>
+                <div className="text-[12px] font-semibold mb-3" style={{ color: P.muted }}>操作详情</div>
+                <div className="rounded px-3 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap break-words"
+                  style={{ background: "#F5F8FB", color: P.ink, border: `1px solid ${P.border}` }}>
+                  {selected.detail || "-"}
+                </div>
+                {selected.errorMsg && (
+                  <div className="mt-2 rounded px-3 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap break-words"
+                    style={{ background: "#FBEAE7", color: T.risk, border: `1px solid ${T.risk}40` }}>
+                    {selected.errorMsg}
+                  </div>
+                )}
+              </section>
+
+              {/* 操作者信息 */}
+              <section>
+                <div className="text-[12px] font-semibold mb-3" style={{ color: P.muted }}>操作者信息</div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-[13px]">
+                  <DetailRow label="操作人" value={selected.userName || "system"} />
+                  <DetailRow label="用户类型" value={roleLabel(selected.userType)} />
+                  <DetailRow label="用户 ID" value={<span className="font-mono">{selected.userId || "-"}</span>} />
+                  <DetailRow label="IP 地址" value={<span className="font-mono">{selected.userIp || "-"}</span>} />
+                </div>
+              </section>
+
+              {/* 追溯信息 */}
+              <section>
+                <div className="text-[12px] font-semibold mb-3" style={{ color: P.muted }}>追溯信息</div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-[13px]">
+                  <DetailRow label="发生时间" value={formatTime(selected.createdAt)} />
+                  <div className="col-span-2">
+                    <div className="text-[11px]" style={{ color: P.muted, marginBottom: 2 }}>Trace ID</div>
+                    <div className="font-mono text-[12px] break-all rounded px-2 py-1.5"
+                      style={{ background: "#F5F8FB", color: P.ink, border: `1px solid ${P.border}` }}>
+                      {selected.traceId || "-"}
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

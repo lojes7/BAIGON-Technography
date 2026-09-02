@@ -295,26 +295,31 @@ export default function JobAnalysisPage() {
               <tbody>
                 {visibleItems.map((item) => (
                   <tr key={item.id} className="transition-colors hover:bg-gray-50" style={{ borderTop: `1px solid ${P.border}` }}>
-                    <td className="px-4 py-3 font-medium" style={{ color: P.ink }}>{item.jobName || "-"}</td>
-                    <td className="max-w-44 px-4 py-3 text-[12px]" style={{ color: P.muted }}>{item.jobMajor || "-"}</td>
+                    <td className="px-4 py-2 font-medium" style={{ color: P.ink }}>{item.jobName || "-"}</td>
+                    <td className="max-w-44 px-4 py-2 text-[12px]" style={{ color: P.muted }}>{item.jobMajor || "-"}</td>
                     {taskStatusFilter === "processing" && (
-                      <td className="px-4 py-3 text-[11px] leading-5" style={{ color: P.muted }}>
+                      <td className="px-4 py-2 text-[11px] leading-5" style={{ color: P.muted }}>
                         <div>专业：{TASK_STATUS_LABEL[item.majorAnalysisStatus] || item.majorAnalysisStatus || "-"}</div>
                         <div>职业：{TASK_STATUS_LABEL[item.occupationAnalysisStatus] || item.occupationAnalysisStatus || "-"}</div>
                         <div>JD：{TASK_STATUS_LABEL[item.jdAnalysisStatus] || item.jdAnalysisStatus || "-"}</div>
                       </td>
                     )}
-                    <td className="px-4 py-3 font-mono text-[11px] leading-5" style={{ color: P.muted }}>
-                      <div>专业：{item.selectedMajorId || "-"}</div>
-                      <div>职业：{item.selectedOccupationId || "-"}</div>
+                    <td className="px-4 py-2 truncate" title={`专业:${item.selectedMajorId || "-"} / 职业:${item.selectedOccupationId || "-"}`}>
+                      <span className="font-mono text-[11px]" style={{ color: P.muted }}>
+                        专业:{item.selectedMajorId || "-"}
+                      </span>
+                      <span className="mx-1.5" style={{ color: P.border }}>/</span>
+                      <span className="font-mono text-[11px]" style={{ color: P.muted }}>
+                        职业:{item.selectedOccupationId || "-"}
+                      </span>
                     </td>
-                    <td className="px-4 py-3 font-mono text-[12px]" style={{ color: P.muted }}>
+                    <td className="px-4 py-2 font-mono text-[12px]" style={{ color: P.muted }}>
                       {item.createdAt?.slice(0, 10) || "-"}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-2">
                       <ReviewStatus status={item.reviewStatus} />
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-2">
                       <button
                         className="flex items-center gap-1 text-[12px] font-medium disabled:opacity-50"
                         style={{ color: P.primary }}

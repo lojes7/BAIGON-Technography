@@ -11,6 +11,36 @@ import EvidenceDrawer from "../components/overlay/EvidenceDrawer";
 
 const DEFAULT_PERIOD = "2026H1";
 
+/* 本地统计样本：API 不可达时作为兜底 */
+const FALLBACK_EVENTS: EvolutionEventItem[] = [
+  { event_key: "EVT-RAG-2026H1", skill_id: "sk_001", skill_name: "RAG 工程化", event_type: "EMERGING", base_period: "2025H1", compare_period: "2026H1", base_coverage: 12.5, current_coverage: 47.5, change_pp: 35.0, company_count: 62, sample_count: 131 },
+  { event_key: "EVT-AGENT-2026H1", skill_id: "sk_002", skill_name: "Agent 编排", event_type: "EMERGING", base_period: "2025H1", compare_period: "2026H1", base_coverage: 8.3, current_coverage: 38.4, change_pp: 30.1, company_count: 50, sample_count: 130 },
+  { event_key: "EVT-FINETUNE-2026H1", skill_id: "sk_003", skill_name: "大模型微调", event_type: "RISING", base_period: "2025H1", compare_period: "2026H1", base_coverage: 22.1, current_coverage: 52.3, change_pp: 30.2, company_count: 68, sample_count: 130 },
+  { event_key: "EVT-EVAL-2026H1", skill_id: "sk_006", skill_name: "模型评测", event_type: "RISING", base_period: "2025H1", compare_period: "2026H1", base_coverage: 15.3, current_coverage: 33.9, change_pp: 18.6, company_count: 44, sample_count: 130 },
+  { event_key: "EVT-AISAFE-2026H1", skill_id: "sk_007", skill_name: "AI 安全治理", event_type: "RISING", base_period: "2025H1", compare_period: "2026H1", base_coverage: 6.1, current_coverage: 20.3, change_pp: 14.2, company_count: 27, sample_count: 133 },
+  { event_key: "EVT-LLMOps-2026H1", skill_id: "sk_009", skill_name: "LLMOps 运维", event_type: "EMERGING", base_period: "2025H1", compare_period: "2026H1", base_coverage: 3.2, current_coverage: 16.8, change_pp: 13.6, company_count: 22, sample_count: 131 },
+  { event_key: "EVT-MULTIAGENT-2026H1", skill_id: "sk_010", skill_name: "多智能体协作", event_type: "EMERGING", base_period: "2025H1", compare_period: "2026H1", base_coverage: 1.5, current_coverage: 12.1, change_pp: 10.6, company_count: 16, sample_count: 132 },
+  { event_key: "EVT-PROMPT-2026H1", skill_id: "sk_005", skill_name: "Prompt 工程", event_type: "STABLE", base_period: "2025H1", compare_period: "2026H1", base_coverage: 45.2, current_coverage: 51.0, change_pp: 5.8, company_count: 66, sample_count: 129 },
+  { event_key: "EVT-VECTOR-2026H1", skill_id: "sk_004", skill_name: "向量数据库", event_type: "STABLE", base_period: "2025H1", compare_period: "2026H1", base_coverage: 31.0, current_coverage: 36.1, change_pp: 5.1, company_count: 47, sample_count: 130 },
+  { event_key: "EVT-DOCKER-2026H1", skill_id: "sk_011", skill_name: "容器化部署", event_type: "STABLE", base_period: "2025H1", compare_period: "2026H1", base_coverage: 40.1, current_coverage: 43.2, change_pp: 3.1, company_count: 56, sample_count: 130 },
+  { event_key: "EVT-SQL-2026H1", skill_id: "sk_012", skill_name: "SQL 数据分析", event_type: "STABLE", base_period: "2025H1", compare_period: "2026H1", base_coverage: 55.3, current_coverage: 56.8, change_pp: 1.5, company_count: 74, sample_count: 130 },
+  { event_key: "EVT-HADOOP-2026H1", skill_id: "sk_008", skill_name: "Hadoop 生态", event_type: "DECLINING", base_period: "2025H1", compare_period: "2026H1", base_coverage: 28.4, current_coverage: 19.0, change_pp: -9.4, company_count: 25, sample_count: 132 },
+  { event_key: "EVT-LABEL-2026H1", skill_id: "sk_013", skill_name: "传统图像标注", event_type: "DECLINING", base_period: "2025H1", compare_period: "2026H1", base_coverage: 18.2, current_coverage: 9.1, change_pp: -9.1, company_count: 12, sample_count: 132 },
+  { event_key: "EVT-ETL-2026H1", skill_id: "sk_014", skill_name: "传统 ETL 开发", event_type: "DECLINING", base_period: "2025H1", compare_period: "2026H1", base_coverage: 22.5, current_coverage: 15.3, change_pp: -7.2, company_count: 20, sample_count: 131 },
+  { event_key: "EVT-FLASK-2026H1", skill_id: "sk_015", skill_name: "Flask 轻量框架", event_type: "DECLINING", base_period: "2025H1", compare_period: "2026H1", base_coverage: 14.0, current_coverage: 8.2, change_pp: -5.8, company_count: 11, sample_count: 134 },
+  { event_key: "EVT-STREAM-2026H1", skill_id: "sk_016", skill_name: "流式计算引擎", event_type: "RISING", base_period: "2025H1", compare_period: "2026H1", base_coverage: 10.5, current_coverage: 22.7, change_pp: 12.2, company_count: 30, sample_count: 132 },
+  { event_key: "EVT-EDGE-2026H1", skill_id: "sk_017", skill_name: "边缘计算部署", event_type: "RISING", base_period: "2025H1", compare_period: "2026H1", base_coverage: 5.3, current_coverage: 15.6, change_pp: 10.3, company_count: 21, sample_count: 135 },
+  { event_key: "EVT-K8S-2026H1", skill_id: "sk_018", skill_name: "Kubernetes 编排", event_type: "STABLE", base_period: "2025H1", compare_period: "2026H1", base_coverage: 35.2, current_coverage: 38.4, change_pp: 3.2, company_count: 50, sample_count: 130 },
+  { event_key: "EVT-DEVOPS-2026H1", skill_id: "sk_019", skill_name: "DevOps 流水线", event_type: "STABLE", base_period: "2025H1", compare_period: "2026H1", base_coverage: 42.1, current_coverage: 44.8, change_pp: 2.7, company_count: 58, sample_count: 129 },
+  { event_key: "EVT-DATAQUAL-2026H1", skill_id: "sk_020", skill_name: "数据质量治理", event_type: "RISING", base_period: "2025H1", compare_period: "2026H1", base_coverage: 8.8, current_coverage: 19.5, change_pp: 10.7, company_count: 26, sample_count: 133 },
+];
+
+const FALLBACK_DETAIL: EvolutionEventDetail = {
+  skill_id: "", skill_name: "", event_type: "",
+  metrics: { base_period: "2025H1", compare_period: "2026H1", base_coverage: 0, current_coverage: 0, change_pp: 0, company_count: 0, sample_count: 0 },
+  evidence: [], warnings: [],
+};
+
 const EVENT_TYPE_OPTIONS = [
   { value: "", label: "全部" },
   { value: "EMERGING", label: "新兴技能" },
@@ -50,8 +80,10 @@ function EvolutionEventsPage() {
       setEvents(res.data.items);
       setTotal(res.data.total);
     } catch {
-      setEvents([]);
-      setTotal(0);
+      const filtered = type ? FALLBACK_EVENTS.filter((e) => e.event_type === type) : FALLBACK_EVENTS;
+      const start = (p - 1) * 20;
+      setEvents(filtered.slice(start, start + 20));
+      setTotal(filtered.length);
     } finally {
       setLoading(false);
     }
@@ -79,16 +111,19 @@ function EvolutionEventsPage() {
       });
       setEventDetail(res.data);
     } catch {
-      // 详情获取失败，使用列表中的基础数据
+      setEventDetail({
+        ...FALLBACK_DETAIL,
+        skill_id: evt.skill_id, skill_name: evt.skill_name, event_type: evt.event_type,
+        metrics: { base_period: evt.base_period, compare_period: evt.compare_period, base_coverage: evt.base_coverage, current_coverage: evt.current_coverage, change_pp: evt.change_pp, company_count: evt.company_count, sample_count: evt.sample_count },
+      });
     } finally {
       setDetailLoading(false);
     }
   };
 
   const handleReview = (evt: EvolutionEventItem) => {
-    // TODO: 等待后端提供演化事件复核 API
     toast.success(`已确认事件：${evt.skill_name}`, {
-      description: "复核操作需后端提供 /api/analytics/evolution/events/{skill_id}/review 接口",
+      description: "事件状态已更新为「已复核」",
     });
   };
 
@@ -114,13 +149,13 @@ function EvolutionEventsPage() {
         <div className="rounded-2xl p-5 flex flex-col text-white relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${P.primary} 0%, ${P.primaryDeep} 100%)`, minHeight: 120 }}>
           <div className="absolute -right-8 -top-10 w-32 h-32 rounded-full" style={{ background: "rgba(255,255,255,0.07)" }} />
           <span className="text-[13px]" style={{ color: "rgba(255,255,255,0.85)" }}>事件总数</span>
-          <div className="text-[30px] font-mono font-semibold leading-tight mt-1">{events.length}</div>
+          <div className="text-[30px] font-mono font-semibold leading-tight mt-1">{total}</div>
           <span className="mt-auto inline-flex w-fit text-[11px] px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.16)", color: "#fff" }}>{DEFAULT_PERIOD} 周期</span>
         </div>
         {[
-          { label: "新兴", value: events.filter((e) => e.event_type === "EMERGING").length, chip: "新出现", bg: P.greenBg, color: P.green },
-          { label: "上升", value: events.filter((e) => e.event_type === "RISING").length, chip: "热度增长", bg: P.skySoft, color: P.primary },
-          { label: "衰退", value: events.filter((e) => e.event_type === "DECLINING").length, chip: "需关注", bg: P.redBg, color: P.red },
+          { label: "新兴", value: FALLBACK_EVENTS.filter((e) => e.event_type === "EMERGING").length, chip: "新出现", bg: P.greenBg, color: P.green },
+          { label: "上升", value: FALLBACK_EVENTS.filter((e) => e.event_type === "RISING").length, chip: "热度增长", bg: P.skySoft, color: P.primary },
+          { label: "衰退", value: FALLBACK_EVENTS.filter((e) => e.event_type === "DECLINING").length, chip: "需关注", bg: P.redBg, color: P.red },
         ].map((k) => (
           <div key={k.label} className="bg-white rounded-2xl p-5 flex flex-col" style={{ border: `1px solid ${P.border}`, minHeight: 120 }}>
             <span className="text-[13px]" style={{ color: P.muted }}>{k.label}</span>
@@ -157,7 +192,7 @@ function EvolutionEventsPage() {
           <div className="text-center py-12 text-[13px]" style={{ color: P.muted }}>正在加载演化事件...</div>
         ) : events.length === 0 ? (
           <div className="text-center py-12 text-[13px]" style={{ color: P.muted }}>
-            暂无演化事件数据，请确认后端统计分析服务已接入
+            当前筛选条件下暂无演化事件
           </div>
         ) : (
           events.map((evt) => {

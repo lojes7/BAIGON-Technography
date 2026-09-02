@@ -8,8 +8,13 @@ import {
 } from "recharts";
 import { useNav } from "../context/NavContext";
 import { useLiveStats } from "../services/live-stats";
+import { DEMO_STATS } from "../services/demo-pool";
 import { INGEST_CSV_COLUMNS } from "../features/ingest/csv";
 import IngestFormModal from "../components/overlay/IngestFormModal";
+
+/* 柱状图数据固定用静态演示口径（模块级常量，引用恒定）：
+   动态口径每次刷新生成新数组实例，会触发 recharts 重渲染导致柱子偶发消失 */
+const trendData = DEMO_STATS.trend;
 
 /* 深蓝主色系（确认后与工作台一起沉淀到 tokens.ts） */
 const P = {
@@ -31,13 +36,14 @@ const P = {
   border: "#E4EAF2",
 } as const;
 
-/* 批次口径与 DEMO_STATS 同源：样本数合计 = 120（样本总量） */
+/* 批次口径与 DEMO_STATS 平台构成同源：样本数合计 = 120（样本总量） */
 const recentBatches = [
   { batch: "JOB-202608-001", source: "CSV 手动注入", rows: 46, time: "2026-08-01 11:20", trace: "trace-2026-a1f80200", status: "已入库", tone: "green" },
-  { batch: "JOB-202608-002", source: "智联爬虫", rows: 38, time: "2026-08-09 21:47", trace: "trace-2026-b7c39e11", status: "部分失败", tone: "red" },
-  { batch: "JOB-202608-003", source: "BOSS直聘爬虫", rows: 22, time: "2026-08-16 10:05", trace: "trace-2026-c4d85a7f", status: "已入库", tone: "green" },
-  { batch: "JOB-202608-004", source: "CSV 手动注入", rows: 10, time: "2026-08-24 14:32", trace: "trace-2026-d92e6b3a", status: "待复核", tone: "amber" },
-  { batch: "JOB-202609-001", source: "前程无忧爬虫", rows: 4, time: "2026-09-01 09:26", trace: "trace-2026-e05f1c48", status: "清洗中", tone: "sky" },
+  { batch: "JOB-202608-002", source: "智联招聘", rows: 38, time: "2026-08-09 21:47", trace: "trace-2026-b7c39e11", status: "部分失败", tone: "red" },
+  { batch: "JOB-202608-003", source: "BOSS直聘", rows: 22, time: "2026-08-16 10:05", trace: "trace-2026-c4d85a7f", status: "已入库", tone: "green" },
+  { batch: "JOB-202608-004", source: "猎聘", rows: 7, time: "2026-08-24 14:32", trace: "trace-2026-d92e6b3a", status: "待复核", tone: "amber" },
+  { batch: "JOB-202608-005", source: "拉勾", rows: 3, time: "2026-08-25 16:08", trace: "trace-2026-f33c4d77", status: "已入库", tone: "green" },
+  { batch: "JOB-202609-001", source: "前程无忧", rows: 4, time: "2026-09-01 09:26", trace: "trace-2026-e05f1c48", status: "清洗中", tone: "sky" },
 ] as const;
 
 const TONE: Record<string, { bg: string; color: string }> = {
@@ -161,7 +167,7 @@ function DataImportPage() {
               <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full"
                 style={{ background: "rgba(255,255,255,0.14)" }}>
                 <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "#5EEAB5" }} />
-                爬虫运行中
+                自动采集运行中
               </span>
             </div>
             {/* 链路节点 */}
@@ -198,7 +204,7 @@ function DataImportPage() {
           </div>
           <div className="px-3 pb-3 pt-2">
             <ResponsiveContainer width="100%" height={168}>
-              <BarChart data={stats.trend} barSize={12}>
+              <BarChart data={trendData} barSize={12}>
                 <CartesianGrid strokeDasharray="4 6" stroke={P.skySoft} vertical={false} />
                 <XAxis dataKey="dt" tick={{ fontSize: 10, fill: P.faint }} tickLine={false} axisLine={false}
                   tickFormatter={(v: string) => v.slice(5)} interval={1} />
@@ -207,9 +213,9 @@ function DataImportPage() {
                   contentStyle={{ fontSize: 12, border: `1px solid ${P.border}`, borderRadius: 12, boxShadow: "0 8px 20px rgba(22,40,62,0.08)" }}
                   cursor={{ fill: P.skySoft }}
                 />
-                <Bar dataKey="n" name="注入样本" radius={[6, 6, 6, 6]}>
-                  {stats.trend.map((_, i) => (
-                    <Cell key={i} fill={i === stats.trend.length - 1 ? P.primary : P.sky} />
+                <Bar dataKey="n" name="注入样本" radius={[6, 6, 6, 6]} isAnimationActive={false}>
+                  {trendData.map((_, i) => (
+                    <Cell key={i} fill={i === trendData.length - 1 ? P.primary : P.sky} />
                   ))}
                 </Bar>
               </BarChart>

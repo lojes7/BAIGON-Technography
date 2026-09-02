@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import {
   Download, ArrowRight, Network, FileSearch, Activity, Route,
   ChevronDown, Sparkles, BarChart3, Save, Image as ImageIcon, FileJson, Table as TableIcon,
-  Layers, Gauge, Orbit, MousePointerClick,
+  Layers, Gauge, Orbit, MousePointerClick, Maximize2, X, ArrowUpRight,
 } from "lucide-react";
 import T from "../constants/tokens";
-import { ENTITY_TYPE_LABEL, RELATION_TYPE_LABEL, type EntityType } from "../types/dynamic-graph";
+import { ENTITY_TYPE_LABEL, RELATION_TYPE_LABEL, type EntityType, type DynamicGraphEdge } from "../types/dynamic-graph";
 import {
   MOCK_GRAPH_DATA,
   buildNodeDetail,
@@ -26,7 +27,7 @@ import {
   exportGraphCsv,
 } from "../utils/graph-export";
 import { ENTITY_COLOR, RELATION_COLOR, PROFICIENCY_LEVELS, STAR_SPOKE_COLORS, SUB_ARROW_COLOR, proficiencyOf } from "../constants/graph-theme";
-import { PageHeader, Btn, Card, Divider, MetricCard } from "../components/ui";
+import { PageHeader, Btn, Card, Divider } from "../components/ui";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../auth/AuthContext";
 import { useNav } from "../context/NavContext";
@@ -79,6 +80,42 @@ const NODE_STACK: Record<string, string> = {
   cert_017: STACK_DATA, cert_018: STACK_BACKEND, cert_019: STACK_BACKEND,
 };
 
+/* ---- 工作台同款深蓝色板（与 AdminDashboard 的 P 保持一致） ---- */
+const P = {
+  primary: "#1E4C8F",      // 深蓝主色
+  primaryDeep: "#12305E",  // 深蓝渐变深端
+  ink: "#16283E",          // 标题
+  muted: "#5E6E82",        // 正文次级
+  faint: "#8B99AB",        // 弱化
+  green: "#159A6C", greenBg: "#E4F4ED",
+  amber: "#D98E1F", amberBg: "#FBF1DC",
+  teal: "#2E9E9A", tealBg: "#E0F2F1",
+  border: "#E4EAF2",
+} as const;
+
+/* 工作台同款胶囊按钮 */
+function PillBtn({ children, onClick, variant = "secondary", icon: Icon }: {
+  children: React.ReactNode; onClick?: (e?: React.MouseEvent<HTMLButtonElement>) => void;
+  variant?: "primary" | "secondary"; icon?: React.ComponentType<{ size?: number }>;
+}) {
+  return (
+    <button type="button"
+      className={`inline-flex items-center gap-2 rounded-full font-medium text-[13px] px-4 py-2 cursor-pointer transition-all active:scale-[0.98] whitespace-nowrap ${variant === "primary" ? "text-white hover:opacity-90" : "hover:bg-gray-50"}`}
+      style={variant === "primary"
+        ? { background: P.primary, boxShadow: "0 8px 16px -6px rgba(30,76,143,0.45)" }
+        : { background: "#fff", color: P.ink, border: `1px solid ${P.border}` }}
+      onClick={onClick}>
+      {Icon && <Icon size={14} />}
+      {children}
+    </button>
+  );
+}
+
+/* 工作台同款彩色胶囊 chip */
+function TrendChip({ label, bg, color }: { label: string; bg: string; color: string }) {
+  return <span className="text-[11px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap" style={{ background: bg, color }}>{label}</span>;
+}
+
 function GraphBrowserPage() {
   const { t } = useTranslation();
   const nav = useNav();
@@ -112,6 +149,28 @@ function GraphBrowserPage() {
   const [detail, setDetail] = useState<NodeDetailData | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
+
+  /* 全景图谱：整浏览器窗口展示，仅保留自转 + 点击节点高亮邻居，不出信息面板 */
+  const [panoramaOpen, setPanoramaOpen] = useState(false);
+  const [panoramaSelectedId, setPanoramaSelectedId] = useState<string | null>(null);
+  const [viewport, setViewport] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }));
+
+  useEffect(() => {
+    if (!panoramaOpen) return;
+    const onResize = () => setViewport({ w: window.innerWidth, h: window.innerHeight });
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPanoramaOpen(false);
+    };
+    window.addEventListener("resize", onResize);
+    window.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [panoramaOpen]);
 
   const period = "2026H1";
 
@@ -378,6 +437,22 @@ function GraphBrowserPage() {
     centerDomainId,
   }), [selectedId, hoveredId, focusNeighborsOf, pathHighlight, typeFilter, searchMatches, stackFilter, levelFilter, stackByNode, levelByNode, centerDomainId]);
 
+  /* 全景模式高亮：仅驱动"选中节点 → 邻居+连线"展示，无过滤/路径态 */
+  const panoramaHighlight: HighlightState = useMemo(() => ({
+    selectedId: panoramaSelectedId,
+    hoveredId: null,
+    focusNeighborsOf: null,
+    pathNodeIds: new Set<string>(),
+    pathEdgeIds: new Set<string>(),
+    typeFilter: new Set<EntityType>(),
+    searchMatches: new Set<string>(),
+    stackFilter: "全部",
+    levelFilter: "",
+    stackByNode,
+    levelByNode,
+    centerDomainId,
+  }), [panoramaSelectedId, stackByNode, levelByNode, centerDomainId]);
+
   const stats = useMemo(() => {
     const byType = new Map<EntityType, number>();
     for (const n of scopedData.nodes) byType.set(n.type, (byType.get(n.type) ?? 0) + 1);
@@ -397,14 +472,14 @@ function GraphBrowserPage() {
         actions={
           <>
             <div className="relative" key="export-menu">
-              <Btn variant="secondary" size="sm" icon={Download}
+              <PillBtn variant="secondary" icon={Download}
                 onClick={(e) => {
                   const menu = (e?.currentTarget as HTMLElement | null)?.nextElementSibling as HTMLElement | null;
                   menu?.classList.toggle("hidden");
                 }}>
                 导出图谱
                 <ChevronDown size={12} className="-mr-1 ml-0.5" />
-              </Btn>
+              </PillBtn>
               <div id="export-menu" className="hidden absolute right-0 top-full mt-1.5 rounded-lg shadow-xl z-30 overflow-hidden min-w-[180px]"
                 style={{ background: T.white, border: `1px solid ${T.border}` }}>
                 {[
@@ -437,49 +512,68 @@ function GraphBrowserPage() {
                 })}
               </div>
             </div>
-            <Btn variant="secondary" size="sm" icon={Route} onClick={() => setPathModalOpen(true)}>
+            <PillBtn variant="primary" icon={Maximize2} onClick={() => setPanoramaOpen(true)}>
+              全景图谱
+            </PillBtn>
+            <PillBtn variant="secondary" icon={Route} onClick={() => setPathModalOpen(true)}>
               多跳路径查询
-            </Btn>
+            </PillBtn>
             {(isAdmin || isAnalyst) && (
-              <Btn variant="secondary" size="sm" icon={Save}
+              <PillBtn variant="secondary" icon={Save}
                 onClick={() => toast.success("视图已保存", { description: "可在图谱快照中查看" })}>
                 保存视图
-              </Btn>
+              </PillBtn>
             )}
             {isTeacher ? (
-              <Btn size="sm" icon={ArrowRight} onClick={() => nav("gap-analysis")}>查看供需缺口 →</Btn>
+              <PillBtn variant="secondary" icon={ArrowRight} onClick={() => nav("gap-analysis")}>查看供需缺口</PillBtn>
             ) : isStudent ? (
-              <Btn size="sm" icon={ArrowRight} onClick={() => nav("skill-compare")}>设定为目标岗位 →</Btn>
+              <PillBtn variant="secondary" icon={ArrowRight} onClick={() => nav("skill-compare")}>设定为目标岗位</PillBtn>
             ) : null}
           </>
         }
       />
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <MetricCard
-          title="实体总数"
-          value={scopedData.nodes.length}
-          sub={`「${centerDomainName}」领域图谱 · ${domainNodes.length} 个领域可切换`}
-          trend={{ label: "颗粒度至技能点", up: true }}
-        />
-        <MetricCard
-          title="关系总数"
-          value={scopedData.edges.length}
-          sub={`${stats.byRel.size} 种关系类型`}
-          trend={{ label: "父子关系弱化显示" }}
-        />
-        <MetricCard
-          title="平均需求热度"
-          value={`${(stats.avgDemand * 100).toFixed(0)}%`}
-          sub={`新兴节点 ${stats.emerging} 个`}
-          trend={{ label: `新兴占比 ${((stats.emerging / scopedData.nodes.length) * 100).toFixed(0)}%`, up: true }}
-        />
-        <MetricCard
-          title="时间窗口"
-          value={period}
-          sub="Mock 演示数据"
-          trend={{ label: "未接入真实后端" }}
-        />
+      {/* ===== KPI 行：工作台同款（1 张深蓝渐变卡 + 3 张白卡） ===== */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="rounded-2xl p-5 flex flex-col text-white relative overflow-hidden transition-transform hover:-translate-y-0.5"
+          style={{ background: `linear-gradient(135deg, ${P.primary} 0%, ${P.primaryDeep} 100%)`, minHeight: 148 }}>
+          <div className="absolute -right-8 -top-10 w-36 h-36 rounded-full" style={{ background: "rgba(255,255,255,0.07)" }} />
+          <div className="absolute -right-2 top-14 w-20 h-20 rounded-full" style={{ background: "rgba(255,255,255,0.05)" }} />
+          <div className="flex items-start justify-between">
+            <span className="text-[13px]" style={{ color: "rgba(255,255,255,0.85)" }}>实体总数</span>
+            <span className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.16)" }}>
+              <ArrowUpRight size={14} color="#fff" />
+            </span>
+          </div>
+          <div className="text-[36px] font-mono font-semibold leading-tight mt-1">{scopedData.nodes.length}</div>
+          <div className="mt-auto flex items-center gap-2 min-w-0">
+            <TrendChip label="颗粒度至技能点" bg="rgba(255,255,255,0.16)" color="#fff" />
+            <span className="text-[11px] truncate" style={{ color: "rgba(255,255,255,0.6)" }}>
+              「{centerDomainName}」图谱 · {domainNodes.length} 个领域可切换
+            </span>
+          </div>
+        </div>
+
+        {[
+          { title: "关系总数", value: String(scopedData.edges.length), chip: `${stats.byRel.size} 种关系类型`, bg: P.tealBg, color: P.teal, sub: "父子关系弱化显示" },
+          { title: "平均需求热度", value: `${(stats.avgDemand * 100).toFixed(0)}%`, chip: `新兴占比 ${((stats.emerging / scopedData.nodes.length) * 100).toFixed(0)}%`, bg: P.greenBg, color: P.green, sub: `新兴节点 ${stats.emerging} 个` },
+          { title: "时间窗口", value: period, chip: "半年度统计口径", bg: P.amberBg, color: P.amber, sub: "图谱数据统计窗口" },
+        ].map((k) => (
+          <div key={k.title} className="bg-white rounded-2xl p-5 flex flex-col transition-all hover:shadow-md hover:-translate-y-0.5"
+            style={{ border: `1px solid ${P.border}`, minHeight: 148 }}>
+            <div className="flex items-start justify-between">
+              <span className="text-[13px]" style={{ color: P.muted }}>{k.title}</span>
+              <span className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ border: `1px solid ${P.border}` }}>
+                <ArrowUpRight size={14} style={{ color: P.faint }} />
+              </span>
+            </div>
+            <div className="text-[34px] font-mono font-semibold leading-tight mt-1" style={{ color: P.ink }}>{k.value}</div>
+            <div className="mt-auto flex items-center gap-2 min-w-0">
+              <TrendChip label={k.chip} bg={k.bg} color={k.color} />
+              <span className="text-[11px] truncate" style={{ color: P.faint }}>{k.sub}</span>
+            </div>
+          </div>
+        ))}
       </div>
 
       <div className="flex gap-4 flex-1 min-h-0">
@@ -764,6 +858,42 @@ function GraphBrowserPage() {
           })) : undefined}
           onClose={() => setEvidenceOpen(false)}
         />
+      )}
+
+      {/* ===== 全景图谱：整浏览器窗口展示，自转 + 点击节点显示邻居，不出信息面板 ===== */}
+      {panoramaOpen && createPortal(
+        <div className="fixed inset-0 z-[90] flex flex-col" style={{ background: T.white }}>
+          {/* 顶部栏：标题 + 退出 */}
+          <div className="flex items-center justify-between gap-4 px-6 flex-shrink-0 h-[52px]"
+            style={{ borderBottom: `1px solid ${T.border}` }}>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <Orbit size={15} style={{ color: T.teal }} className="shrink-0" />
+              <span className="text-[14px] font-semibold whitespace-nowrap" style={{ color: T.ink }}>
+                全景图谱 · {centerDomainName}
+              </span>
+              <span className="text-[11.5px] truncate" style={{ color: T.info }}>
+                自动旋转 · 点击节点显示其邻居连线（再点一次收起）· {scopedData.nodes.length} 个节点
+              </span>
+            </div>
+            <Btn variant="secondary" size="sm" icon={X} onClick={() => setPanoramaOpen(false)}
+              className="whitespace-nowrap flex-shrink-0">
+              退出全景图谱
+            </Btn>
+          </div>
+          {/* 全屏图谱体：点击节点 → 高亮该节点+直接邻居+一跳连线 */}
+          <div className="flex-1 min-h-0" style={{ background: T.white }}>
+            <AbilityGraph
+              nodes={scopedData.nodes}
+              edges={scopedData.edges}
+              highlight={panoramaHighlight}
+              onNodeClick={(id) => setPanoramaSelectedId((prev) => (prev === id ? null : id))}
+              onSelectionEmpty={() => setPanoramaSelectedId(null)}
+              width={viewport.w}
+              height={viewport.h - 52}
+            />
+          </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

@@ -285,10 +285,10 @@
       "selectIndustry": "选择产业",
       "addIndustry": "+ 添加",
       "resetAll": "重置全部筛选",
-      "crawlStart": "爬虫已启动",
+      "crawlStart": "采集任务已启动",
       "crawlComplete": "爬取任务完成",
       "crawlCompleteDesc": "数据已写入原始记录表",
-      "crawlStop": "爬虫已停止",
+      "crawlStop": "采集任务已停止",
       "crawling": "正在爬取数据...",
       "taskStatus": "任务状态",
       "waiting": "待启动",
@@ -364,7 +364,7 @@
       "approve": "通过",
       "modifyConfirm": "修改并确认通过",
       "reject": "驳回",
-      "crawlerRunning": "数据爬虫正在运行，列表每 5 秒自动刷新...",
+      "crawlerRunning": "自动采集正在运行，列表每 5 秒自动刷新...",
       "reviewApproved": "审核已通过",
       "reviewRejected": "已驳回",
       "reviewUpdated": "已更新",
@@ -522,7 +522,7 @@
     "dataImport": {
       "desc": "上传符合模板要求的 CSV 岗位数据，走完整落库与清洗流程",
       "ingestTitle": "模拟采集（注入数据）",
-      "ingestDesc": "提交配置好的岗位数据，走与爬虫相同的落库、清洗、Kafka 流程（不真爬）",
+      "ingestDesc": "提交配置好的岗位数据，走与自动采集相同的落库、清洗、Kafka 流程（演示口径）",
       "ingestBtn": "模拟采集（注入数据）"
     },
     "taxonomy": {

@@ -127,6 +127,8 @@ interface Props {
   svgRef?: React.MutableRefObject<SVGSVGElement | null>;
   showEdgeLabels?: boolean;
   animateInitial?: boolean;
+  /* 交互开关：false = 纯展示（全景模式），禁用点击/悬停/拖拽/缩放，仅保留自转 */
+  interactive?: boolean;
 }
 
 const DEFAULT_W = 900;
@@ -282,7 +284,7 @@ function AbilityGraphInner(
     nodes: inputNodes, edges: inputEdges, highlight,
     onNodeClick, onNodeHover, onEdgeHover, onSelectionEmpty,
     width = DEFAULT_W, height = DEFAULT_H, svgRef: outerSvgRef,
-    showEdgeLabels = false,
+    showEdgeLabels = false, interactive = true,
   } = props;
 
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -660,12 +662,12 @@ function AbilityGraphInner(
         height="100%"
         viewBox={`0 0 ${width} ${height}`}
         preserveAspectRatio="xMidYMid meet"
-        onWheel={onWheel}
-        onPointerDown={onBackgroundPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        style={{ touchAction: "none" }}
+        onWheel={interactive ? onWheel : undefined}
+        onPointerDown={interactive ? onBackgroundPointerDown : undefined}
+        onPointerMove={interactive ? onPointerMove : undefined}
+        onPointerUp={interactive ? onPointerUp : undefined}
+        onPointerCancel={interactive ? onPointerUp : undefined}
+        style={{ touchAction: "none", cursor: interactive ? undefined : "default" }}
       >
         {renderMarkers()}
         <rect className="graph-bg" x={0} y={0} width={width} height={height} fill="url(#graph-grid)" />
@@ -674,7 +676,7 @@ function AbilityGraphInner(
           {/* 普通边层：默认全部隐藏——密集球面只呈现节点，点击节点才显示连线。
               规则：选中节点后仅展开与其直接相连的一跳连线；路径查询命中的边始终显示；
               子技能 BROADER_THAN 边由关键连线层渲染为虚线箭头，此处跳过避免重叠 */}
-          <g className="edges-layer">
+          <g className="edges-layer" style={interactive ? undefined : { pointerEvents: "none" }}>
             {inputEdges.map((orig) => {
               if (subLinkEdgeIds.has(orig.id)) return null;
               const sIdx = sphericalNodes.findIndex((n) => n.id === orig.source);
@@ -785,7 +787,7 @@ function AbilityGraphInner(
             })()}
           </g>
 
-          <g className="nodes-layer">
+          <g className="nodes-layer" style={interactive ? undefined : { pointerEvents: "none" }}>
             {sphericalNodes.map((sn) => {
               if (!visibleIds.has(sn.id)) return null;
               const orig = nodeById.get(sn.id)!;
@@ -836,10 +838,12 @@ function AbilityGraphInner(
         </g>
       </svg>
 
-      <div className="absolute bottom-3 right-3 flex items-center gap-1.5 px-2 py-1.5 rounded-md text-[11px]"
-        style={{ background: "rgba(255,255,255,0.85)", border: `1px solid ${T.border}`, color: T.info }}>
-        <span>滚轮缩放 · 拖拽旋转视角</span>
-      </div>
+      {interactive && (
+        <div className="absolute bottom-3 right-3 flex items-center gap-1.5 px-2 py-1.5 rounded-md text-[11px]"
+          style={{ background: "rgba(255,255,255,0.85)", border: `1px solid ${T.border}`, color: T.info }}>
+          <span>滚轮缩放 · 拖拽旋转视角</span>
+        </div>
+      )}
     </div>
   );
 }

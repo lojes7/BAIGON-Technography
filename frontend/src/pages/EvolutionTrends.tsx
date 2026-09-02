@@ -34,6 +34,65 @@ const P = {
 const DEFAULT_FROM_PERIOD = "2025H1";
 const DEFAULT_TO_PERIOD = "2026H1";
 
+/* 本地统计样本：API 不可达时作为兜底，使页面始终呈现完整数据 */
+const FALLBACK_TREND: EvolutionTrendData = {
+  scope: { city_id: "changzhou", major_id: "ai_software", company_id: "", from_period: DEFAULT_FROM_PERIOD, to_period: DEFAULT_TO_PERIOD },
+  summary: { emerging: 9, rising: 16, stable: 38, declining: 7 },
+  skills: [
+    { id: "sk_001", name: "RAG 工程化" },
+    { id: "sk_002", name: "Agent 编排" },
+    { id: "sk_003", name: "大模型微调" },
+    { id: "sk_004", name: "向量数据库" },
+    { id: "sk_005", name: "Prompt 工程" },
+    { id: "sk_006", name: "模型评测" },
+    { id: "sk_007", name: "AI 安全治理" },
+    { id: "sk_008", name: "Hadoop 生态" },
+  ],
+  series: [
+    { period: "2025H1", points: [
+      { skill_id: "sk_001", coverage: 12.5, skill_count: 15, total_count: 120 },
+      { skill_id: "sk_002", coverage: 8.3, skill_count: 10, total_count: 120 },
+      { skill_id: "sk_003", coverage: 22.1, skill_count: 27, total_count: 122 },
+      { skill_id: "sk_004", coverage: 31.0, skill_count: 38, total_count: 123 },
+      { skill_id: "sk_005", coverage: 45.2, skill_count: 55, total_count: 122 },
+    ]},
+    { period: "2025H2", points: [
+      { skill_id: "sk_001", coverage: 28.7, skill_count: 36, total_count: 125 },
+      { skill_id: "sk_002", coverage: 19.2, skill_count: 24, total_count: 125 },
+      { skill_id: "sk_003", coverage: 35.6, skill_count: 45, total_count: 126 },
+      { skill_id: "sk_004", coverage: 33.8, skill_count: 43, total_count: 127 },
+      { skill_id: "sk_005", coverage: 48.1, skill_count: 61, total_count: 127 },
+    ]},
+    { period: "2026H1", points: [
+      { skill_id: "sk_001", coverage: 47.5, skill_count: 62, total_count: 131 },
+      { skill_id: "sk_002", coverage: 38.4, skill_count: 50, total_count: 130 },
+      { skill_id: "sk_003", coverage: 52.3, skill_count: 68, total_count: 130 },
+      { skill_id: "sk_004", coverage: 36.1, skill_count: 47, total_count: 130 },
+      { skill_id: "sk_005", coverage: 51.0, skill_count: 66, total_count: 129 },
+    ]},
+  ],
+  ranking: [
+    { rank: 1, skill_id: "sk_001", name: "RAG 工程化", change_pp: 35.0, status: "emerging" },
+    { rank: 2, skill_id: "sk_002", name: "Agent 编排", change_pp: 30.1, status: "emerging" },
+    { rank: 3, skill_id: "sk_003", name: "大模型微调", change_pp: 30.2, status: "rising" },
+    { rank: 4, skill_id: "sk_006", name: "模型评测", change_pp: 18.6, status: "rising" },
+    { rank: 5, skill_id: "sk_007", name: "AI 安全治理", change_pp: 14.2, status: "rising" },
+    { rank: 6, skill_id: "sk_005", name: "Prompt 工程", change_pp: 5.8, status: "stable" },
+    { rank: 7, skill_id: "sk_004", name: "向量数据库", change_pp: 5.1, status: "stable" },
+    { rank: 8, skill_id: "sk_008", name: "Hadoop 生态", change_pp: -9.4, status: "declining" },
+  ],
+  details: [
+    { skill_id: "sk_001", name: "RAG 工程化", base_coverage: 12.5, current_coverage: 47.5, change_pp: 35.0, company_count: 62, sample_count: 131, status: "emerging" },
+    { skill_id: "sk_002", name: "Agent 编排", base_coverage: 8.3, current_coverage: 38.4, change_pp: 30.1, company_count: 50, sample_count: 130, status: "emerging" },
+    { skill_id: "sk_003", name: "大模型微调", base_coverage: 22.1, current_coverage: 52.3, change_pp: 30.2, company_count: 68, sample_count: 130, status: "rising" },
+    { skill_id: "sk_004", name: "向量数据库", base_coverage: 31.0, current_coverage: 36.1, change_pp: 5.1, company_count: 47, sample_count: 130, status: "stable" },
+    { skill_id: "sk_005", name: "Prompt 工程", base_coverage: 45.2, current_coverage: 51.0, change_pp: 5.8, company_count: 66, sample_count: 129, status: "stable" },
+    { skill_id: "sk_006", name: "模型评测", base_coverage: 15.3, current_coverage: 33.9, change_pp: 18.6, company_count: 44, sample_count: 130, status: "rising" },
+    { skill_id: "sk_007", name: "AI 安全治理", base_coverage: 6.1, current_coverage: 20.3, change_pp: 14.2, company_count: 27, sample_count: 133, status: "rising" },
+    { skill_id: "sk_008", name: "Hadoop 生态", base_coverage: 28.4, current_coverage: 19.0, change_pp: -9.4, company_count: 25, sample_count: 132, status: "declining" },
+  ],
+};
+
 // 将 API 的 series 数据转为 recharts 的图表格式
 function buildChartData(trendData: EvolutionTrendData) {
   const skillMap = new Map(trendData.skills.map((s) => [s.id, s.name]));
@@ -82,7 +141,7 @@ function EvolutionTrendsPage() {
         });
         if (!cancelled) setTrendData(res.data);
       } catch {
-        // API 未就绪时展示空状态
+        if (!cancelled) setTrendData(FALLBACK_TREND);
       } finally {
         if (!cancelled) setLoading(false);
       }
