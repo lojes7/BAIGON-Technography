@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { ReactNode } from "react";
 import {
@@ -9,9 +9,23 @@ import {
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
-import { getJobDetail, getLatestMyJobMatch, listJobs, matchMyResumeToJob } from "../services/jobs";
+import {
+  getJobDetail,
+  getLatestMyJobMatch,
+  loadJobsPage,
+  lookupJobSkills,
+  matchMyResumeToJob,
+} from "../services/jobs";
 import { isHttpErrorStatus } from "../services/http-error";
-import type { JobData, JobDetail, JobMatchResult } from "../types/api";
+import { lookupMajors, lookupOccupations } from "../services/occupation";
+import type {
+  JobData,
+  JobDetail,
+  JobMatchResult,
+  JobSkillData,
+  MajorCatalogItem,
+  OccupationCatalogItem,
+} from "../types/api";
 import { Pagination } from "../components/ui";
 import AbilityRadialGraph from "../components/AbilityRadialGraph";
 import DirectoryPicker from "../components/job-analysis/DirectoryPicker";
@@ -143,6 +157,9 @@ export default function JobsPage() {
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<FilterForm>(EMPTY_FILTER);
   const [applied, setApplied] = useState<FilterForm>(EMPTY_FILTER);
+  const [majorFilterName, setMajorFilterName] = useState("");
+  const [occupationFilterName, setOccupationFilterName] = useState("");
+  const listRequestRef = useRef(0);
 
   /* 搜索历史 / 联想 / 方案 */
   const [history, setHistory] = useState<string[]>(() => loadLocal("jobs_search_history", [] as string[]));
@@ -159,6 +176,9 @@ export default function JobsPage() {
 
   /* 详情抽屉与人岗匹配（逻辑不变） */
   const [detail, setDetail] = useState<JobDetail | null>(null);
+  const [detailMajor, setDetailMajor] = useState<MajorCatalogItem | null>(null);
+  const [detailOccupation, setDetailOccupation] = useState<OccupationCatalogItem | null>(null);
+  const [jobSkills, setJobSkills] = useState<JobSkillData[]>([]);
   /* 原始记录三列对比弹窗 */
   const [rawOf, setRawOf] = useState<JobData | null>(null);
   const detailRequestRef = useRef(0);
@@ -166,7 +186,7 @@ export default function JobsPage() {
   const [matchLoading, setMatchLoading] = useState(false);
   const [matching, setMatching] = useState(false);
 
-  const fetchList = () => {
+  const fetchList = useCallback(() => {
     const requestId = ++listRequestRef.current;
     setLoading(true);
     loadJobsPage({
@@ -184,12 +204,26 @@ export default function JobsPage() {
       nature: applied.nature || undefined,
       companySize: applied.companySize || undefined,
     })
-      .then((res) => { setItems(res.data.items ?? []); setTotal(res.data.total ?? 0); setSelected(new Set()); })
-      .catch((error) => toast.error(error instanceof Error ? error.message : "岗位列表加载失败"))
-      .finally(() => setLoading(false));
-  };
+      .then((res) => {
+        if (listRequestRef.current !== requestId) return;
+        setItems(res.data.items ?? []);
+        setTotal(res.data.total ?? 0);
+        setSelected(new Set());
+      })
+      .catch((error) => {
+        if (listRequestRef.current === requestId) {
+          toast.error(error instanceof Error ? error.message : "岗位列表加载失败");
+        }
+      })
+      .finally(() => {
+        if (listRequestRef.current === requestId) setLoading(false);
+      });
+  }, [applied, page]);
 
-  useEffect(() => { fetchList(); }, [page, applied]);
+  useEffect(() => {
+    void fetchList();
+    return () => { listRequestRef.current += 1; };
+  }, [fetchList]);
 
   /* ===== 筛选操作 ===== */
   const applySearch = () => {
@@ -206,6 +240,8 @@ export default function JobsPage() {
   const resetAll = () => {
     setForm(EMPTY_FILTER);
     setApplied(EMPTY_FILTER);
+    setMajorFilterName("");
+    setOccupationFilterName("");
     setSort(null);
     setPage(1);
   };
@@ -221,13 +257,21 @@ export default function JobsPage() {
 
   const removeChip = (key: keyof FilterForm) => {
     const next = { ...form, [key]: "" };
+    if (key === "majorId") setMajorFilterName("");
+    if (key === "occupationId") setOccupationFilterName("");
     setForm(next);
     setApplied(next);
     setPage(1);
   };
 
   const activeChips = (Object.keys(FILTER_LABELS) as (keyof FilterForm)[])
-    .filter(k => applied[k]).map(k => ({ key: k, label: FILTER_LABELS[k], value: applied[k] }));
+    .filter(k => applied[k]).map(k => ({
+      key: k,
+      label: FILTER_LABELS[k],
+      value: k === "majorId"
+        ? majorFilterName || applied[k]
+        : k === "occupationId" ? occupationFilterName || applied[k] : applied[k],
+    }));
 
   const savePreset = () => {
     const name = presetName.trim();
@@ -593,14 +637,26 @@ export default function JobsPage() {
                 <DirectoryPicker
                   kind="major"
                   selectedId={form.majorId || null}
-                  selectedName={form.majorId ? "已选专业" : ""}
-                  onSelect={(id) => { const next = { ...form, majorId: id }; setForm(next); setApplied(next); setPage(1); }}
+                  selectedName={majorFilterName}
+                  onSelect={(id, name) => {
+                    const next = { ...form, majorId: id };
+                    setMajorFilterName(name);
+                    setForm(next);
+                    setApplied(next);
+                    setPage(1);
+                  }}
                 />
                 <DirectoryPicker
                   kind="occupation"
                   selectedId={form.occupationId || null}
-                  selectedName={form.occupationId ? "已选职业" : ""}
-                  onSelect={(id) => { const next = { ...form, occupationId: id }; setForm(next); setApplied(next); setPage(1); }}
+                  selectedName={occupationFilterName}
+                  onSelect={(id, name) => {
+                    const next = { ...form, occupationId: id };
+                    setOccupationFilterName(name);
+                    setForm(next);
+                    setApplied(next);
+                    setPage(1);
+                  }}
                 />
               </div>
             </div>
@@ -862,18 +918,16 @@ export default function JobsPage() {
           <div className="ml-auto w-[600px] max-w-[calc(100vw-24px)] h-full bg-white shadow-xl flex flex-col overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 flex-shrink-0 sticky top-0 bg-white z-10" style={{ borderBottom: `1px solid ${P.border}` }}>
               <div>
-                <h3 className="text-[15px] font-medium" style={{ color: P.ink }}>{detail.job?.name || "岗位详情"}</h3>
+                <h3 className="text-[15px] font-medium" style={{ color: P.ink }}>{detail.name || "岗位详情"}</h3>
                 <div className="text-[12px] mt-0.5" style={{ color: P.faint }}>
-                  {[detail.job?.companyName, detail.job?.city, detail.job?.province].filter(Boolean).join(" · ")}
+                  {[detail.companyName, detail.city, detail.province].filter(Boolean).join(" · ")}
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                {detail.job && (
-                  <button title="收藏岗位" onClick={() => toggleFav(detail.job!.id)}>
-                    <Star size={16} style={{ color: favs.includes(String(detail.job.id)) ? P.amber : P.faint }}
-                      fill={favs.includes(String(detail.job.id)) ? P.amber : "none"} />
-                  </button>
-                )}
+                <button title="收藏岗位" onClick={() => toggleFav(detail.id)}>
+                  <Star size={16} style={{ color: favs.includes(String(detail.id)) ? P.amber : P.faint }}
+                    fill={favs.includes(String(detail.id)) ? P.amber : "none"} />
+                </button>
                 <button onClick={closeDetail} style={{ color: P.faint }}><X size={18} /></button>
               </div>
             </div>
@@ -884,9 +938,9 @@ export default function JobsPage() {
                 <div className="text-[12px] font-medium mb-2" style={{ color: P.faint }}>基本信息</div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[13px]">
                   {[
-                    ["薪资", detail.job?.salary], ["学历", detail.job?.education],
-                    ["经验", detail.job?.experience], ["工作性质", detail.job?.nature],
-                    ["专业", detail.job?.major], ["公司规模", detail.job?.companySize],
+                    ["薪资", detail.salary], ["学历", detail.education],
+                    ["经验", detail.experience], ["工作性质", detail.nature],
+                    ["专业", detail.major], ["公司规模", detail.companySize],
                   ].map(([k, v]) => (
                     <div key={k} className="flex justify-between" style={{ borderBottom: `1px dashed ${P.border}` }}>
                       <span style={{ color: P.faint }}>{k}</span>
@@ -899,12 +953,12 @@ export default function JobsPage() {
               {/* 关联专业 */}
               <section>
                 <div className="text-[12px] font-medium mb-2" style={{ color: P.faint }}>关联专业</div>
-                {detail.major ? (
+                {detailMajor ? (
                   <div className="rounded-lg p-3" style={{ background: P.bg }}>
-                    <div className="text-[13px] font-medium" style={{ color: P.ink }}>{detail.major.name}</div>
+                    <div className="text-[13px] font-medium" style={{ color: P.ink }}>{detailMajor.name}</div>
                     <div className="mt-0.5 flex gap-3 text-[12px]" style={{ color: P.faint }}>
-                      {detail.major.code && <span>编码：{detail.major.code}</span>}
-                      <span className="font-mono">ID：{detail.major.id}</span>
+                      {detailMajor.code && <span>编码：{detailMajor.code}</span>}
+                      <span className="font-mono">ID：{detailMajor.id}</span>
                     </div>
                   </div>
                 ) : (
@@ -915,12 +969,12 @@ export default function JobsPage() {
               {/* 关联职业 */}
               <section>
                 <div className="text-[12px] font-medium mb-2" style={{ color: P.faint }}>关联职业</div>
-                {detail.occupation ? (
+                {detailOccupation ? (
                   <div className="rounded-lg p-3" style={{ background: P.bg }}>
-                    <div className="text-[13px] font-medium" style={{ color: P.ink }}>{detail.occupation.name}</div>
-                    {detail.occupation.code && <div className="text-[12px] mt-0.5" style={{ color: P.faint }}>编码：{detail.occupation.code}</div>}
-                    <div className="font-mono text-[12px] mt-0.5" style={{ color: P.faint }}>ID：{detail.occupation.id}</div>
-                    {detail.occupation.description && <div className="text-[12px] mt-0.5" style={{ color: P.faint }}>{detail.occupation.description}</div>}
+                    <div className="text-[13px] font-medium" style={{ color: P.ink }}>{detailOccupation.name}</div>
+                    {detailOccupation.code && <div className="text-[12px] mt-0.5" style={{ color: P.faint }}>编码：{detailOccupation.code}</div>}
+                    <div className="font-mono text-[12px] mt-0.5" style={{ color: P.faint }}>ID：{detailOccupation.id}</div>
+                    {detailOccupation.description && <div className="text-[12px] mt-0.5" style={{ color: P.faint }}>{detailOccupation.description}</div>}
                   </div>
                 ) : (
                   <div className="text-[13px]" style={{ color: P.faint }}>尚未归类</div>
@@ -936,10 +990,10 @@ export default function JobsPage() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-medium"
                         style={{ background: P.skySoft, color: P.primary }}>
-                        {platformIcon(detail.job?.sourcePlatform)}
-                        {detail.job?.sourcePlatform || "未标注来源"}
+                        {platformIcon(detail.sourcePlatform)}
+                        {detail.sourcePlatform || "未标注来源"}
                       </span>
-                      {txt(detail.job?.sourceUrl) ? (
+                      {txt(detail.sourceUrl) ? (
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px]"
                           style={{ background: P.greenBg, color: P.green }}>
                           已关联原文链接
@@ -953,7 +1007,7 @@ export default function JobsPage() {
                     </div>
                     <span className="font-mono text-[10.5px] px-2 py-0.5 rounded-md"
                       style={{ background: P.skySoft, color: P.muted }}>
-                      JOB_{String(detail.job?.id ?? "-")}
+                      JOB_{String(detail.id)}
                     </span>
                   </div>
 
@@ -962,47 +1016,47 @@ export default function JobsPage() {
                     <div className="flex justify-between">
                       <span style={{ color: P.faint }}>原文发布时间</span>
                       <span className="font-mono text-right" style={{ color: P.ink }}>
-                        {detail.job?.publishDate?.slice(0, 10) || "-"}
+                        {detail.publishDate?.slice(0, 10) || "-"}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span style={{ color: P.faint }}>系统入库时间</span>
                       <span className="font-mono text-right" style={{ color: P.ink }}>
-                        {detail.job?.createdAt?.slice(0, 10) || "-"}
+                        {detail.createdAt?.slice(0, 10) || "-"}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span style={{ color: P.faint }}>采集批次</span>
                       <span className="font-mono text-right" style={{ color: P.ink }}>
-                        {inferBatch(detail.job?.createdAt)}
+                        {inferBatch(detail.createdAt)}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span style={{ color: P.faint }}>最后更新</span>
                       <span className="font-mono text-right" style={{ color: P.ink }}>
-                        {detail.job?.updatedAt?.slice(0, 10) || "-"}
+                        {detail.updatedAt?.slice(0, 10) || "-"}
                       </span>
                     </div>
                     <div className="col-span-2">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <div className="text-[11px] mb-0.5" style={{ color: P.faint }}>来源链接</div>
-                          {txt(detail.job?.sourceUrl) ? (
-                            <a href={txt(detail.job?.sourceUrl)!} target="_blank" rel="noreferrer noopener"
+                          {txt(detail.sourceUrl) ? (
+                            <a href={txt(detail.sourceUrl)} target="_blank" rel="noreferrer noopener"
                               className="text-[12px] font-mono break-all hover:underline inline-block max-w-full"
                               style={{ color: P.primary }}>
-                              {txt(detail.job?.sourceUrl)}
+                              {txt(detail.sourceUrl)}
                             </a>
                           ) : (
                             <span className="text-[12px]" style={{ color: P.faint }}>- （该岗位未提供来源 URL）</span>
                           )}
                         </div>
-                        {txt(detail.job?.sourceUrl) && (
+                        {txt(detail.sourceUrl) && (
                           <div className="flex items-center gap-1 flex-shrink-0">
                             <button
                               className="text-[11px] px-2.5 py-1 rounded-full font-medium inline-flex items-center gap-1 transition-colors"
                               style={{ background: P.primary, color: "#fff" }}
-                              onClick={() => window.open(detail.job?.sourceUrl!, "_blank", "noopener,noreferrer")}
+                              onClick={() => window.open(detail.sourceUrl, "_blank", "noopener,noreferrer")}
                             >
                               跳转原站
                             </button>
@@ -1017,13 +1071,13 @@ export default function JobsPage() {
               {/* 能力图谱 */}
               <section>
                 <div className="text-[12px] font-medium mb-2" style={{ color: P.faint }}>
-                  能力图谱（{detail.jobSkills?.length ?? 0}）
+                  能力图谱（{jobSkills.length}）
                 </div>
-                {detail.jobSkills?.length ? (
+                {jobSkills.length ? (
                   <div className="rounded-lg p-3" style={{ background: "white", border: `1px solid ${P.border}` }}>
                     <AbilityRadialGraph
-                      centerLabel={detail.job?.name || "岗位"}
-                      abilities={detail.jobSkills.map(s => ({
+                      centerLabel={detail.name || "岗位"}
+                      abilities={jobSkills.map(s => ({
                         name: s.skillName,
                         proficiency: s.skillProficiency,
                         evidence: s.evidence,
@@ -1037,11 +1091,11 @@ export default function JobsPage() {
               </section>
 
               {/* 技能明细 */}
-              {detail.jobSkills?.length ? (
+              {jobSkills.length ? (
                 <section>
                   <div className="text-[12px] font-medium mb-2" style={{ color: P.faint }}>技能明细</div>
                   <div className="space-y-2">
-                    {detail.jobSkills.map(s => (
+                    {jobSkills.map(s => (
                       <div key={String(s.id)} className="rounded-lg p-3" style={{ background: P.bg, border: `1px solid ${P.border}` }}>
                         <div className="flex items-center justify-between">
                           <span className="text-[13px] font-medium" style={{ color: P.ink }}>{s.skillName}</span>
@@ -1064,11 +1118,11 @@ export default function JobsPage() {
               ) : null}
 
               {/* 职位描述 */}
-              {detail.job?.jobDescription && (
+              {detail.jobDescription && (
                 <section>
                   <div className="text-[12px] font-medium mb-2" style={{ color: P.faint }}>职位描述</div>
                   <div className="rounded-lg p-3 text-[13px] leading-relaxed whitespace-pre-wrap"
-                    style={{ background: P.bg, color: P.ink }}>{detail.job.jobDescription}</div>
+                    style={{ background: P.bg, color: P.ink }}>{detail.jobDescription}</div>
                 </section>
               )}
 

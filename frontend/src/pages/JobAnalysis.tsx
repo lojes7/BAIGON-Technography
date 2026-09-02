@@ -1,11 +1,12 @@
 // 分页查看岗位分析任务，确认专业、职业并逐条审核技能结果。
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Eye, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import DirectoryPicker from "../components/job-analysis/DirectoryPicker";
 import { Btn, Card, PageHeader, UnderlineTabs, Pagination } from "../components/ui";
 import P from "../constants/palette";
+import T from "../constants/tokens";
 import { isHttpErrorStatus } from "../services/http-error";
 import { getJobAnalysisTask, listJobAnalysisTasks, reviewJobAnalysisTask } from "../services/job-analysis";
 import { lookupMajors, lookupOccupations } from "../services/occupation";
@@ -51,6 +52,8 @@ export default function JobAnalysisPage() {
   const [jobs, setJobs] = useState<Record<string, JobData>>({});
   const [majorNames, setMajorNames] = useState<Record<string, string>>({});
   const [occupationNames, setOccupationNames] = useState<Record<string, string>>({});
+  const listRequestRef = useRef(0);
+  const detailRequestRef = useRef(0);
 
   const [detail, setDetail] = useState<JobAnalysisTaskDetail | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -62,6 +65,7 @@ export default function JobAnalysisPage() {
 
   // 列表始终只加载当前服务端页，任务摘要与目录名称分别走批量详情接口。
   const fetchList = useCallback(async () => {
+    const requestId = ++listRequestRef.current;
     setLoading(true);
     try {
       const response = await listJobAnalysisTasks({
@@ -71,6 +75,7 @@ export default function JobAnalysisPage() {
         reviewStatus: reviewFilter === "all" ? undefined : reviewFilter,
       });
       const nextItems = response.data.items ?? [];
+      if (listRequestRef.current !== requestId) return;
       setItems(nextItems);
       setTotal(response.data.total ?? 0);
       setJobs(Object.fromEntries((response.data.jobs ?? []).map((job) => [job.id, job])));
@@ -78,24 +83,25 @@ export default function JobAnalysisPage() {
         lookupMajors(nextItems.flatMap((item) => item.selectedMajorId ? [item.selectedMajorId] : [])),
         lookupOccupations(nextItems.flatMap((item) => item.selectedOccupationId ? [item.selectedOccupationId] : [])),
       ]);
+      if (listRequestRef.current !== requestId) return;
       setMajorNames(Object.fromEntries(majors.data.items.map((item) => [String(item.id), item.name])));
       setOccupationNames(Object.fromEntries(occupations.data.items.map((item) => [String(item.id), item.name])));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "岗位分析任务加载失败");
+      if (listRequestRef.current === requestId) {
+        toast.error(error instanceof Error ? error.message : "岗位分析任务加载失败");
+      }
     } finally {
-      setLoading(false);
+      if (listRequestRef.current === requestId) setLoading(false);
     }
   }, [page, reviewFilter, taskStatusFilter]);
 
   // eslint-disable-next-line react/set-state-in-effect -- 筛选与页码变化时需要同步发起当前服务端页请求。
-  useEffect(() => { void fetchList(); }, [fetchList]);
+  useEffect(() => {
+    void fetchList();
+    return () => { listRequestRef.current += 1; };
+  }, [fetchList]);
 
-  const initializeDetail = async (nextDetail: JobAnalysisTaskDetail) => {
-    setDetail(nextDetail);
-    if (nextDetail.job) {
-      setJobs((current) => ({ ...current, [nextDetail.job!.id]: nextDetail.job! }));
-    }
-
+  const initializeDetail = async (nextDetail: JobAnalysisTaskDetail, requestId: number) => {
     const [majors, occupations] = await Promise.all([
       lookupMajors([
         ...nextDetail.majorCandidates.map((item) => item.majorId),
@@ -106,6 +112,11 @@ export default function JobAnalysisPage() {
         ...(nextDetail.task.selectedOccupationId ? [nextDetail.task.selectedOccupationId] : []),
       ]),
     ]);
+    if (detailRequestRef.current !== requestId) return;
+    setDetail(nextDetail);
+    if (nextDetail.job) {
+      setJobs((current) => ({ ...current, [nextDetail.job!.id]: nextDetail.job! }));
+    }
     const nextMajorNames = Object.fromEntries(majors.data.items.map((item) => [String(item.id), item.name]));
     const nextOccupationNames = Object.fromEntries(occupations.data.items.map((item) => [String(item.id), item.name]));
     setMajorNames((current) => ({ ...current, ...nextMajorNames }));
@@ -135,14 +146,17 @@ export default function JobAnalysisPage() {
   };
 
   const openDetail = async (id: string | number) => {
+    const requestId = ++detailRequestRef.current;
     setOpeningId(String(id));
     try {
       const response = await getJobAnalysisTask(id);
-      await initializeDetail(response.data);
+      await initializeDetail(response.data, requestId);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "岗位分析详情加载失败");
+      if (detailRequestRef.current === requestId) {
+        toast.error(error instanceof Error ? error.message : "岗位分析详情加载失败");
+      }
     } finally {
-      setOpeningId("");
+      if (detailRequestRef.current === requestId) setOpeningId("");
     }
   };
 
@@ -221,6 +235,8 @@ export default function JobAnalysisPage() {
   };
 
   const closeDetail = () => {
+    detailRequestRef.current += 1;
+    setOpeningId("");
     setDetail(null);
     setMajorId("");
     setMajorName("");
@@ -245,8 +261,8 @@ export default function JobAnalysisPage() {
         <div className="rounded-2xl p-5 flex flex-col text-white relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${P.primary} 0%, ${P.primaryDeep} 100%)`, minHeight: 120 }}>
           <div className="absolute -right-8 -top-10 w-32 h-32 rounded-full" style={{ background: "rgba(255,255,255,0.07)" }} />
           <span className="text-[13px]" style={{ color: "rgba(255,255,255,0.85)" }}>分析任务总数</span>
-          <div className="text-[30px] font-mono font-semibold leading-tight mt-1">{items.length}</div>
-          <span className="mt-auto inline-flex w-fit text-[11px] px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.16)", color: "#fff" }}>全量拉取本地分组</span>
+          <div className="text-[30px] font-mono font-semibold leading-tight mt-1">{total}</div>
+          <span className="mt-auto inline-flex w-fit text-[11px] px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.16)", color: "#fff" }}>服务端分页统计</span>
         </div>
         {[
           { label: "待复核", value: items.filter((i) => i.reviewStatus === "PENDING").length, chip: "需人工确认", bg: P.amberBg, color: P.amber },
@@ -296,7 +312,7 @@ export default function JobAnalysisPage() {
       <Card>
         {loading ? (
           <div className="px-4 py-12 text-center text-[13px]" style={{ color: P.muted }}>{t("common.loading")}</div>
-        ) : visibleItems.length === 0 ? (
+        ) : items.length === 0 ? (
           <div className="px-4 py-12 text-center text-[13px]" style={{ color: P.muted }}>暂无岗位分析任务</div>
         ) : (
           <div className="overflow-x-auto">
@@ -305,7 +321,7 @@ export default function JobAnalysisPage() {
                 <tr style={{ background: P.sky }}>
                   <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: P.primaryDeep }}>岗位名称</th>
                   <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: P.primaryDeep }}>岗位原专业</th>
-                  {taskStatusFilter === "processing" && (
+                  {taskStatusFilter === "RUNNING" && (
                     <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: P.primaryDeep }}>分析进度</th>
                   )}
                   <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: P.primaryDeep }}>确认结果</th>
@@ -315,11 +331,11 @@ export default function JobAnalysisPage() {
                 </tr>
               </thead>
               <tbody>
-                {visibleItems.map((item) => (
+                {items.map((item) => (
                   <tr key={item.id} className="transition-colors hover:bg-gray-50" style={{ borderTop: `1px solid ${P.border}` }}>
-                    <td className="px-4 py-2 font-medium" style={{ color: P.ink }}>{item.jobName || "-"}</td>
-                    <td className="max-w-44 px-4 py-2 text-[12px]" style={{ color: P.muted }}>{item.jobMajor || "-"}</td>
-                    {taskStatusFilter === "processing" && (
+                    <td className="px-4 py-2 font-medium" style={{ color: P.ink }}>{jobs[item.jobId]?.name || `岗位 #${item.jobId}`}</td>
+                    <td className="max-w-44 px-4 py-2 text-[12px]" style={{ color: P.muted }}>{jobs[item.jobId]?.major || "-"}</td>
+                    {taskStatusFilter === "RUNNING" && (
                       <td className="px-4 py-2 text-[11px] leading-5" style={{ color: P.muted }}>
                         <div>专业：{TASK_STATUS_LABEL[item.majorAnalysisStatus] || item.majorAnalysisStatus || "-"}</div>
                         <div>职业：{TASK_STATUS_LABEL[item.occupationAnalysisStatus] || item.occupationAnalysisStatus || "-"}</div>
@@ -327,12 +343,12 @@ export default function JobAnalysisPage() {
                       </td>
                     )}
                     <td className="px-4 py-2 truncate" title={`专业:${item.selectedMajorId || "-"} / 职业:${item.selectedOccupationId || "-"}`}>
-                      <span className="font-mono text-[11px]" style={{ color: P.muted }}>
-                        专业:{item.selectedMajorId || "-"}
+                      <span className="text-[11px]" style={{ color: P.muted }}>
+                        专业:{item.selectedMajorId ? majorNames[item.selectedMajorId] || `#${item.selectedMajorId}` : "-"}
                       </span>
                       <span className="mx-1.5" style={{ color: P.border }}>/</span>
-                      <span className="font-mono text-[11px]" style={{ color: P.muted }}>
-                        职业:{item.selectedOccupationId || "-"}
+                      <span className="text-[11px]" style={{ color: P.muted }}>
+                        职业:{item.selectedOccupationId ? occupationNames[item.selectedOccupationId] || `#${item.selectedOccupationId}` : "-"}
                       </span>
                     </td>
                     <td className="px-4 py-2 font-mono text-[12px]" style={{ color: P.muted }}>
@@ -378,10 +394,10 @@ export default function JobAnalysisPage() {
             <div className="sticky top-0 z-10 flex items-center justify-between bg-white px-5 py-4" style={{ borderBottom: `1px solid ${P.skySoft}` }}>
               <div>
                 <h3 className="text-[15px] font-medium" style={{ color: P.ink }}>
-                  {detail.task.jobName || `任务 #${detail.task.id}`}
+                  {detail.job?.name || `任务 #${detail.task.id}`}
                 </h3>
                 <div className="mt-0.5 text-[12px]" style={{ color: P.muted }}>
-                  专业 {detail.task.jobMajor || "-"} · 任务 {TASK_STATUS_LABEL[detail.task.taskStatus] || detail.task.taskStatus} · 模型 {detail.task.modelName || "-"}
+                  专业 {detail.job?.major || "-"} · 任务 {TASK_STATUS_LABEL[detail.task.taskStatus] || detail.task.taskStatus} · 岗位 ID {detail.task.jobId}
                 </div>
               </div>
               <button onClick={closeDetail} style={{ color: P.muted }}><X size={18} /></button>

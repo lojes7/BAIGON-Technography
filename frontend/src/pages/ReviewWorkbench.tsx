@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle, Eye, Loader2, Plus, Search, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -24,7 +24,6 @@ import type {
 
 const PAGE_SIZE = 20;
 const SKILL_PAGE_SIZE = 20;
-const MAX_PAGE_SIZE = 1000;
 
 const TASK_STATUS_LABEL: Record<string, string> = {
   PENDING: "等待处理",
@@ -54,6 +53,8 @@ function ReviewWorkbenchPage() {
   const [reviewFilter, setReviewFilter] = useState<"all" | "PENDING" | "PASSED">("all");
   const [loading, setLoading] = useState(true);
   const [openingId, setOpeningId] = useState("");
+  const listRequestRef = useRef(0);
+  const detailRequestRef = useRef(0);
 
   const [detail, setDetail] = useState<JobSkillResolutionTaskDetail | null>(null);
   const [action, setAction] = useState<SkillResolutionAction>("SELECT_CANDIDATE");
@@ -73,6 +74,7 @@ function ReviewWorkbenchPage() {
 
   // 任务索引、任务摘要与岗位技能正文分别批量解析，但只处理当前服务端页。
   const fetchList = useCallback(async () => {
+    const requestId = ++listRequestRef.current;
     setLoading(true);
     try {
       const response = await listSkillResolutionTasks({
@@ -81,22 +83,29 @@ function ReviewWorkbenchPage() {
         taskStatus: taskStatusFilter,
         reviewStatus: reviewFilter === "all" ? undefined : reviewFilter,
       });
+      if (listRequestRef.current !== requestId) return;
       setItems(response.data.items ?? []);
       setTotal(response.data.total ?? 0);
       setJobSkills(Object.fromEntries(
         (response.data.jobSkills ?? []).map((jobSkill) => [jobSkill.id, jobSkill]),
       ));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "归一任务加载失败");
+      if (listRequestRef.current === requestId) {
+        toast.error(error instanceof Error ? error.message : "归一任务加载失败");
+      }
     } finally {
-      setLoading(false);
+      if (listRequestRef.current === requestId) setLoading(false);
     }
   }, [page, reviewFilter, taskStatusFilter]);
 
   // eslint-disable-next-line react/set-state-in-effect -- 筛选与页码变化时需要同步发起当前服务端页请求。
-  useEffect(() => { void fetchList(); }, [fetchList]);
+  useEffect(() => {
+    void fetchList();
+    return () => { listRequestRef.current += 1; };
+  }, [fetchList]);
 
-  const initializeDetail = (nextDetail: JobSkillResolutionTaskDetail) => {
+  const initializeDetail = (nextDetail: JobSkillResolutionTaskDetail, requestId: number) => {
+    if (detailRequestRef.current !== requestId) return;
     setDetail(nextDetail);
     setKeyword("");
     setAppliedKeyword("");
@@ -130,14 +139,17 @@ function ReviewWorkbenchPage() {
   };
 
   const openDetail = async (id: string | number) => {
+    const requestId = ++detailRequestRef.current;
     setOpeningId(String(id));
     try {
       const response = await getSkillResolutionTask(id);
-      initializeDetail(response.data);
+      initializeDetail(response.data, requestId);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "归一任务详情加载失败");
+      if (detailRequestRef.current === requestId) {
+        toast.error(error instanceof Error ? error.message : "归一任务详情加载失败");
+      }
     } finally {
-      setOpeningId("");
+      if (detailRequestRef.current === requestId) setOpeningId("");
     }
   };
 
@@ -244,6 +256,8 @@ function ReviewWorkbenchPage() {
   };
 
   const closeDetail = () => {
+    detailRequestRef.current += 1;
+    setOpeningId("");
     setDetail(null);
     setSimilarSkills([]);
     setSkillNames({});
@@ -263,7 +277,7 @@ function ReviewWorkbenchPage() {
         breadcrumbs={[t("nav.aiProcessing"), t("nav.reviewQueue")]}
         title="技能归一审核"
         description="将岗位分析产出的原始技能映射为规范技能，或创建新的规范技能"
-        actions={<span className="font-mono text-[13px]" style={{ color: P.muted }}>共 {visibleItems.length} 项</span>}
+        actions={<span className="font-mono text-[13px]" style={{ color: P.muted }}>共 {total} 项</span>}
       />
 
       {/* KPI 统计行 */}
@@ -271,8 +285,8 @@ function ReviewWorkbenchPage() {
         <div className="rounded-2xl p-5 flex flex-col text-white relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${P.primary} 0%, ${P.primaryDeep} 100%)`, minHeight: 120 }}>
           <div className="absolute -right-8 -top-10 w-32 h-32 rounded-full" style={{ background: "rgba(255,255,255,0.07)" }} />
           <span className="text-[13px]" style={{ color: "rgba(255,255,255,0.85)" }}>归一任务总数</span>
-          <div className="text-[30px] font-mono font-semibold leading-tight mt-1">{items.length}</div>
-          <span className="mt-auto inline-flex w-fit text-[11px] px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.16)", color: "#fff" }}>全量拉取本地分组</span>
+          <div className="text-[30px] font-mono font-semibold leading-tight mt-1">{total}</div>
+          <span className="mt-auto inline-flex w-fit text-[11px] px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.16)", color: "#fff" }}>服务端分页统计</span>
         </div>
         {[
           { label: "待审核", value: items.filter((i) => i.reviewStatus === "PENDING").length, chip: "需人工确认", bg: P.amberBg, color: P.amber },
@@ -321,7 +335,7 @@ function ReviewWorkbenchPage() {
       <Card>
         {loading ? (
           <div className="px-4 py-12 text-center text-[13px]" style={{ color: P.muted }}>加载中…</div>
-        ) : visibleItems.length === 0 ? (
+        ) : items.length === 0 ? (
           <div className="px-4 py-12 text-center text-[13px]" style={{ color: P.muted }}>暂无符合条件的技能归一任务</div>
         ) : (
           <div className="overflow-x-auto">
@@ -334,11 +348,11 @@ function ReviewWorkbenchPage() {
                 </tr>
               </thead>
               <tbody>
-                {pagedItems.map((item) => (
+                {items.map((item) => (
                   <tr key={item.id} className="transition-colors hover:bg-gray-50" style={{ borderTop: `1px solid ${P.border}` }}>
                     <td className="px-4 py-3 font-mono text-[12px]" style={{ color: P.muted }}>{item.id}</td>
-                    <td className="px-4 py-3 font-mono text-[12px]" style={{ color: P.muted }}>{item.jobId}</td>
-                    <td className="px-4 py-3 font-medium" style={{ color: P.ink }}>{item.skillName || "-"}</td>
+                    <td className="px-4 py-3 font-mono text-[12px]" style={{ color: P.muted }}>{jobSkills[item.jobSkillId]?.jobId || "-"}</td>
+                    <td className="px-4 py-3 font-medium" style={{ color: P.ink }}>{jobSkills[item.jobSkillId]?.skillName || "-"}</td>
                     <td className="px-4 py-3"><TaskStatus status={item.taskStatus} /></td>
                     <td className="px-4 py-3"><ReviewStatus status={item.reviewStatus} /></td>
                     <td className="px-4 py-3 text-[12px]" style={{ color: P.muted }}>
@@ -367,8 +381,8 @@ function ReviewWorkbenchPage() {
         )}
       </Card>
 
-      {visibleItems.length > 0 && (
-        <Pagination page={page} totalPages={pageCount} onChange={setPage} total={visibleItems.length} />
+      {total > PAGE_SIZE && (
+        <Pagination page={page} totalPages={pageCount} onChange={setPage} total={total} disabled={loading} />
       )}
 
       {detail && (
@@ -385,11 +399,10 @@ function ReviewWorkbenchPage() {
             <div className="flex-1 space-y-5 px-5 py-4">
               <Card title="岗位技能原始信息">
                 <div className="space-y-3 px-4 py-3">
-                  <InfoRow label="技能名称" value={detail.jobSkill.skillName || detail.task.skillName || "-"} />
+                  <InfoRow label="技能名称" value={detail.jobSkill.skillName || "-"} />
                   <InfoRow label="熟练度" value={detail.jobSkill.skillProficiency || "-"} />
                   <InfoRow label="证据" value={detail.jobSkill.evidence || "-"} />
-                  <InfoRow label="岗位 ID" value={detail.task.jobId || "-"} mono />
-                  {detail.task.errorMsg && <InfoRow label="AI 错误" value={detail.task.errorMsg} danger />}
+                  <InfoRow label="岗位 ID" value={detail.jobSkill.jobId || "-"} mono />
                 </div>
               </Card>
 
@@ -462,7 +475,7 @@ function ReviewWorkbenchPage() {
                       }}
                     >
                       <span className="font-mono text-[11px]" style={{ color: P.muted }}>#{candidate.rank}</span>
-                      <span className="flex-1 text-[13px] font-medium" style={{ color: P.ink }}>{candidate.skillName}</span>
+                      <span className="flex-1 text-[13px] font-medium" style={{ color: P.ink }}>{skillNames[candidate.skillId] || `技能 #${candidate.skillId}`}</span>
                       <span className="font-mono text-[12px]" style={{ color: P.muted }}>{(candidate.similarity * 100).toFixed(1)}%</span>
                     </button>
                   ))}
@@ -506,7 +519,7 @@ function ReviewWorkbenchPage() {
                           onClick={() => setSelectedSkillId(String(skill.skillId))}
                         >
                           <span className="w-6 font-mono text-[11px]" style={{ color: P.muted }}>#{skill.rank}</span>
-                          <span className="flex-1 text-[13px] font-medium" style={{ color: P.ink }}>{skill.skillName}</span>
+                          <span className="flex-1 text-[13px] font-medium" style={{ color: P.ink }}>{skillNames[skill.skillId] || `技能 #${skill.skillId}`}</span>
                           {detail.candidates.some((candidate) => String(candidate.skillId) === String(skill.skillId)) && (
                             <span className="rounded px-1.5 py-0.5 text-[10px]" style={{ background: `${P.primary}12`, color: P.primary }}>
                               AI 候选
@@ -572,8 +585,8 @@ function ReviewWorkbenchPage() {
                             )}
                             <span className="font-mono text-[10px]" style={{ color: P.muted }}>ID {skill.id}</span>
                             <span className="rounded px-1.5 py-0.5 text-[10px]" style={{
-                              background: skill.is_embed ? `${P.green}12` : `${P.amber}12`,
-                              color: skill.is_embed ? P.green : P.amber,
+                              background: skill.isEmbed ? `${P.green}12` : `${P.amber}12`,
+                              color: skill.isEmbed ? P.green : P.amber,
                             }}>
                               {skill.isEmbed ? "已向量化" : "未向量化"}
                             </span>

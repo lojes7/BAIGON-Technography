@@ -1,6 +1,7 @@
 import JSONbig from "json-bigint";
 
 const parser = JSONbig({ storeAsString: true });
+const serializer = JSONbig({ useNativeBigInt: true });
 const NULL_LITERALS = new Set(["null", "undefined", "NaN", ""]);
 export function sanitizeNode(node: unknown): unknown {
   if (typeof node === "string") {

@@ -10,7 +10,7 @@ import type {
   DataSourceItem, DataSourceDetail, DataSourceReviewResult, SourceJobDetail,
   DataSourceListParams, IngestJob, IngestResult,
 } from "../types/api";
-import { parseJson } from "./lossless";
+import { parseJson, stringifyNumericIdBody } from "./lossless";
 import {
   filterDemoSources, mergeDemoPage,
   buildDemoSourceDetail, buildDemoSourceRecord, applyDemoReview,
@@ -120,7 +120,7 @@ export async function getDataSourceList(params?: DataSourceListParams): Promise<
   const pageSize = params?.pageSize ?? 20;
   let real: PaginatedData<DataSourceItem> | null = null;
   try {
-    const res = await request<PaginatedData<DataSourceItem>>(`${BASE}/data-source`, {
+    const index = await request<PaginatedIds>(`${BASE}/data-source`, {
       method: "POST",
       headers: hdrs(),
       body: JSON.stringify({
@@ -131,8 +131,18 @@ export async function getDataSourceList(params?: DataSourceListParams): Promise<
         publishDateTo: params?.publishDateTo ?? "",
       }),
     });
-    real = res.data ?? null;
-    if ((real?.total ?? 0) >= 100) return res; // 真实数据充足，原样返回
+    const details = index.data.ids.length > 0
+      ? await batchGetDataSourceDetails(index.data.ids)
+      : { code: 200, data: { items: [], missingIds: [] } } as ApiResponse<{
+          items: DataSourceItem[];
+          missingIds: string[];
+        }>;
+    real = {
+      items: details.data.items,
+      total: Number(index.data.total ?? 0),
+      page: Number(index.data.page ?? page),
+      pageSize: Number(index.data.pageSize ?? pageSize),
+    };
   } catch {
     // 后端不可用时同样以演示数据兜底，保证页面可用
   }
@@ -144,7 +154,7 @@ export async function getDataSourceList(params?: DataSourceListParams): Promise<
 
 // 查询后端原始 total（不走演示补位），供 live-stats 统一口径使用
 export async function getDataSourceRealTotal(reviewStatus: string): Promise<number> {
-  const res = await request<PaginatedData<DataSourceItem>>(`${BASE}/data-source`, {
+  const response = await request<PaginatedIds>(`${BASE}/data-source`, {
     method: "POST",
     headers: hdrs(),
     body: JSON.stringify({
@@ -155,18 +165,7 @@ export async function getDataSourceRealTotal(reviewStatus: string): Promise<numb
       publishDateTo: "",
     }),
   });
-  const details = page.data.ids.length > 0
-    ? await batchGetDataSourceDetails(page.data.ids)
-    : { code: 200, data: { items: [] } } as ApiResponse<{ items: DataSourceItem[] }>;
-  return {
-    ...page,
-    data: {
-      items: details.data.items,
-      total: page.data.total,
-      page: page.data.page,
-      pageSize: page.data.pageSize,
-    },
-  } as ApiResponse<PaginatedData<DataSourceItem>>;
+  return Number(response.data.total ?? 0);
 }
 
 export async function batchGetDataSourceDetails(ids: Array<string | number>) {
@@ -180,8 +179,8 @@ export async function batchGetDataSourceDetails(ids: Array<string | number>) {
 // 查看清洗后岗位详情；演示记录由本地数据池合成
 export async function getDataSourceDetail(id: string) {
   const demo = buildDemoSourceDetail(id);
-  if (demo) return { code: 200, data: { job: demo } } satisfies ApiResponse<{ job: DataSourceDetail }>;
-  return request<{ job: DataSourceDetail }>(`${BASE}/data-source/${id}`, {
+  if (demo) return { code: 200, data: demo } satisfies ApiResponse<DataSourceDetail>;
+  return request<DataSourceDetail>(`${BASE}/data-source/${id}`, {
     headers: hdrs(),
   });
 }
@@ -189,20 +188,20 @@ export async function getDataSourceDetail(id: string) {
 // 查看原始记录追溯；演示记录由本地数据池合成
 export async function getSourceRecord(id: string) {
   const demo = buildDemoSourceRecord(id);
-  if (demo) return { code: 200, data: { source: demo } } satisfies ApiResponse<{ source: SourceJobDetail }>;
-  return request<{ source: SourceJobDetail }>(`${BASE}/data-source/${id}/source`, {
+  if (demo) return { code: 200, data: demo } satisfies ApiResponse<SourceJobDetail>;
+  return request<SourceJobDetail>(`${BASE}/data-source/${id}/source`, {
     headers: hdrs(),
   });
 }
 
 // 复核通过；演示记录在内存中流转审核状态
 export async function approveReview(id: string) {
-  const demo = applyDemoReview(id, "REVIEW_PASSED");
+  const demo = applyDemoReview(id, "PASSED");
   if (demo) {
     refreshStats(); // 演示记录审核同样改变待复核/通过率口径
-    return { code: 200, data: { job: demo } } satisfies ApiResponse<{ job: DataSourceDetail }>;
+    return { code: 200, data: { id: demo.id } } satisfies ApiResponse<DataSourceReviewResult>;
   }
-  return request<{ job: DataSourceDetail }>(`${BASE}/data-source/${id}/review`, {
+  return request<DataSourceReviewResult>(`${BASE}/data-source/${id}/review`, {
     method: "POST",
     headers: hdrs(),
   }).then((res) => {
@@ -213,12 +212,12 @@ export async function approveReview(id: string) {
 
 // 复核拒绝；演示记录在内存中流转审核状态
 export async function rejectReview(id: string) {
-  const demo = applyDemoReview(id, "REVIEW_REJECT");
+  const demo = applyDemoReview(id, "REJECTED");
   if (demo) {
     refreshStats();
-    return { code: 200, data: { job: demo } } satisfies ApiResponse<{ job: DataSourceDetail }>;
+    return { code: 200, data: { id: demo.id } } satisfies ApiResponse<DataSourceReviewResult>;
   }
-  return request<{ job: DataSourceDetail }>(`${BASE}/data-source/${id}/review`, {
+  return request<DataSourceReviewResult>(`${BASE}/data-source/${id}/review`, {
     method: "DELETE",
     headers: hdrs(),
   }).then((res) => {
@@ -238,12 +237,12 @@ export async function editAndApproveReview(id: string, edits: {
   experience?: string;
   jobDescription?: string;
 }) {
-  const demo = applyDemoReview(id, "REVIEW_PASSED", edits);
+  const demo = applyDemoReview(id, "PASSED", edits);
   if (demo) {
     refreshStats();
-    return { code: 200, data: { job: demo } } satisfies ApiResponse<{ job: DataSourceDetail }>;
+    return { code: 200, data: { id: demo.id } } satisfies ApiResponse<DataSourceReviewResult>;
   }
-  return request<{ job: DataSourceDetail }>(`${BASE}/data-source/${id}/review`, {
+  return request<DataSourceReviewResult>(`${BASE}/data-source/${id}/review`, {
     method: "PUT",
     headers: hdrs(),
     body: JSON.stringify(edits),

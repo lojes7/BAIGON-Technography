@@ -80,6 +80,8 @@ export default function AbilityRadialGraph({
   const [selected, setSelected] = useState<AbilityItem | null>(null);
   const [rot, setRot] = useState(0);
   const pausedRef = useRef(false);
+  // useId 必须在任何提前返回之前调用，确保每次渲染的 Hook 顺序稳定。
+  const instanceId = useId().replace(/:/g, "");
 
   // 自转动画：与能力图谱页同款 rAF 驱动，悬停时暂停
   useEffect(() => {
@@ -155,7 +157,6 @@ export default function AbilityRadialGraph({
 
   // 派生：当前选中节点（球面）+ SVG 唯一 id
   const selNode = selected ? nodes.find((n) => n.item === selected) ?? null : null;
-  const instanceId = useId().replace(/:/g, "");
   const arrowId = `ability-relation-arrow-${instanceId}`;
   const gradientId = `ability-center-${instanceId}`;
   const selectedNode: RenderNode | null = selNode ? {

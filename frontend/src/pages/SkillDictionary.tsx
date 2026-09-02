@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { CheckCircle2, CircleDashed, RefreshCw, Search, SearchX, Database, Loader2, Eye, X, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { CheckCircle2, CircleDashed, RefreshCw, Search, SearchX, Database, Loader2, Eye, Plus, X, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useAuth } from "../auth/AuthContext";
@@ -10,7 +10,15 @@ import { Btn, Card, PageHeader, Pagination, MetricCard } from "../components/ui"
 import T from "../constants/tokens";
 import P from "../constants/palette";
 import { getEmbeddingProgress } from "../services/occupation";
-import type { CanonicalSkillItem } from "../types/api";
+import {
+  addCanonicalSkillRelation,
+  deleteCanonicalSkillRelation,
+  getCanonicalSkillDetail,
+  listCanonicalSkillRelations,
+  loadCanonicalSkillPage,
+  lookupCanonicalSkills,
+} from "../services/skill-resolution";
+import type { CanonicalSkillItem, SkillRelationDirection } from "../types/api";
 
 const PAGE_SIZE = 20;
 
@@ -31,6 +39,18 @@ function SkillDictionaryPage() {
   const [appliedKeyword, setAppliedKeyword] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [openingId, setOpeningId] = useState("");
+  const detailRequestRef = useRef(0);
+  const [detail, setDetail] = useState<SkillDetailView | null>(null);
+  const [relationNames, setRelationNames] = useState<Record<string, string>>({});
+  const [relationDirection, setRelationDirection] = useState<SkillRelationDirection>("parents");
+  const [pendingRelatedSkills, setPendingRelatedSkills] = useState<CanonicalSkillItem[]>([]);
+  const [savingRelation, setSavingRelation] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    direction: SkillRelationDirection;
+    relatedId: string;
+    name: string;
+  } | null>(null);
   /* 向量化统计（真实接口：已向量化 / 总数） */
   const [embedded, setEmbedded] = useState<number | null>(null);
   const [skillTotal, setSkillTotal] = useState<number | null>(null);
@@ -301,7 +321,7 @@ function SkillDictionaryPage() {
             <table className="w-full min-w-[760px] text-[13px]">
               <thead>
                 <tr style={{ background: P.sky }}>
-                  {["#", "规范技能", "技能 ID", "向量化状态"].map((heading) => (
+                  {["#", "规范技能", "技能 ID", "向量化状态", "操作"].map((heading) => (
                     <th key={heading} className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: P.primaryDeep }}>
                       {heading}
                     </th>
@@ -326,14 +346,14 @@ function SkillDictionaryPage() {
                     <td className="px-4 py-3">
                       <span
                         className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium"
-                        style={skill.is_embed
+                        style={skill.isEmbed
                           ? { background: "#D1FAE5", color: "#065F46" }
                           : { background: "#FEF3C7", color: "#92400E" }}
                       >
-                        {skill.is_embed
+                        {skill.isEmbed
                           ? <CheckCircle2 size={11} style={{ color: "#059669" }} />
                           : <CircleDashed size={11} style={{ color: "#D97706" }} />}
-                        {skill.is_embed ? "已向量化" : "待向量化"}
+                        {skill.isEmbed ? "已向量化" : "待向量化"}
                       </span>
                     </td>
                     <td className="px-4 py-3">

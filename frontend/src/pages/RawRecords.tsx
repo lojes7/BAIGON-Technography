@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { X, ShieldCheck, CheckCircle, XCircle, Loader2, ArrowLeft, FileText, Pencil, Eye, ArrowUpRight, Radio, AlertTriangle } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
@@ -84,6 +84,8 @@ export default function RawRecordsPage() {
   const [diffLoading, setDiffLoading] = useState(false);
   const [viewDiff, setViewDiff] = useState(false);
   const [crawlerRunning, setCrawlerRunning] = useState(false);
+  const listRequestRef = useRef(0);
+  const detailRequestRef = useRef(0);
 
   // 勾选
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -95,15 +97,29 @@ export default function RawRecordsPage() {
   const [reviewProgress, setReviewProgress] = useState({ done: 0, total: 0, success: 0, fail: 0 });
   const [reviewLogs, setReviewLogs] = useState<{ id: string; name: string; status: "pending" | "success" | "fail"; error?: string }[]>([]);
 
-  const fetchRecords = (silent = false) => {
+  const fetchRecords = useCallback((silent = false) => {
+    const requestId = ++listRequestRef.current;
     if (!silent) setLoading(true);
-    getDataSourceList({ page: page - 1, pageSize: 20, reviewStatus: filterStatus || undefined })
-      .then((res) => { setRecords(res.data.items ?? []); setTotal(res.data.total ?? 0); })
-      .catch(() => {})
-      .finally(() => { if (!silent) setLoading(false); });
-  };
+    return getDataSourceList({ page: page - 1, pageSize: 20, reviewStatus: filterStatus || undefined })
+      .then((res) => {
+        if (listRequestRef.current !== requestId) return;
+        setRecords(res.data.items ?? []);
+        setTotal(res.data.total ?? 0);
+      })
+      .catch((error) => {
+        if (!silent && listRequestRef.current === requestId) {
+          toast.error(error instanceof Error ? error.message : "数据源列表加载失败");
+        }
+      })
+      .finally(() => {
+        if (!silent && listRequestRef.current === requestId) setLoading(false);
+      });
+  }, [filterStatus, page]);
 
-  useEffect(() => { fetchRecords(); }, [page, filterStatus]);
+  useEffect(() => {
+    void fetchRecords();
+    return () => { listRequestRef.current += 1; };
+  }, [fetchRecords]);
 
   // 仅在自动采集运行时轮询，停止后自动取消
   useEffect(() => {
@@ -115,7 +131,7 @@ export default function RawRecordsPage() {
           const running = res.data.status === "running";
           setCrawlerRunning(running);
           if (running) {
-            fetchRecords(true);
+            void fetchRecords(true);
           } else if (pollRef) {
             clearInterval(pollRef);
             pollRef = null;
@@ -128,10 +144,11 @@ export default function RawRecordsPage() {
     pollRef = setInterval(check, 5000);
 
     return () => { if (pollRef) clearInterval(pollRef); };
-  }, [page, filterStatus]);
+  }, [fetchRecords]);
 
   // 打开详情：并行拉取原始记录 + 清洗后详情，用于双栏 diff
   const openDetail = (r: DataSourceItem) => {
+    const requestId = ++detailRequestRef.current;
     setDetail(r);
     setSourceDetail(null);
     setCleanedDetail(null);
@@ -139,21 +156,13 @@ export default function RawRecordsPage() {
     setViewDiff(false);
     setEditing(false);
     setEditForm(emptyEditForm());
-    Promise.allSettled([getSourceRecord(r.id), getDataSourceDetail(r.id)]).then(([src, cleaned]) => {
+    void Promise.allSettled([getSourceRecord(r.id), getDataSourceDetail(r.id)]).then(([src, cleaned]) => {
+      if (detailRequestRef.current !== requestId) return;
       if (src.status === "fulfilled") setSourceDetail(src.value.data);
       if (cleaned.status === "fulfilled") setCleanedDetail(cleaned.value.data);
-    }).finally(() => setDiffLoading(false));
-  };
-
-  const handleReview = async (dsId: string, status: string) => {
-    try {
-      const res = await reviewDataSource(dsId, status);
-      toast.success("审核完成", { description: `记录 #${res.data.id}` });
-      setDetail(null);
-      setSourceDetail(null);
-      setCleanedDetail(null);
-      fetchRecords();
-    } catch (err) { toast.error((err as Error).message); }
+    }).finally(() => {
+      if (detailRequestRef.current === requestId) setDiffLoading(false);
+    });
   };
 
   // ==================== 修改后通过 ====================
@@ -196,18 +205,34 @@ export default function RawRecordsPage() {
 
   const cancelEdit = () => { setEditing(false); setEditForm(emptyEditForm()); };
 
+  const closeDetail = () => {
+    detailRequestRef.current += 1;
+    setDetail(null);
+    setSourceDetail(null);
+    setCleanedDetail(null);
+    setDiffLoading(false);
+    setViewDiff(false);
+    setEditing(false);
+    setEditForm(emptyEditForm());
+  };
+
+  const handleReview = async (dsId: string, status: string) => {
+    try {
+      const res = await reviewDataSource(dsId, status);
+      toast.success("审核完成", { description: `记录 #${res.data.id}` });
+      closeDetail();
+      void fetchRecords();
+    } catch (err) { toast.error((err as Error).message); }
+  };
+
   const submitEdit = async () => {
     if (!detail) return;
     setSavingEdit(true);
     try {
       await editAndApproveReview(detail.id, editForm);
       toast.success(t("page.rawRecords.reviewUpdated"));
-      setDetail(null);
-      setSourceDetail(null);
-      setCleanedDetail(null);
-      setEditing(false);
-      setEditForm(emptyEditForm());
-      fetchRecords();
+      closeDetail();
+      void fetchRecords();
     } catch (err) {
       toast.error((err as Error).message);
     } finally {
@@ -303,7 +328,7 @@ export default function RawRecordsPage() {
     setReviewing(false);
     setReviewPhase("result");
     clearSelection();
-    fetchRecords();
+    void fetchRecords();
   };
 
   const closeReviewModal = () => {
@@ -529,13 +554,13 @@ export default function RawRecordsPage() {
                       </td>
                     )}
                     <td className="px-2 py-2.5">
-                      <span className="text-[12px] truncate block" style={{ color: P.muted }} title={r.source_platform}>{r.source_platform || "-"}</span>
+                      <span className="text-[12px] truncate block" style={{ color: P.muted }} title={r.sourcePlatform}>{r.sourcePlatform || "-"}</span>
                     </td>
-                    <td className="px-2 py-2.5 font-medium truncate" style={{ color: T.ink }} title={r.job_name || undefined}>{r.job_name || "-"}</td>
-                    <td className="px-2 py-2.5 truncate" style={{ color: T.ink }} title={r.company_name || undefined}>{r.company_name || "-"}</td>
-                    <td className="px-2 py-2.5 font-mono text-[12px] text-center" style={{ color: T.info }}>{r.publish_date?.slice(0, 10) || "-"}</td>
-                    <td className="px-2 py-2.5 font-mono text-[12px] text-center" style={{ color: T.info }}>{r.created_at?.slice(0, 10) || "-"}</td>
-                    <td className="px-2 py-2.5 text-center"><StatusBadge status={r.review_status} /></td>
+                    <td className="px-2 py-2.5 font-medium truncate" style={{ color: T.ink }} title={r.jobName || undefined}>{r.jobName || "-"}</td>
+                    <td className="px-2 py-2.5 truncate" style={{ color: T.ink }} title={r.companyName || undefined}>{r.companyName || "-"}</td>
+                    <td className="px-2 py-2.5 font-mono text-[12px] text-center" style={{ color: T.info }}>{r.publishDate?.slice(0, 10) || "-"}</td>
+                    <td className="px-2 py-2.5 font-mono text-[12px] text-center" style={{ color: T.info }}>{r.createdAt?.slice(0, 10) || "-"}</td>
+                    <td className="px-2 py-2.5 text-center"><StatusBadge status={r.reviewStatus} /></td>
                     <td className="px-2 py-2.5 text-center">
                       <button className="inline-flex items-center justify-center gap-1 text-[12px] font-medium" style={{ color: P.primary }} onClick={() => openDetail(r)}>
                         <Eye size={13} />{t("common.view")}
@@ -696,7 +721,7 @@ export default function RawRecordsPage() {
 
       {/* ==================== 详情抽屉（分组字段 + 底部固定操作条） ==================== */}
       {detail && (
-        <div className="fixed inset-0 z-50 flex" style={{ background: "rgba(25,50,77,0.3)" }} onClick={() => { setDetail(null); setSourceDetail(null); setCleanedDetail(null); setEditing(false); }}>
+        <div className="fixed inset-0 z-50 flex" style={{ background: "rgba(25,50,77,0.3)" }} onClick={closeDetail}>
           {/* 详情视图 600px（减少留白）；diff 对比视图保持 720px 不变 */}
           <div className={`ml-auto shrink-0 max-w-[calc(100vw-24px)] h-full bg-white shadow-xl flex flex-col overflow-hidden ${viewDiff ? "w-[720px]" : "w-[600px]"}`} onClick={e => e.stopPropagation()}>
             {/* 头部：标题 + 审核状态 */}
@@ -709,18 +734,18 @@ export default function RawRecordsPage() {
                 )}
                 <div className="min-w-0">
                   <h3 className="text-[15px] font-medium truncate" style={{ color: P.ink }}>
-                    {viewDiff ? t("page.rawRecords.diffTitle") : (nv(cleanedDetail?.job_name ?? detail.job_name) || t("page.rawRecords.detailTitle"))}
+                    {viewDiff ? t("page.rawRecords.diffTitle") : (nv(cleanedDetail?.jobName ?? detail.jobName) || t("page.rawRecords.detailTitle"))}
                   </h3>
                   {!viewDiff && (
                     <div className="text-[12px] mt-0.5 truncate" style={{ color: P.faint }}>
-                      {[nv(cleanedDetail?.company_name ?? detail.company_name), nv(cleanedDetail?.source_platform ?? detail.source_platform)].filter(Boolean).join(" · ")}
+                      {[nv(cleanedDetail?.companyName ?? detail.companyName), nv(cleanedDetail?.sourcePlatform ?? detail.sourcePlatform)].filter(Boolean).join(" · ")}
                     </div>
                   )}
                 </div>
               </div>
               <div className="flex items-center gap-3 flex-shrink-0">
-                {!viewDiff && <StatusBadge status={detail.review_status} />}
-                <button onClick={() => { setDetail(null); setSourceDetail(null); setCleanedDetail(null); setViewDiff(false); setEditing(false); }} style={{ color: P.faint }}><X size={18} /></button>
+                {!viewDiff && <StatusBadge status={detail.reviewStatus} />}
+                <button onClick={closeDetail} style={{ color: P.faint }}><X size={18} /></button>
               </div>
             </div>
 
@@ -779,8 +804,8 @@ export default function RawRecordsPage() {
                         <div className="text-[12px] font-medium mb-2" style={{ color: P.faint }}>{t("page.rawRecords.groupJob")}</div>
                         <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[13px]">
                           {([
-                            [t("page.rawRecords.jobName"), cleanedDetail?.job_name ?? detail.job_name],
-                            [t("page.rawRecords.companyName"), cleanedDetail?.company_name ?? detail.company_name],
+                            [t("page.rawRecords.jobName"), cleanedDetail?.jobName ?? detail.jobName],
+                            [t("page.rawRecords.companyName"), cleanedDetail?.companyName ?? detail.companyName],
                             [t("page.rawRecords.jobSalary"), cleanedDetail?.salary],
                             [t("page.rawRecords.jobCity"), cleanedDetail?.city],
                             [t("page.rawRecords.jobProvince"), cleanedDetail?.province],
@@ -789,7 +814,7 @@ export default function RawRecordsPage() {
                             [t("page.rawRecords.jobMajor"), cleanedDetail?.major],
                             [t("page.rawRecords.jobNature"), cleanedDetail?.nature],
                             [t("page.rawRecords.jobTags"), cleanedDetail?.tags],
-                            [t("page.rawRecords.jobCompanySize"), cleanedDetail?.company_size],
+                            [t("page.rawRecords.jobCompanySize"), cleanedDetail?.companySize],
                           ] as [string, string | null | undefined][]).map(([k, v]) => (
                             <div key={k} className="flex justify-between min-w-0" style={{ borderBottom: `1px dashed ${P.border}` }}>
                               <span className="flex-shrink-0" style={{ color: P.faint }}>{k}</span>
@@ -804,11 +829,11 @@ export default function RawRecordsPage() {
                         <div className="text-[12px] font-medium mb-2" style={{ color: P.faint }}>{t("page.rawRecords.groupSource")}</div>
                         <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[13px]">
                           {([
-                            [t("page.rawRecords.sourcePlatform"), nv(cleanedDetail?.source_platform ?? detail.source_platform)],
-                            [t("page.rawRecords.publishDate"), (cleanedDetail?.publish_date ?? detail.publish_date)?.slice(0, 10)],
-                            [t("page.rawRecords.createDate"), detail.created_at?.slice(0, 10)],
-                            [t("page.rawRecords.reviewDate"), cleanedDetail?.reviewed_at?.slice(0, 10)],
-                            [t("page.rawRecords.reviewedBy"), nv(cleanedDetail?.reviewed_by)],
+                            [t("page.rawRecords.sourcePlatform"), nv(cleanedDetail?.sourcePlatform ?? detail.sourcePlatform)],
+                            [t("page.rawRecords.publishDate"), (cleanedDetail?.publishDate ?? detail.publishDate)?.slice(0, 10)],
+                            [t("page.rawRecords.createDate"), detail.createdAt?.slice(0, 10)],
+                            [t("page.rawRecords.reviewDate"), cleanedDetail?.reviewedAt?.slice(0, 10)],
+                            [t("page.rawRecords.reviewedBy"), nv(cleanedDetail?.reviewedBy)],
                             [t("page.rawRecords.colId"), detail.id],
                           ] as [string, string | null | undefined][]).map(([k, v]) => (
                             <div key={k} className="flex justify-between min-w-0" style={{ borderBottom: `1px dashed ${P.border}` }}>
@@ -817,16 +842,16 @@ export default function RawRecordsPage() {
                                 style={{ color: P.ink }} title={nv(v) || undefined}>{nv(v) || "-"}</span>
                             </div>
                           ))}
-                          {/* 溯源编号（整行） */}
+                          {/* 原始记录引用来自公开溯源详情，不展示内部 trace_id。 */}
                           <div className="col-span-2 flex justify-between items-center min-w-0" style={{ borderBottom: `1px dashed ${P.border}` }}>
-                            <span className="flex-shrink-0" style={{ color: P.faint }}>{t("page.rawRecords.traceId")}</span>
-                            <span className="ml-3 truncate font-mono text-[12px]" style={{ color: P.ink }} title={nv(cleanedDetail?.trace_id)}>
-                              {nv(cleanedDetail?.trace_id) || "-"}
+                            <span className="flex-shrink-0" style={{ color: P.faint }}>原始记录 ID</span>
+                            <span className="ml-3 truncate font-mono text-[12px]" style={{ color: P.ink }} title={nv(sourceDetail?.id)}>
+                              {nv(sourceDetail?.id) || "-"}
                             </span>
                           </div>
                           {/* 来源链接（整行，可点击跳转） */}
                           {(() => {
-                            const url = nv(cleanedDetail?.source_url);
+                            const url = nv(cleanedDetail?.sourceUrl);
                             return (
                               <div className="col-span-2 flex justify-between items-center min-w-0" style={{ borderBottom: `1px dashed ${P.border}` }}>
                                 <span className="flex-shrink-0" style={{ color: P.faint }}>{t("page.rawRecords.jobSourceUrl")}</span>
@@ -843,12 +868,12 @@ export default function RawRecordsPage() {
                       </section>
 
                       {/* 职位描述 */}
-                      {nv(cleanedDetail?.job_description) && (
+                      {nv(cleanedDetail?.jobDescription) && (
                         <div>
                           <div className="text-[12px] font-medium mb-2" style={{ color: P.faint }}>{t("page.rawRecords.jobDesc")}</div>
                           <div className="rounded-lg p-4 text-[14px] leading-relaxed whitespace-pre-wrap max-h-72 overflow-y-auto"
                             style={{ background: P.bg, color: P.ink, border: `1px solid ${P.border}` }}>
-                            {nv(cleanedDetail?.job_description)}
+                            {nv(cleanedDetail?.jobDescription)}
                           </div>
                         </div>
                       )}
@@ -865,16 +890,16 @@ export default function RawRecordsPage() {
                         <Btn size="sm" variant="secondary" icon={Pencil} onClick={openEdit}>{t("page.rawRecords.edit")}</Btn>
                       )}
                     </div>
-                    {isReviewer && detail.review_status !== "REVIEW_PASSED" && (
+                    {isReviewer && detail.reviewStatus !== "PASSED" && (
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <button className="px-3 py-1.5 rounded-lg text-[12px] font-medium whitespace-nowrap inline-flex items-center gap-1 transition-all hover:opacity-80"
                           style={{ background: P.redBg, color: P.red, border: `1px solid rgba(226,92,74,0.28)` }}
-                          onClick={() => handleReview(detail.id, "REVIEW_REJECT")}>
+                          onClick={() => handleReview(detail.id, "REJECTED")}>
                           <X size={13} />{t("page.rawRecords.reject")}
                         </button>
                         <button className="px-3 py-1.5 rounded-lg text-[12px] font-medium whitespace-nowrap inline-flex items-center gap-1 transition-all hover:opacity-80"
                           style={{ background: P.greenBg, color: P.green, border: `1px solid rgba(21,154,108,0.28)` }}
-                          onClick={() => handleReview(detail.id, "REVIEW_PASSED")}>
+                          onClick={() => handleReview(detail.id, "PASSED")}>
                           <ShieldCheck size={13} />{t("page.rawRecords.approve")}
                         </button>
                       </div>

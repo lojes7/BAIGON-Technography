@@ -357,7 +357,6 @@ function AbilityGraphInner(
       });
     }
     return out;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inputNodes, centerDomainId, width, height]);
 
   /* 自转状态 */
@@ -367,8 +366,6 @@ function AbilityGraphInner(
   /* ===== 自转主循环：requestAnimationFrame → rotatePoint → project3D → 更新 sphericalNodes → 触发渲染 ===== */
   useEffect(() => {
     let rafId = 0;
-    let frameCount = 0;
-    (window as any).__sphereFrames = 0;
     const render = () => {
       const { paused } = rotState.current;
       if (!paused) {
@@ -387,8 +384,6 @@ function AbilityGraphInner(
         nd.x = p.x; nd.y = p.y; nd.projZ = p.projZ; nd.perspScale = p.perspScale;
       }
       sphericalNodes.sort((a, b) => a.projZ - b.projZ);
-      frameCount++;
-      (window as any).__sphereFrames = frameCount;
       forceRenderTick((t) => (t + 1) & 0xffff);
       rafId = requestAnimationFrame(render);
     };
@@ -425,7 +420,14 @@ function AbilityGraphInner(
     const sOk = !stackActive || highlight.stackByNode[id] === highlight.stackFilter;
     const lOk = !levelActive || (highlight.levelByNode[id] ?? -1) === levelIdx;
     return sOk && lOk;
-  }, [stackActive, levelActive, levelIdx, highlight.stackByNode, highlight.levelByNode]);
+  }, [
+    stackActive,
+    levelActive,
+    levelIdx,
+    highlight.stackByNode,
+    highlight.stackFilter,
+    highlight.levelByNode,
+  ]);
 
   /* ===== 中心领域切换：改球面节点 radius，位置由球面自转自动处理 ===== */
   const prevCenterRef = useRef<string | null>(null);

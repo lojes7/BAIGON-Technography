@@ -22,6 +22,7 @@ const P = {
   greenBg: "#E4F4ED",
   amber: "#D98E1F",
   amberBg: "#FBF1DC",
+  red: "#E25C4A",
   border: "#E4EAF2",
   bgSoft: "#FAFBFD",
 } as const;
@@ -114,7 +115,7 @@ export default function MySkills() {
             <span className="text-[13px]" style={{ color: "rgba(255,255,255,0.85)" }}>识别技能总数</span>
             <Layers size={14} style={{ color: "rgba(255,255,255,0.7)" }} />
           </div>
-          <div className="text-[34px] font-mono font-semibold mt-1 leading-tight">{items.length}<span className="text-[13px] font-normal ml-1.5" style={{ color: "rgba(255,255,255,0.7)" }}>项</span></div>
+          <div className="text-[34px] font-mono font-semibold mt-1 leading-tight">{total}<span className="text-[13px] font-normal ml-1.5" style={{ color: "rgba(255,255,255,0.7)" }}>项</span></div>
           <span className="mt-auto inline-flex w-fit text-[11px] px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.16)" }}>
             其中精通 {expertCount} 项
           </span>

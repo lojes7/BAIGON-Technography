@@ -10,8 +10,7 @@ import {
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar,
   Legend, Tooltip, ResponsiveContainer,
 } from "recharts";
-import T from "../constants/tokens";
-import { listJobs, getJobDetail } from "../services/jobs";
+import { getJobDetail, loadJobsPage, lookupJobSkills } from "../services/jobs";
 import { listMySkills } from "../services/user";
 import type { JobData } from "../types/api";
 import { PageHeader } from "../components/ui";
@@ -122,7 +121,7 @@ export default function SkillCompare() {
     setSelectedJobId("");
     setBenchmark(null);
     setDiagnosis(null);
-    listJobs({ city, page: 0, pageSize: 100 })
+    loadJobsPage({ city, page: 0, pageSize: 100 })
       .then(r => setJobs(r.data.items ?? []))
       .catch(() => { setJobs([]); toast.error("加载岗位列表失败"); })
       .finally(() => setJobsLoading(false));
@@ -134,7 +133,11 @@ export default function SkillCompare() {
     setLoadingBenchmark(true);
     try {
       const r = await getJobDetail(selectedJobId);
-      const skills = (r.data.jobSkills ?? []).map(s => ({ name: s.skillName, prof: s.skillProficiency }));
+      const skillDetails = await lookupJobSkills(r.data.jobSkillIds);
+      const skills = skillDetails.data.items.map((skill) => ({
+        name: skill.skillName,
+        prof: skill.skillProficiency,
+      }));
       setBenchmark(skills);
       setDiagnosis(null);
       if (skills.length === 0) {

@@ -51,6 +51,27 @@ test("数据治理列表用 ID 页和 lookup，详情与源记录均为扁平 ca
   assert.equal("source" in source.data, false);
 });
 
+test("真实数据接口不可用时，数据治理页用同契约演示记录完整兜底", async () => {
+  let remoteCalls = 0;
+  globalThis.fetch = async () => {
+    remoteCalls += 1;
+    throw new Error("模拟后端不可用");
+  };
+
+  const page = await engineer.getDataSourceList({ page: 0, pageSize: 20 });
+  const item = page.data.items[0];
+  const detail = await engineer.getDataSourceDetail(item.id);
+  const source = await engineer.getSourceRecord(item.id);
+
+  assert.equal(remoteCalls, 1);
+  assert.equal(page.data.total, 120);
+  assert.ok(["PENDING", "PASSED", "REJECTED"].includes(item.reviewStatus));
+  assert.equal(detail.data.id, item.id);
+  assert.equal(source.data.jobName, detail.data.jobName);
+  assert.equal("trace_id" in detail.data, false);
+  assert.equal("clean_status" in source.data, false);
+});
+
 test("用户和审计列表都只读当前 ID 页并各做一次 lookup", async () => {
   const calls = [];
   globalThis.fetch = async (url, init = {}) => {

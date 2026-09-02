@@ -33,16 +33,15 @@ import {
   Link2,
   Compass,
 } from "lucide-react";
-import { MOCK_GRAPH_NODES, MOCK_GRAPH_EDGES } from "../data/dynamic-graph-mock";
+import { MOCK_GRAPH_NODES } from "../data/dynamic-graph-mock";
 import {
   ENTITY_COLOR,
-  ENTITY_ICON_CODE,
   nodeSizeOf,
   KEY_SKILL_IDS,
   STAR_SPOKE_COLORS,
   SUB_ARROW_COLOR,
 } from "../constants/graph-theme";
-import type { EntityType, DynamicGraphNode } from "../types/dynamic-graph";
+import type { EntityType } from "../types/dynamic-graph";
 
 /* =========================================================
  * 配色 —— 百工谱统一色板 + TikZ 淡彩色风格（低饱和、纯色、无渐变）
@@ -1450,7 +1449,7 @@ function MiniBarChart() {
 }
 
 /* ───────────── 小组件：主功能卡内图谱（复用系统数据与视觉规则） ───────────── */
-function GraphMockCard() {
+export function GraphMockCard() {
   /* 布局参数：SVG viewBox 440×340，三层同心圆（卡片缩放版）
      - 中心：软件工程恒星
      - 环1（半径 105）：9 个关键技能（KEY_SKILL_IDS）≤ 10，严格符合"恒星→关键技能 ≤10 条"规范
@@ -1461,8 +1460,6 @@ function GraphMockCard() {
   const R_STAR = 30;   // 恒星半径（卡片适配，小于 DOMAIN_STAR_RADIUS=46，保证缩微版观感）
   const R1 = 102;      // 环1：关键技能半径
   const R2 = 162;      // 环2：子节点半径
-  const N_KEY = 9;
-
   // 9 个关键技能（KEY_SKILL_IDS 与 graph-theme.ts 完全一致）
   const keySkillData: { id: (typeof KEY_SKILL_IDS)[number]; label: string; sub: Array<{ type: EntityType; label: string; id: string; requiredLevel?: string }> }[] = [
     {

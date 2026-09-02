@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { DynamicGraphNode, DynamicGraphEdge } from "../types/dynamic-graph";
 
 export interface SimNode extends Required<Pick<DynamicGraphNode, "x" | "y" | "vx" | "vy" | "radius">> {
@@ -31,6 +31,13 @@ export interface ForceSimulationOptions {
   demandRadiusFactor?: number;
 }
 
+interface SimulationFrame {
+  nodes: SimNode[];
+  edges: SimEdge[];
+  tick: number;
+  alpha: number;
+}
+
 const DEFAULTS = {
   // 斥力：无连线节点之间的推开力度，调大让整体铺开、不挤作一团
   repulsionStrength: 12500,
@@ -55,36 +62,57 @@ export function defaultNodeRadius(demandLevel: number): number {
   return minRadius + t * (maxRadius - minRadius);
 }
 
+/** 根据节点 ID 生成稳定的 0~1 坐标，避免在 React 渲染期间调用随机数。 */
+function stableCoordinate(id: string, salt: number): number {
+  let hash = 2166136261 ^ salt;
+  for (let i = 0; i < id.length; i++) {
+    hash = Math.imul(hash ^ id.charCodeAt(i), 16777619);
+  }
+  return (hash >>> 0) / 0xffffffff;
+}
+
 export function useForceSimulation(
   inputNodes: DynamicGraphNode[],
   inputEdges: DynamicGraphEdge[],
   options: ForceSimulationOptions,
 ) {
-  const opts = { ...DEFAULTS, ...options };
+  const width = options.width;
+  const height = options.height;
+  const repulsionStrength = options.repulsionStrength ?? DEFAULTS.repulsionStrength;
+  const linkStrength = options.linkStrength ?? DEFAULTS.linkStrength;
+  const linkDistance = options.linkDistance ?? DEFAULTS.linkDistance;
+  const gravityStrength = options.gravityStrength ?? DEFAULTS.gravityStrength;
+  const collisionRadiusPadding = options.collisionRadiusPadding ?? DEFAULTS.collisionRadiusPadding;
+  const alphaDecay = options.alphaDecay ?? DEFAULTS.alphaDecay;
+  const velocityDecay = options.velocityDecay ?? DEFAULTS.velocityDecay;
+  const minRadius = options.minRadius ?? DEFAULTS.minRadius;
+  const maxRadius = options.maxRadius ?? DEFAULTS.maxRadius;
+  const demandRadiusFactor = options.demandRadiusFactor ?? DEFAULTS.demandRadiusFactor;
   const rafRef = useRef<number | null>(null);
   const alphaRef = useRef(1);
-  const [tick, setTick] = useState(0);
-  const [isRunning, setIsRunning] = useState(false);
+  const [frame, setFrame] = useState<SimulationFrame>({ nodes: [], edges: [], tick: 0, alpha: 1 });
+  const [isRunning, setIsRunning] = useState(inputNodes.length > 0);
 
   const simNodes = useRef<SimNode[]>([]);
   const simEdges = useRef<SimEdge[]>([]);
   const nodeIndexById = useRef<Map<string, number>>(new Map());
 
-  useMemo(() => {
-    const { width, height } = opts;
+  const initializeSimulation = useCallback(() => {
     const n = inputNodes.length;
     const nodes: SimNode[] = new Array(n);
     const idx = new Map<string, number>();
+    const previousById = new Map(simNodes.current.map((node) => [node.id, node]));
     for (let i = 0; i < n; i++) {
       const nd = inputNodes[i];
-      const radius = defaultNodeRadius(nd.demandLevel);
+      const demand = Math.min(1, Math.max(0, (nd.demandLevel - 0.65) / 0.35));
+      const radius = Math.min(maxRadius, minRadius + demand * demandRadiusFactor);
       idx.set(nd.id, i);
-      const existing = simNodes.current.find((s) => s.id === nd.id);
+      const existing = previousById.get(nd.id);
       nodes[i] = {
         id: nd.id,
         demandLevel: nd.demandLevel,
-        x: existing?.x ?? nd.x ?? width / 2 + (Math.random() - 0.5) * (width * 0.6),
-        y: existing?.y ?? nd.y ?? height / 2 + (Math.random() - 0.5) * (height * 0.6),
+        x: existing?.x ?? nd.x ?? width / 2 + (stableCoordinate(nd.id, 17) - 0.5) * (width * 0.6),
+        y: existing?.y ?? nd.y ?? height / 2 + (stableCoordinate(nd.id, 31) - 0.5) * (height * 0.6),
         vx: existing?.vx ?? 0,
         vy: existing?.vy ?? 0,
         radius,
@@ -99,24 +127,37 @@ export function useForceSimulation(
       id: e.id,
       sourceId: e.source,
       targetId: e.target,
-      strength: (opts.linkStrength ?? DEFAULTS.linkStrength) * (0.6 + 0.8 * (e.importance ?? 0.5)),
-      distance: (opts.linkDistance ?? DEFAULTS.linkDistance) / (0.6 + 0.6 * (e.importance ?? 0.5)),
+      strength: linkStrength * (0.6 + 0.8 * (e.importance ?? 0.5)),
+      distance: linkDistance / (0.6 + 0.6 * (e.importance ?? 0.5)),
     }));
     simEdges.current = edges;
-    alphaRef.current = 1;
-  }, [inputNodes, inputEdges, opts.width, opts.height]);
+    alphaRef.current = n > 0 ? 1 : 0;
+  }, [
+    demandRadiusFactor,
+    height,
+    inputEdges,
+    inputNodes,
+    linkDistance,
+    linkStrength,
+    maxRadius,
+    minRadius,
+    width,
+  ]);
 
-  const step = useCallback(() => {
+  const step = useCallback(function runSimulationFrame() {
     const nodes = simNodes.current;
     const edges = simEdges.current;
     const id2i = nodeIndexById.current;
     const n = nodes.length;
-    const {
-      width, height,
-      repulsionStrength, gravityStrength,
-      collisionRadiusPadding, velocityDecay, alphaDecay,
-    } = opts;
     const alpha = alphaRef.current;
+
+    if (n === 0) {
+      setFrame((current) => ({ nodes: [], edges, tick: current.tick + 1, alpha: 0 }));
+      setIsRunning(false);
+      rafRef.current = null;
+      return;
+    }
+    setIsRunning(true);
 
     for (let i = 0; i < n; i++) {
       nodes[i].vx = 0;
@@ -217,20 +258,35 @@ export function useForceSimulation(
       }
     }
 
-    alphaRef.current = Math.max(0.001, alpha - alphaDecay);
-    setTick((t) => t + 1);
+    const nextAlpha = Math.max(0.001, alpha - alphaDecay);
+    alphaRef.current = nextAlpha;
+    // 对渲染层发布不可变快照，避免组件渲染时直接读取可变 ref。
+    setFrame((current) => ({
+      nodes: nodes.map((node) => ({ ...node })),
+      edges,
+      tick: current.tick + 1,
+      alpha: nextAlpha,
+    }));
 
-    if (alphaRef.current > 0.002) {
-      rafRef.current = requestAnimationFrame(step);
+    if (nextAlpha > 0.002) {
+      rafRef.current = requestAnimationFrame(runSimulationFrame);
     } else {
       rafRef.current = null;
       setIsRunning(false);
     }
-  }, [opts]);
+  }, [
+    alphaDecay,
+    collisionRadiusPadding,
+    gravityStrength,
+    height,
+    repulsionStrength,
+    velocityDecay,
+    width,
+  ]);
 
   const reheat = useCallback((alpha = 0.6) => {
     alphaRef.current = Math.max(alphaRef.current, alpha);
-    if (!rafRef.current) {
+    if (rafRef.current == null) {
       setIsRunning(true);
       rafRef.current = requestAnimationFrame(step);
     }
@@ -257,29 +313,34 @@ export function useForceSimulation(
       nd.fx = null;
       nd.fy = null;
     }
-    setTick((t) => t + 1);
+    setFrame((current) => ({
+      nodes: simNodes.current.map((node) => ({ ...node })),
+      edges: simEdges.current,
+      tick: current.tick + 1,
+      alpha: alphaRef.current,
+    }));
   }, []);
 
   useEffect(() => {
-    alphaRef.current = 1;
-    setIsRunning(true);
+    initializeSimulation();
+    if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(step);
     return () => {
-      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
     };
-  }, [step]);
-
-  const nodesOutput = simNodes.current;
-  const edgesOutput = simEdges.current;
+  }, [initializeSimulation, step]);
 
   return {
-    nodes: nodesOutput,
-    edges: edgesOutput,
-    tick,
+    nodes: frame.nodes,
+    edges: frame.edges,
+    tick: frame.tick,
     isRunning,
     reheat,
     stop,
     setNodePosition,
-    alpha: alphaRef.current,
+    alpha: frame.alpha,
   };
 }

@@ -7,7 +7,7 @@ import { HttpError } from "./http-error";
 import { parseJson, stringifyNumericIdBody } from "./lossless";
 import {
   filterDemoJobs, mergeDemoPage, isDemoJobId,
-  buildDemoJobDetail, buildDemoJobMatch,
+  buildDemoJobDetail, buildDemoJobMatch, lookupDemoJobSkills,
 } from "./demo-pool";
 
 const BASE = "/api/jobs";
@@ -72,7 +72,7 @@ function normalizeJobSkill(raw: RawJobSkillData): JobSkillData {
 
 // 分页查询岗位（POST + body，文本字段包含匹配，majorId / occupationId 精确匹配）
 // 演示补足：真实数据 total < 100 时，在内存拼接演示数据补到 120 条（同样支持筛选与分页）
-export async function listJobs(params?: ListJobsParams): Promise<ApiResponse<PaginatedData<JobData>>> {
+export async function listJobs(params?: ListJobsParams): Promise<ApiResponse<PaginatedIds>> {
   const page = params?.page ?? 0;
   const pageSize = params?.pageSize ?? 20;
   const body = {
@@ -109,11 +109,13 @@ export async function listJobs(params?: ListJobsParams): Promise<ApiResponse<Pag
       page: Number(response.data.page ?? 0),
       pageSize: Number(response.data.pageSize ?? 20),
     },
-  } as ApiResponse<PaginatedIds>;
+  };
 }
 
 // 查询岗位自身详情；目录与技能关系均只保留 ID 引用。
 export async function getJobDetail(id: string | number) {
+  const demo = buildDemoJobDetail(id);
+  if (demo) return { code: 200, data: demo } satisfies ApiResponse<JobDetail>;
   const response = await request<RawJobData>(`${BASE}/${id}`, { headers: hdrs() });
   return { ...response, data: normalizeJob(response.data) } as ApiResponse<JobDetail>;
 }
@@ -150,20 +152,32 @@ export async function lookupJobs(ids: Array<string | number>) {
 }
 
 export async function loadJobsPage(params?: ListJobsParams) {
-  const index = await listJobs(params);
-  const details = await lookupJobs(index.data.ids);
-  return {
-    code: index.code,
-    data: {
+  const page = params?.page ?? 0;
+  const pageSize = params?.pageSize ?? 20;
+  let real: PaginatedData<JobData> | null = null;
+  let code = 200;
+  try {
+    const index = await listJobs(params);
+    const details = await lookupJobs(index.data.ids);
+    code = index.code;
+    real = {
       items: details.data.items,
       total: index.data.total,
       page: index.data.page,
       pageSize: index.data.pageSize,
-    },
+    };
+  } catch {
+    // 后端暂不可用时保留演示数据兜底，避免整页白屏。
+  }
+  return {
+    code,
+    data: mergeDemoPage(real, filterDemoJobs(params), page, pageSize),
   } as ApiResponse<PaginatedData<JobData>>;
 }
 
 export async function getJobSkill(id: string | number) {
+  const [demo] = lookupDemoJobSkills([id]);
+  if (demo) return { code: 200, data: demo } satisfies ApiResponse<JobSkillData>;
   const response = await request<RawJobSkillData>(`${JOB_SKILLS_BASE}/${id}`, { headers: hdrs() });
   return { ...response, data: normalizeJobSkill(response.data) } as ApiResponse<JobSkillData>;
 }
@@ -173,9 +187,12 @@ export async function lookupJobSkills(ids: Array<string | number>) {
   if (uniqueIds.length === 0) {
     return { code: 200, data: { items: [], missingIds: [] } } as ApiResponse<JobSkillLookupData>;
   }
+  const demoItems = lookupDemoJobSkills(uniqueIds);
+  const demoIds = new Set(demoItems.map((item) => item.id));
+  const remoteIds = uniqueIds.filter((id) => !demoIds.has(id));
   const requests: Array<Promise<ApiResponse<{ items?: RawJobSkillData[]; missingIds?: JsonId[] }>>> = [];
-  for (let offset = 0; offset < uniqueIds.length; offset += 200) {
-    const batch = uniqueIds.slice(offset, offset + 200);
+  for (let offset = 0; offset < remoteIds.length; offset += 200) {
+    const batch = remoteIds.slice(offset, offset + 200);
     requests.push(request<{ items?: RawJobSkillData[]; missingIds?: JsonId[] }>(`${JOB_SKILLS_BASE}/lookup`, {
       method: "POST",
       headers: hdrs(true),
@@ -183,7 +200,10 @@ export async function lookupJobSkills(ids: Array<string | number>) {
     }));
   }
   const responses = await Promise.all(requests);
-  const items = responses.flatMap((response) => response.data.items ?? []).map(normalizeJobSkill);
+  const items = [
+    ...demoItems,
+    ...responses.flatMap((response) => response.data.items ?? []).map(normalizeJobSkill),
+  ];
   const itemById = new Map(items.map((item) => [item.id, item]));
   const responseMissingIds = responses.flatMap((response) => response.data.missingIds ?? []).map(String);
   const inferredMissingIds = uniqueIds.filter((id) => !itemById.has(id));
@@ -198,6 +218,10 @@ export async function lookupJobSkills(ids: Array<string | number>) {
 
 // 人岗匹配（使用当前用户最新简历匹配指定岗位）
 export async function matchMyResumeToJob(id: string | number) {
+  const demo = buildDemoJobMatch(id);
+  if (demo) {
+    return { code: 200, data: { id: demo.id } } satisfies ApiResponse<JobMatchMutationResult>;
+  }
   const response = await request<{ id?: JsonId }>(`${BASE}/${id}/match`, { method: "POST", headers: hdrs() });
   return {
     ...response,
@@ -208,7 +232,10 @@ export async function matchMyResumeToJob(id: string | number) {
 // 查询当前用户针对该岗位最近一次已持久化的匹配结果；404 由页面解释为“尚未匹配”。
 // 演示岗位无持久化结果，按 404 处理。
 export function getLatestMyJobMatch(id: string | number) {
-  if (isDemoJobId(id)) return Promise.reject(new HttpError(404));
+  if (isDemoJobId(id)) {
+    const demo = buildDemoJobMatch(id);
+    if (demo) return Promise.resolve({ code: 200, data: demo } satisfies ApiResponse<JobMatchResult>);
+  }
   return request<JobMatchResult>(`${BASE}/${id}/match`, { headers: hdrs() });
 }
 

@@ -2,12 +2,13 @@
 // 字段格式与真实数据完全一致（含 2026-08~09 真实时间线），页面无感知；
 // 仅在本模块登记演示 ID（Map 精确匹配，绝不误伤真实雪花 ID），供详情 / 溯源 / 审核兜底。
 import type {
-  PaginatedData, JobData, JobDetail, JobMajorData, JobOccupationData, JobSkillData,
+  PaginatedData, JobData, JobDetail, MajorCatalogItem, OccupationCatalogItem, JobSkillData,
   ListJobsParams, DataSourceItem, DataSourceDetail, SourceJobDetail,
   DataSourceListParams, JobMatchResult, SkillLearningSuggestion,
 } from "../types/api";
 
 export const DEMO_TARGET = 120;
+export const DEMO_REAL_THRESHOLD = 100;
 
 /* ═══════════════ 基础语料（确定性轮转，无随机数 → 刷新后分页顺序稳定） ═══════════════ */
 
@@ -50,9 +51,9 @@ const MAJOR_DEFS: ReadonlyArray<readonly [string, string, string]> = [ // [名�
   ["动画", "130310", "13"], ["通信工程", "080703", "08"], ["自动化", "080801", "08"],
 ];
 
-const MAJORS: JobMajorData[] = MAJOR_DEFS.map(([name, code, cat], i) => ({
+const MAJORS: MajorCatalogItem[] = MAJOR_DEFS.map(([name, code, cat], i) => ({
   id: String(7700000000000000000n + BigInt(i)),
-  code, name, majorCategoryId: cat,
+  code, name, majorCategoryId: cat, isEmbed: true,
 }));
 const MAJOR_BY_NAME = new Map(MAJORS.map(m => [m.name, m]));
 
@@ -67,12 +68,24 @@ const OCCUPATIONS: Record<string, OccupationDef> = {
   product: { code: "2-06-02", name: "信息管理工程技术人员", description: "从事产品规划、需求分析、项目管理与信息化方案设计的专业人员。" },
   design: { code: "2-12-04", name: "艺术设计专业人员", description: "从事视觉传达、交互体验与数字媒体设计的专业人员。" },
 };
-const OCCUPATION_DATA: Record<string, JobOccupationData> = Object.fromEntries(
+const OCCUPATION_DATA: Record<string, OccupationCatalogItem> = Object.fromEntries(
   Object.entries(OCCUPATIONS).map(([k, o], i) => [k, {
-    id: String(7800000000000000000n + BigInt(i)),
+    id: String(7800000000000000000n + BigInt(i)), isEmbed: true,
     code: o.code, name: o.name, occupationCategoryId: "2", description: o.description,
   }]),
 );
+
+/** 按公开目录 lookup 契约解析演示专业，供岗位详情继续使用 ID 引用。 */
+export function lookupDemoMajors(ids: Array<string | number>): MajorCatalogItem[] {
+  const requested = new Set(ids.map(String));
+  return MAJORS.filter((major) => requested.has(major.id));
+}
+
+/** 按公开目录 lookup 契约解析演示职业，避免把演示 ID 发送到真实后端。 */
+export function lookupDemoOccupations(ids: Array<string | number>): OccupationCatalogItem[] {
+  const requested = new Set(ids.map(String));
+  return Object.values(OCCUPATION_DATA).filter((occupation) => requested.has(occupation.id));
+}
 
 /* ═══════════════ 8 大方向 × 15 变体岗位画像 ═══════════════ */
 
@@ -228,7 +241,6 @@ const PROFILES: Record<string, DirectionProfile> = {
 /* ═══════════════ 时间线：按 5 个导入批次脉冲式入库（与「最近注入批次」表严格同源） ═══════════════ */
 
 const DAY_MS = 86400000;
-const AUG_START = Date.UTC(2026, 7, 1); // 2026-08-01
 const pad2 = (n: number) => String(n).padStart(2, "0");
 function fmt(ms: number): string {
   const d = new Date(ms);
@@ -250,7 +262,7 @@ const BATCH_START: number[] = [];
   let acc = 0;
   for (const b of INGEST_BATCHES) { BATCH_START.push(acc); acc += b.count; }
 }
-const batchOf = (i: number) => INGEST_BATCHES[BATCH_START.findIndex((s) => s <= i)];
+const batchOf = (i: number) => INGEST_BATCHES[BATCH_START.findLastIndex((start) => start <= i)];
 // 每条样本距离所属批次日的天数（按 spread 顺序铺满 120 条）
 const ITEM_DAY_OFFSET: number[] = [];
 for (const b of INGEST_BATCHES) {
@@ -279,6 +291,10 @@ function buildDescription(p: DirectionProfile, i: number, salary: string, tags: 
 
 const DIR_KEYS = ["frontend", "backend", "algorithm", "data", "test", "ops", "product", "design"] as const;
 type DirKey = (typeof DIR_KEYS)[number];
+
+function demoJobSkillId(jobIndex: number, skillIndex: number): string {
+  return String(7900000000000000000n + BigInt(jobIndex * 16 + skillIndex));
+}
 
 export const DEMO_JOBS: JobData[] = Array.from({ length: DEMO_TARGET }, (_, i) => {
   const dir = DIR_KEYS[i % 8] as DirKey;
@@ -315,6 +331,7 @@ export const DEMO_JOBS: JobData[] = Array.from({ length: DEMO_TARGET }, (_, i) =
     name,
     occupationId: OCCUPATION_DATA[dir].id,
     majorId: MAJOR_BY_NAME.get(major)?.id ?? null,
+    jobSkillIds: p.skills.map((_, skillIndex) => demoJobSkillId(i, skillIndex)),
     publishDate: fmt(publishMs),
     sourcePlatform: platform,
     sourceUrl: sourceUrlOf(platform, id.slice(-8)),
@@ -352,7 +369,7 @@ function rawDescriptionOf(desc: string, company: string): string {
 export const DEMO_SOURCES: DemoSource[] = DEMO_JOBS.map((j, i) => {
   const dsId = String(7600000000000000000n + BigInt(i));
   const reviewRoll = (i * 7 + 3) % 10;
-  const reviewStatus = reviewRoll < 6 ? "REVIEW_PASSED" : reviewRoll < 9 ? "PENDING" : "REVIEW_REJECT";
+  const reviewStatus = reviewRoll < 6 ? "PASSED" : reviewRoll < 9 ? "PENDING" : "REJECTED";
   const createdMs = Date.parse(j.createdAt.replace(" ", "T") + "Z");
   // 复核时间不越过「今天」（2026-09-01 20:00），避免详情页出现未来时间戳
   const reviewedMs = Math.min(
@@ -362,57 +379,55 @@ export const DEMO_SOURCES: DemoSource[] = DEMO_JOBS.map((j, i) => {
 
   const item: DataSourceItem = {
     id: dsId,
-    job_name: j.name,
-    company_name: j.companyName,
-    source_platform: j.sourcePlatform,
-    publish_date: j.publishDate,
-    created_at: j.createdAt,
-    review_status: reviewStatus,
+    jobName: j.name,
+    companyName: j.companyName,
+    sourcePlatform: j.sourcePlatform,
+    publishDate: j.publishDate,
+    createdAt: j.createdAt,
+    reviewStatus,
   };
 
   const detail: DataSourceDetail = {
     id: dsId,
-    trace_id: `trace-2026-${(BigInt(dsId) % 0xFFFFFFFFn).toString(16).padStart(8, "0")}`,
-    publish_date: j.publishDate,
-    source_platform: j.sourcePlatform,
-    source_url: j.sourceUrl,
+    publishDate: j.publishDate,
+    sourcePlatform: j.sourcePlatform,
+    sourceUrl: j.sourceUrl,
     city: j.city,
     tags: j.tags,
     major: j.major,
     nature: j.nature,
     salary: j.salary,
-    job_name: j.name,
-    company_name: j.companyName,
-    company_size: j.companySize,
+    jobName: j.name,
+    companyName: j.companyName,
+    companySize: j.companySize,
     province: j.province,
     education: j.education,
     experience: j.experience,
-    job_description: j.jobDescription,
-    review_status: reviewStatus,
-    reviewed_at: reviewStatus === "PENDING" ? null : fmt(reviewedMs),
-    reviewed_by: reviewStatus === "PENDING" ? null : pick(REVIEWERS, i),
+    jobDescription: j.jobDescription,
+    reviewStatus,
+    reviewedAt: reviewStatus === "PENDING" ? null : fmt(reviewedMs),
+    reviewedBy: reviewStatus === "PENDING" ? null : pick(REVIEWERS, i),
+    createdAt: j.createdAt,
   };
 
   const [district] = [pick(DISTRICTS[j.city] ?? ["中心城区"], i)];
   const source: SourceJobDetail = {
     id: `src-${dsId.slice(-10)}`,
-    trace_id: detail.trace_id,
-    publish_date: j.publishDate.slice(0, 10),
-    source_platform: j.sourcePlatform,
-    source_url: j.sourceUrl,
+    publishDate: j.publishDate.slice(0, 10),
+    sourcePlatform: j.sourcePlatform,
+    sourceUrl: j.sourceUrl,
     city: `${j.city}·${district}`,
     tags: (j.tags ?? "").split(",").join(" 、 "),
     major: "计算机相关专业",
     nature: j.nature,
     salary: rawSalaryOf(j.salary),
-    job_name: j.name,
-    company_name: j.companyName,
-    company_size: j.companySize,
+    jobName: j.name,
+    companyName: j.companyName,
+    companySize: j.companySize,
     province: "",
     education: j.education === "不限" ? "" : `${j.education}及以上`,
     experience: j.experience === "经验不限" ? "" : `${j.experience}经验`,
-    job_description: rawDescriptionOf(j.jobDescription, j.companyName),
-    clean_status: "CLEANED",
+    jobDescription: rawDescriptionOf(j.jobDescription, j.companyName),
   };
 
   return { item, detail, source };
@@ -453,8 +468,8 @@ export function filterDemoJobs(params?: ListJobsParams): JobData[] {
 // 数据源列表过滤：兼容 UI 的 PENDING/PASSED/REJECTED 与后端的 REVIEW_* 状态值
 function statusMatch(filter: string, status: string): boolean {
   if (filter === status) return true;
-  if (filter === "PASSED") return status === "REVIEW_PASSED";
-  if (filter === "REJECTED") return status === "REVIEW_REJECT";
+  if (filter === "REVIEW_PASSED") return status === "PASSED";
+  if (filter === "REVIEW_REJECT") return status === "REJECTED";
   return false;
 }
 
@@ -463,8 +478,8 @@ export function filterDemoSources(params?: DataSourceListParams): DataSourceItem
   const from = (params?.publishDateFrom ?? "").trim();
   const to = (params?.publishDateTo ?? "").trim();
   return DEMO_SOURCES.filter(({ item }) => {
-    if (status && !statusMatch(status, item.review_status)) return false;
-    const day = item.publish_date.slice(0, 10);
+    if (status && !statusMatch(status, item.reviewStatus)) return false;
+    const day = item.publishDate.slice(0, 10);
     if (from && day < from) return false;
     if (to && day > to) return false;
     return true;
@@ -473,7 +488,7 @@ export function filterDemoSources(params?: DataSourceListParams): DataSourceItem
 
 // 拼接策略：真实数据占 [0, realTotal)，演示数据占 [realTotal, realTotal+need)，按页切片。
 // 演示池全量补位（total = 真实 + 120），与 live-stats 的动态 KPI 口径保持一致；
-// 真实数据 ≥ DEMO_TARGET 时视为真实环境，不再拼接演示数据。
+// 真实数据达到 DEMO_REAL_THRESHOLD 时视为真实环境，不再拼接演示数据。
 export function mergeDemoPage<T>(
   real: PaginatedData<T> | null,
   demoFiltered: T[],
@@ -482,7 +497,7 @@ export function mergeDemoPage<T>(
 ): PaginatedData<T> {
   const realItems = real?.items ?? [];
   const realTotal = real?.total ?? 0;
-  if (realTotal >= DEMO_TARGET) {
+  if (realTotal >= DEMO_REAL_THRESHOLD) {
     return { items: realItems, total: realTotal, page, pageSize };
   }
   const need = demoFiltered.length;
@@ -502,12 +517,13 @@ export function isDemoJobId(id: string | number): boolean {
   return demoJobById.has(String(id));
 }
 
-function demoSkillsOf(job: JobData): JobSkillData[] {
+export function buildDemoJobSkills(job: JobData): JobSkillData[] {
   const dir = DIR_KEYS.find(k => PROFILES[k].titles.includes(job.name)) ?? "frontend";
   const p = PROFILES[dir];
   const jobIdx = DEMO_JOBS.findIndex(x => x.id === job.id);
   return p.skills.map((s, si) => ({
-    id: String(7900000000000000000n + BigInt(jobIdx * 16 + si)),
+    id: demoJobSkillId(jobIdx, si),
+    jobId: job.id,
     // 少量技能保留"待归一"状态，更贴近真实数据分布
     skillId: (jobIdx % 7 === 3 && si === p.skills.length - 1)
       ? null
@@ -518,12 +534,15 @@ function demoSkillsOf(job: JobData): JobSkillData[] {
   }));
 }
 
+export function lookupDemoJobSkills(ids: Array<string | number>): JobSkillData[] {
+  const requested = new Set(ids.map(String));
+  return DEMO_JOBS.flatMap(buildDemoJobSkills).filter((skill) => requested.has(skill.id));
+}
+
 export function buildDemoJobDetail(id: string | number): JobDetail | null {
   const job = demoJobById.get(String(id));
   if (!job) return null;
-  const dir = DIR_KEYS.find(k => PROFILES[k].titles.includes(job.name)) ?? "frontend";
-  const major = job.majorId ? MAJORS.find(m => m.id === String(job.majorId)) ?? null : null;
-  return { job, major, occupation: OCCUPATION_DATA[dir], jobSkills: demoSkillsOf(job) };
+  return { ...job };
 }
 
 export function buildDemoJobMatch(id: string | number): JobMatchResult | null {
@@ -568,27 +587,27 @@ export function buildDemoSourceRecord(id: string | number): SourceJobDetail | nu
 
 export function applyDemoReview(
   id: string | number,
-  status: "REVIEW_PASSED" | "REVIEW_REJECT",
+  status: "PASSED" | "REJECTED",
   edits?: Partial<Record<"jobName" | "companyName" | "salary" | "city" | "education" | "experience" | "jobDescription", string>>,
 ): DataSourceDetail | null {
   const s = demoSourceById.get(String(id));
   if (!s) return null;
   if (edits) {
     const { jobName, companyName, salary, city, education, experience, jobDescription } = edits;
-    if (jobName) s.detail.job_name = jobName;
-    if (companyName) s.detail.company_name = companyName;
+    if (jobName) s.detail.jobName = jobName;
+    if (companyName) s.detail.companyName = companyName;
     if (salary) s.detail.salary = salary;
     if (city) s.detail.city = city;
     if (education) s.detail.education = education;
     if (experience) s.detail.experience = experience;
-    if (jobDescription) s.detail.job_description = jobDescription;
-    s.item.job_name = s.detail.job_name;
-    s.item.company_name = s.detail.company_name;
+    if (jobDescription) s.detail.jobDescription = jobDescription;
+    s.item.jobName = s.detail.jobName;
+    s.item.companyName = s.detail.companyName;
   }
-  s.item.review_status = status;
-  s.detail.review_status = status;
-  s.detail.reviewed_at = fmt(Date.now());
-  s.detail.reviewed_by = pick(REVIEWERS, Number(String(id).slice(-4)) || 0);
+  s.item.reviewStatus = status;
+  s.detail.reviewStatus = status;
+  s.detail.reviewedAt = fmt(Date.now());
+  s.detail.reviewedBy = pick(REVIEWERS, Number(String(id).slice(-4)) || 0);
   return { ...s.detail };
 }
 
@@ -597,9 +616,9 @@ export function applyDemoReview(
 const PLATFORM_COLORS = ["#1E4C8F", "#2E9E9A", "#7468CE", "#D98E1F", "#E25C4A", "#4E9E6A"] as const;
 
 export const DEMO_STATS = (() => {
-  const pending = DEMO_SOURCES.filter(s => s.item.review_status === "PENDING");
-  const passed = DEMO_SOURCES.filter(s => s.item.review_status === "REVIEW_PASSED");
-  const rejected = DEMO_SOURCES.filter(s => s.item.review_status === "REVIEW_REJECT");
+  const pending = DEMO_SOURCES.filter(s => s.item.reviewStatus === "PENDING");
+  const passed = DEMO_SOURCES.filter(s => s.item.reviewStatus === "PASSED");
+  const rejected = DEMO_SOURCES.filter(s => s.item.reviewStatus === "REJECTED");
 
   // 平台构成固定加权演示口径（与「最近注入批次」表同源，合计 120）：
   // CSV 注入 46 / 智联招聘 38 / BOSS直聘 22 / 猎聘 7 / 前程无忧 4 / 拉勾 3
@@ -626,7 +645,7 @@ export const DEMO_STATS = (() => {
     return { dt: `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}`, n };
   });
 
-  const latest = DEMO_SOURCES.reduce((a, b) => (a.item.created_at < b.item.created_at ? b : a));
+  const latest = DEMO_SOURCES.reduce((a, b) => (a.item.createdAt < b.item.createdAt ? b : a));
   return {
     total: DEMO_SOURCES.length,
     pending: pending.length,
@@ -634,13 +653,13 @@ export const DEMO_STATS = (() => {
     rejected: rejected.length,
     passRate: `${((passed.length / Math.max(1, passed.length + rejected.length)) * 100).toFixed(1)}%`,
     pendingHigh: Math.max(1, Math.round(pending.length * 0.25)),
-    todayNew: DEMO_SOURCES.filter(s => s.item.created_at.startsWith("2026-09-01")).length,
+    todayNew: DEMO_SOURCES.filter(s => s.item.createdAt.startsWith("2026-09-01")).length,
     platformStats,
     trend,
     directions: DIR_KEYS.length,
     cityCount: new Set(DEMO_JOBS.map(j => j.city)).size,
-    latestTime: latest.item.created_at.slice(11, 16),
-    latestTrace: latest.detail.trace_id,
+    latestTime: latest.item.createdAt.slice(11, 16),
+    latestTrace: latest.detail.id,
     latestCity: latest.detail.city,
   };
 })();

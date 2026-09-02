@@ -5,8 +5,15 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ root, appType: "custom", server: { middlewareMode: true } });
-const { getMajorEmbeddingStatus, getMajors, startMajorEmbedding } = await vite.ssrLoadModule("/src/services/occupation.ts");
+const {
+  getMajorEmbeddingStatus,
+  getMajors,
+  lookupMajors,
+  lookupOccupations,
+  startMajorEmbedding,
+} = await vite.ssrLoadModule("/src/services/occupation.ts");
 const { getJobDetail, loadJobsPage, lookupJobSkills } = await vite.ssrLoadModule("/src/services/jobs.ts");
+const { DEMO_JOBS } = await vite.ssrLoadModule("/src/services/demo-pool.ts");
 
 after(async () => { await vite.close(); });
 
@@ -85,6 +92,28 @@ test("岗位详情保持扁平结构，岗位技能批量详情保留未归一�
     skillProficiency: "FAMILIAR",
     evidence: "熟悉内部自定义工具",
   });
+});
+
+test("演示岗位详情在本地解析专业、职业和岗位技能，不请求真实目录", async () => {
+  const demoJob = DEMO_JOBS[0];
+  let remoteCalls = 0;
+  globalThis.fetch = async () => {
+    remoteCalls += 1;
+    throw new Error("演示 ID 不应发送到真实后端");
+  };
+
+  const detail = await getJobDetail(demoJob.id);
+  const [majors, occupations, skills] = await Promise.all([
+    lookupMajors([detail.data.majorId]),
+    lookupOccupations([detail.data.occupationId]),
+    lookupJobSkills(detail.data.jobSkillIds),
+  ]);
+
+  assert.equal(remoteCalls, 0);
+  assert.equal(majors.data.items[0].id, String(detail.data.majorId));
+  assert.equal(occupations.data.items[0].id, String(detail.data.occupationId));
+  assert.equal(skills.data.items.length, detail.data.jobSkillIds.length);
+  assert.ok(skills.data.items.every((item) => item.jobId === detail.data.id));
 });
 
 test("embedding 状态使用 id，命令响应只保留资源 ID", async () => {

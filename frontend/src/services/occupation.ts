@@ -8,6 +8,7 @@ import type {
   PaginatedIds, ResourceIdData, SkillGraphEvidencePage, SkillGraphMetricsData, SkillGraphScopeType,
 } from "../types/api";
 import { mergeSkillGraphMetricBatches } from "../utils/skill-graph";
+import { lookupDemoMajors, lookupDemoOccupations } from "./demo-pool";
 import { parseJson, stringifyNumericIdBody } from "./lossless";
 
 const BASE = "/api/auth/occupation";
@@ -174,6 +175,32 @@ async function lookupCatalogDetails<T extends CatalogItem>(
   } as ApiResponse<CatalogLookupData<T>>;
 }
 
+/**
+ * 合并演示目录与真实批量详情，并保持调用方请求的 ID 顺序。
+ * 演示 ID 不应发送到真实后端，否则岗位详情会被目录 404/缺失结果连带阻断。
+ */
+async function lookupCatalogWithLocal<T extends CatalogItem>(
+  definition: CatalogDefinition<T>,
+  ids: Array<string | number>,
+  localItems: T[],
+) {
+  const uniqueIds = Array.from(new Set(ids.map(String)));
+  const localById = new Map(localItems.map((item) => [item.id, item]));
+  const remoteIds = uniqueIds.filter((id) => !localById.has(id));
+  const remote = await lookupCatalogDetails(definition, remoteIds);
+  const itemById = new Map([
+    ...localById,
+    ...remote.data.items.map((item) => [item.id, item] as const),
+  ]);
+  return {
+    code: 200,
+    data: {
+      items: uniqueIds.flatMap((id) => itemById.get(id) ?? []),
+      missingIds: uniqueIds.filter((id) => !itemById.has(id)),
+    },
+  } as ApiResponse<CatalogLookupData<T>>;
+}
+
 async function loadCatalogPage<T extends CatalogItem>(definition: CatalogDefinition<T>, params: object) {
   const index = await listCatalogIds(definition.collection, params);
   const details = await lookupCatalogDetails(definition, index.data.ids);
@@ -200,7 +227,8 @@ export const getMajorCategories = (params: PageQuery & { disciplineCategoryId?: 
 
 export const listMajorIds = (params: PageQuery & { majorCategoryId?: string }) => listCatalogIds("majors", params);
 export const getMajor = (id: string | number) => getCatalogDetail(majorDefinition, id);
-export const lookupMajors = (ids: Array<string | number>) => lookupCatalogDetails(majorDefinition, ids);
+export const lookupMajors = (ids: Array<string | number>) =>
+  lookupCatalogWithLocal(majorDefinition, ids, lookupDemoMajors(ids));
 export const getMajors = (params: PageQuery & { majorCategoryId?: string }) => loadCatalogPage(majorDefinition, params);
 
 export const listOccupationMajorCategoryIds = (params: PageQuery = {}) => listCatalogIds("occupation-major-categories", params);
@@ -220,7 +248,8 @@ export const getOccupationCategories = (params: PageQuery & { occupationSubCateg
 
 export const listOccupationIds = (params: PageQuery & { occupationCategoryId?: string }) => listCatalogIds("occupations", params);
 export const getOccupation = (id: string | number) => getCatalogDetail(occupationDefinition, id);
-export const lookupOccupations = (ids: Array<string | number>) => lookupCatalogDetails(occupationDefinition, ids);
+export const lookupOccupations = (ids: Array<string | number>) =>
+  lookupCatalogWithLocal(occupationDefinition, ids, lookupDemoOccupations(ids));
 export const getOccupations = (params: PageQuery & { occupationCategoryId?: string }) => loadCatalogPage(occupationDefinition, params);
 
 // ==================== 职业/专业技能时间图谱 ====================
