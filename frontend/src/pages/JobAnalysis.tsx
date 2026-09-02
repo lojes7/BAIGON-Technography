@@ -4,7 +4,7 @@ import { Eye, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import DirectoryPicker from "../components/job-analysis/DirectoryPicker";
-import { Btn, Card, PageHeader, UnderlineTabs } from "../components/ui";
+import { Btn, Card, PageHeader, UnderlineTabs, Pagination } from "../components/ui";
 import P from "../constants/palette";
 import { isHttpErrorStatus } from "../services/http-error";
 import { getJobAnalysisTask, listJobAnalysisTasks, reviewJobAnalysisTask } from "../services/job-analysis";

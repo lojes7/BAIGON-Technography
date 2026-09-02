@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, CircleDashed, RefreshCw, Search, SearchX, Database } from "lucide-react";
+import { CheckCircle2, CircleDashed, RefreshCw, Search, SearchX, Database, Loader2, Eye, X, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useAuth } from "../auth/AuthContext";
 import EmbeddingProgress from "../components/EmbeddingProgress";
+import CanonicalSkillMultiSelect from "../components/skill/CanonicalSkillMultiSelect";
+import ConfirmDialog from "../components/overlay/ConfirmDialog";
 import { Btn, Card, PageHeader, Pagination, MetricCard } from "../components/ui";
 import T from "../constants/tokens";
 import P from "../constants/palette";
-import { searchCanonicalSkills } from "../services/skill-resolution";
 import { getEmbeddingProgress } from "../services/occupation";
 import type { CanonicalSkillItem } from "../types/api";
 

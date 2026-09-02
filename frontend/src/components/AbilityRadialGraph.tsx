@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import T from "../constants/tokens";
 
 const LEVELS: { key: string; label: string; color: string; soft: string }[] = [
@@ -58,30 +58,6 @@ function truncate(name: string, max = 4) {
   return name.length > max ? `${name.slice(0, max)}…` : name;
 }
 
-function positionNodes(nodes: Omit<RenderNode, "x" | "y">[], orbit: number): RenderNode[] {
-  return nodes.map((node, index) => {
-    // 从顶部开始顺时针均匀分布；内外两环使用不同半径。
-    const angle = ((-90 + (index * 360) / Math.max(nodes.length, 1)) * Math.PI) / 180;
-    return {
-      ...node,
-      x: CX + orbit * Math.cos(angle),
-      y: CY + orbit * Math.sin(angle),
-    };
-  });
-}
-
-function trimmedLine(from: RenderNode, to: RenderNode) {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const distance = Math.hypot(dx, dy) || 1;
-  return {
-    x1: from.x + (dx / distance) * (from.radius + 2),
-    y1: from.y + (dy / distance) * (from.radius + 2),
-    x2: to.x - (dx / distance) * (to.radius + 7),
-    y2: to.y - (dy / distance) * (to.radius + 7),
-  };
-}
-
 interface SphereNode {
   item: AbilityItem;
   color: string;
@@ -95,14 +71,10 @@ interface SphereNode {
 export default function AbilityRadialGraph({
   centerLabel,
   abilities,
-  relatedAbilities = [],
-  relations = [],
   emptyHint = "暂无能力数据",
 }: {
   centerLabel: string;
   abilities: AbilityItem[];
-  relatedAbilities?: RelatedAbilityItem[];
-  relations?: AbilityRelation[];
   emptyHint?: string;
 }) {
   const [selected, setSelected] = useState<AbilityItem | null>(null);
@@ -181,56 +153,28 @@ export default function AbilityRadialGraph({
   const back = proj.filter((p) => p.z < 0);
   const front = proj.filter((p) => p.z >= 0);
 
-  const innerNodes = positionNodes(directNodes.map(({ id, item }) => {
-    const level = levelOf(item.proficiency);
-    return {
-      id,
-      name: item.name,
-      proficiency: item.proficiency,
-      evidence: item.evidence,
-      related: false,
-      radius: innerNodeRadius,
-      color: level.color,
-      soft: level.soft,
-    };
-  }), innerOrbitRadius);
-
-  const outerNodes = positionNodes(
-    relatedAbilities
-      .filter((item) => !directIds.has(String(item.id)))
-      .sort((left, right) => left.name.localeCompare(right.name, "zh-CN"))
-      .map((item) => ({
-        id: String(item.id),
-        name: item.name,
-        proficiency: "",
-        related: true,
-        radius: OUTER_NODE_R,
-        color: T.info,
-        soft: T.cloud,
-      })),
-    OUTER_ORBIT_R,
-  );
-
-  const allNodes = [...innerNodes, ...outerNodes];
-  const nodeMap = new Map(allNodes.map((node) => [node.id, node]));
-  const selectedNode = selectedId ? nodeMap.get(selectedId) ?? null : null;
+  // 派生：当前选中节点（球面）+ SVG 唯一 id
+  const selNode = selected ? nodes.find((n) => n.item === selected) ?? null : null;
+  const instanceId = useId().replace(/:/g, "");
   const arrowId = `ability-relation-arrow-${instanceId}`;
   const gradientId = `ability-center-${instanceId}`;
-  const renderedRelations = relations.filter((relation, index, source) => (
-    relation.parentId !== relation.childId
-      && nodeMap.has(String(relation.parentId))
-      && nodeMap.has(String(relation.childId))
-      && source.findIndex((candidate) => (
-        String(candidate.parentId) === String(relation.parentId)
-          && String(candidate.childId) === String(relation.childId)
-      )) === index
-  ));
+  const selectedNode: RenderNode | null = selNode ? {
+    id: String(selNode.item.id ?? selNode.item.name),
+    name: selNode.item.name,
+    proficiency: selNode.item.proficiency,
+    evidence: selNode.item.evidence,
+    related: false,
+    x: 0, y: 0,
+    radius: NODE_R,
+    color: selNode.color,
+    soft: selNode.soft,
+  } : null;
 
-  const renderNode = (p: (typeof proj)[number], interactive: boolean) => {
+  const renderNode = (p: (typeof proj)[number], index: number) => {
     const dim = selNode?.item === p.nd.item;
     return (
       <g
-        key={p.nd.item.name + String(interactive)}
+        key={p.nd.item.name + String(index)}
         onMouseEnter={() => { pausedRef.current = true; }}
         onMouseLeave={() => { pausedRef.current = false; }}
         onClick={() => setSelected(selected === p.nd.item ? null : p.nd.item)}

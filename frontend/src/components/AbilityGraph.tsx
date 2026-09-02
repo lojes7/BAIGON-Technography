@@ -248,7 +248,7 @@ function renderNodeShape(
   return (
     <g {...common}>
       {pulseRing && (
-        <circle cx={node.x} cy={node.y} r={r + 8} fill="none" stroke={isCenterStar ? "#D6AE7E" : TREND_COLOR[original.trend] || "#D6AE7E"} strokeWidth={2.2} opacity={0.6}>
+        <circle cx={node.x} cy={node.y} r={r + 8} fill="none" stroke={isCenterStar ? "#D6AE7E" : (original.trend ? TREND_COLOR[original.trend] : "#D6AE7E")} strokeWidth={2.2} opacity={0.6}>
           <animate attributeName="r" values={`${r + 6};${r + 18};${r + 6}`} dur="1.6s" repeatCount="indefinite" />
           <animate attributeName="opacity" values="0.8;0.1;0.8" dur="1.6s" repeatCount="indefinite" />
         </circle>
@@ -802,15 +802,15 @@ function AbilityGraphInner(
               const neighborOfSelected = highlight.selectedId && (
                 sn.id === highlight.selectedId || neighborMap.get(highlight.selectedId)?.has(sn.id)
               );
-              const highlighted = hovered || onPath || searchHit
+              const highlighted = Boolean(hovered || onPath || searchHit
                 || (!!highlight.focusNeighborsOf && neighborOfFocus)
-                || (!!highlight.selectedId && neighborOfSelected);
+                || (!!highlight.selectedId && neighborOfSelected));
               const hasFocusSignal = !!highlight.selectedId ||
                 !!highlight.hoveredId ||
                 highlight.pathNodeIds.size > 0 ||
                 highlight.searchMatches.size > 0;
               const viewOff = viewActive && !viewMatch(sn.id) && sn.id !== highlight.centerDomainId;
-              const dimmed = (!highlighted && hasFocusSignal && !selected) || viewOff;
+              const dimmed = Boolean((!highlighted && hasFocusSignal && !selected) || viewOff);
               const palette = getNodeFill(orig.type, selected, highlighted, dimmed, orig.trend);
 
               return (

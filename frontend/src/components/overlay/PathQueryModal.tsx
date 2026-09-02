@@ -97,6 +97,7 @@ function PathQueryModal({ open, onClose, onSearch, onQuery, getNodeById }: Props
             const isSrc = f === "source";
             void isSrc;
             const id = isSrc ? sourceId : targetId;
+            void id;
             const kw = isSrc ? sourceKw : targetKw;
             const setId = isSrc ? setSourceId : setTargetId;
             const setKw = isSrc ? setSourceKw : setTargetKw;

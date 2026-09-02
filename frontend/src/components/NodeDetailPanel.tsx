@@ -21,6 +21,7 @@ interface Props {
 }
 
 const entityIcons: Record<EntityType, React.ComponentType<any>> = {
+  Domain: Network,
   Occupation: Briefcase,
   JobRole: Users,
   Skill: Sparkles,

@@ -203,11 +203,11 @@ export default function IngestFormModal() {
           </div>
           <div className="flex items-center gap-2 px-3 py-2 rounded-full max-w-full"
             style={{ background: P.skySoft, border: `1px solid ${P.border}` }}>
-            <span className="text-[12px] font-mono flex-shrink-0" style={{ color: P.faint }}>trace_id:</span>
-            <span className="text-[12px] font-mono truncate" style={{ color: P.ink }}>{success.trace_id}</span>
-            <button type="button" onClick={copyTrace} className="flex items-center gap-1 text-[12px] flex-shrink-0" style={{ color: P.primary }}>
-              {traceCopied ? <Check size={13} /> : <Copy size={13} />}
-              {traceCopied ? "已复制" : "复制"}
+            <span className="text-[12px] font-mono flex-shrink-0" style={{ color: P.faint }}>task_id:</span>
+            <span className="text-[12px] font-mono truncate" style={{ color: P.ink }}>{success.taskId}</span>
+            <button type="button" onClick={copyTaskId} className="flex items-center gap-1 text-[12px] flex-shrink-0" style={{ color: P.primary }}>
+              {taskIdCopied ? <Check size={13} /> : <Copy size={13} />}
+              {taskIdCopied ? "已复制" : "复制"}
             </button>
           </div>
           <div className="flex items-center gap-2 mt-1">

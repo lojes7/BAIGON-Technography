@@ -558,6 +558,8 @@ export interface ComboEvolutionData {
 // 启动采集响应
 export interface CrawlerResult {
   id: string;
+  trace_id?: string;
+  count?: number;
 }
 
 // 采集状态响应

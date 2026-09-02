@@ -66,7 +66,7 @@ export default function AccountSettings() {
               <span className="mt-1.5 inline-flex text-[11px] px-2.5 py-0.5 rounded-full font-medium" style={{ background: P.skySoft, color: P.primary }}>
                 {ROLE_LABEL[user?.role ?? ""] ?? "学生"}
               </span>
-              <div className="mt-3 text-[12px] font-mono" style={{ color: P.faint }}>账号：{user?.uid ?? "-"}</div>
+              <div className="mt-3 text-[12px] font-mono" style={{ color: P.faint }}>账号：{user?.id ?? "-"}</div>
             </div>
           </div>
 

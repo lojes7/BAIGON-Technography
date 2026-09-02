@@ -358,8 +358,9 @@ function ReviewWorkbenchPage() {
                       </button>
                     </td>
                     </tr>
-                  );
-                })}
+                  )
+                )}
+
               </tbody>
             </table>
           </div>

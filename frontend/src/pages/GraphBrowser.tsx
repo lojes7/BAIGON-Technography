@@ -116,17 +116,11 @@ function TrendChip({ label, bg, color }: { label: string; bg: string; color: str
   return <span className="text-[11px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap" style={{ background: bg, color }}>{label}</span>;
 }
 
-function timelineLabel(bounds: TimelineBounds) {
-  if (!bounds.fromMonth && !bounds.toMonth) return "全部时间";
-  if (!bounds.fromMonth) return `${bounds.toMonth} 之前`;
-  if (!bounds.toMonth) return `${bounds.fromMonth} 起`;
-  return `${bounds.fromMonth} 至 ${bounds.toMonth}（不含上界）`;
-}
-
 export default function GraphBrowserPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+  const nav = useNav();
   const isStudent = user?.role === "student";
   const isTeacher = user?.role === "teacher";
   const isAnalyst = user?.role === "analyst";
@@ -155,10 +149,6 @@ export default function GraphBrowserPage() {
   const [detail, setDetail] = useState<NodeDetailData | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
-  const [evidencePage, setEvidencePage] = useState(1);
-  const [evidenceItems, setEvidenceItems] = useState<JobData[]>([]);
-  const [evidenceTotal, setEvidenceTotal] = useState(0);
-  const [evidenceLoading, setEvidenceLoading] = useState(false);
 
   /* 全景图谱：整浏览器窗口展示，仅保留自转 + 点击节点高亮邻居，不出信息面板 */
   const [panoramaOpen, setPanoramaOpen] = useState(false);
@@ -915,5 +905,3 @@ const TREND_COLOR_WORKAROUND = {
   stable: T.stable,
   declining: T.declining,
 };
-
-export default GraphBrowserPage;
