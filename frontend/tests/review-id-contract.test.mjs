@@ -224,6 +224,35 @@ test("技能归一详情区分持久化候选与实时相似项，审核只回 I
   );
 });
 
+test("技能归一详情不会把空 selectedSkillId 当作规范技能 ID 查询", async () => {
+  const calls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const call = { url: String(url), init };
+    calls.push(call);
+    if (call.url.endsWith("/job-skill-resolution/353613580832100352")) {
+      return response('{"code":200,"data":{"id":353613580832100352,"jobSkillId":353613580823711745,"taskStatus":"SUCCESS","reviewStatus":"PENDING","selectedSkillId":null,"candidateIds":[353613597848391680]}}');
+    }
+    if (call.url.endsWith("/job-skill-resolution/candidates/lookup")) {
+      return response('{"code":200,"data":{"items":[{"id":353613597848391680,"skillId":91,"rank":1,"similarity":0.9}],"missingIds":[]}}');
+    }
+    if (call.url.endsWith("/api/job-skills/lookup")) {
+      return response('{"code":200,"data":{"items":[{"id":353613580823711745,"jobId":7001,"skillId":null,"skillName":"性能优化经验","skillProficiency":"ADVANCED","evidence":"具备性能优化经验"}],"missingIds":[]}}');
+    }
+    if (call.url.endsWith("/skills/lookup")) {
+      return response('{"code":200,"data":{"items":[{"id":91,"name":"性能优化","isEmbed":true}],"missingIds":[]}}');
+    }
+    throw new Error(`未处理请求：${call.url}`);
+  };
+
+  const detail = await skillResolution.getSkillResolutionTask("353613580832100352");
+  const canonicalLookup = calls.find((call) => call.url.endsWith("/skills/lookup"));
+
+  assert.equal(detail.data.task.selectedSkillId, null);
+  assert.equal(detail.data.task.reviewedBy, null);
+  assert.equal(canonicalLookup.init.body, '{"skillIds":[91]}');
+  assert.doesNotMatch(canonicalLookup.init.body, /null/);
+});
+
 test("规范技能 single detail 严格读取 flat camelCase 契约", async () => {
   let capturedUrl = "";
   globalThis.fetch = async (url) => {

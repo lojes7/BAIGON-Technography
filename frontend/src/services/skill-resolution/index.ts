@@ -40,11 +40,11 @@ interface RawTaskSummary {
   taskStatus?: string;
   reviewStatus?: string;
   resolutionAction?: string;
-  selectedSkillId?: JsonId;
+  selectedSkillId?: JsonId | null;
   attempts?: number;
   createdAt?: string;
   reviewedAt?: string;
-  reviewedBy?: JsonId;
+  reviewedBy?: JsonId | null;
 }
 
 interface RawCandidate {
@@ -89,8 +89,9 @@ async function request<T>(url: string, init?: RequestInit): Promise<ApiResponse<
   return parseJson(text) as ApiResponse<T>;
 }
 
-function nullableStringId(value: JsonId | undefined): string | null {
-  return value === undefined || value === 0 || value === "0" ? null : String(value);
+function nullableStringId(value: JsonId | null | undefined): string | null {
+  // Gateway 的可空 ID 会返回 JSON null，不能把它转成会被再次提交的字符串 "null"。
+  return value == null || value === 0 || value === "0" || value === "" ? null : String(value);
 }
 
 function uniqueIds(ids: Array<string | number>) {
