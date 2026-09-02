@@ -12,6 +12,8 @@ import {
   listSkillResolutionTasks,
   lookupCanonicalSkills,
   reviewSkillResolutionTask,
+  type SkillResolutionReviewStatus,
+  type SkillResolutionTaskStatus,
 } from "../services/skill-resolution";
 import type {
   CanonicalSkillItem,
@@ -49,8 +51,8 @@ function ReviewWorkbenchPage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [jobSkills, setJobSkills] = useState<Record<string, JobSkillData>>({});
-  const [taskStatusFilter, setTaskStatusFilter] = useState<"SUCCESS" | "FAILED" | "RUNNING" | "PENDING">("SUCCESS");
-  const [reviewFilter, setReviewFilter] = useState<"all" | "PENDING" | "PASSED">("all");
+  const [taskStatusFilter, setTaskStatusFilter] = useState<SkillResolutionTaskStatus>("SUCCESS");
+  const [reviewFilter, setReviewFilter] = useState<"all" | SkillResolutionReviewStatus>("all");
   const [loading, setLoading] = useState(true);
   const [openingId, setOpeningId] = useState("");
   const listRequestRef = useRef(0);
@@ -305,7 +307,7 @@ function ReviewWorkbenchPage() {
           {
             value: taskStatusFilter,
             onChange: (value) => {
-              setTaskStatusFilter(value as "SUCCESS" | "FAILED" | "RUNNING" | "PENDING");
+              setTaskStatusFilter(value as SkillResolutionTaskStatus);
               setReviewFilter("all");
               setPage(1);
             },
@@ -320,7 +322,7 @@ function ReviewWorkbenchPage() {
           ...((taskStatusFilter === "SUCCESS" || taskStatusFilter === "FAILED") ? [{
             value: reviewFilter,
             onChange: (value: string) => {
-              setReviewFilter(value as "all" | "PENDING" | "PASSED");
+              setReviewFilter(value as "all" | SkillResolutionReviewStatus);
               setPage(1);
             },
             options: [

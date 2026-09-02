@@ -74,6 +74,20 @@ test("岗位分析只加载当前 ID 页，并用独立资源批量详情组装�
   assert.equal("analysis" in detail.data, false);
 });
 
+test("岗位分析在发请求前拒绝后端不支持的 RUNNING 状态", async () => {
+  let requested = false;
+  globalThis.fetch = async () => {
+    requested = true;
+    throw new Error("不应发出请求");
+  };
+
+  await assert.rejects(
+    jobAnalysis.listJobAnalysisTasks({ taskStatus: "RUNNING" }),
+    /不支持的岗位分析任务状态：RUNNING/,
+  );
+  assert.equal(requested, false);
+});
+
 test("岗位分析审核只消费任务 ID 响应", async () => {
   let captured;
   globalThis.fetch = async (url, init = {}) => {
@@ -126,6 +140,20 @@ test("技能归一当前 ID 页通过任务与岗位技能 lookup 解析原始�
   assert.equal(page.data.items[0].jobSkillId, "8001");
   assert.equal(page.data.jobSkills[0].skillName, "内部发布系统");
   assert.equal("skillName" in page.data.items[0], false);
+});
+
+test("技能归一在发请求前拒绝不属于本域的 REJECTED 审核状态", async () => {
+  let requested = false;
+  globalThis.fetch = async () => {
+    requested = true;
+    throw new Error("不应发出请求");
+  };
+
+  await assert.rejects(
+    skillResolution.listSkillResolutionTasks({ reviewStatus: "REJECTED" }),
+    /不支持的技能归一审核状态：REJECTED/,
+  );
+  assert.equal(requested, false);
 });
 
 test("技能归一详情区分持久化候选与实时相似项，审核只回 ID", async () => {

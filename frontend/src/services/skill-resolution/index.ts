@@ -26,6 +26,14 @@ const hdrs = (hasBody = false) => ({
 
 type JsonId = string | number;
 
+export type SkillResolutionTaskStatus = "PENDING" | "RUNNING" | "SUCCESS" | "FAILED";
+export type SkillResolutionReviewStatus = "PENDING" | "PASSED";
+
+const SKILL_RESOLUTION_TASK_STATUSES = new Set<SkillResolutionTaskStatus>([
+  "PENDING", "RUNNING", "SUCCESS", "FAILED",
+]);
+const SKILL_RESOLUTION_REVIEW_STATUSES = new Set<SkillResolutionReviewStatus>(["PENDING", "PASSED"]);
+
 interface RawTaskSummary {
   id?: JsonId;
   jobSkillId?: JsonId;
@@ -160,15 +168,26 @@ export async function lookupSkillResolutionCandidates(ids: Array<string | number
 export async function listSkillResolutionTasks(params?: {
   page?: number;
   pageSize?: number;
-  taskStatus?: string;
-  reviewStatus?: string;
+  taskStatus?: SkillResolutionTaskStatus;
+  reviewStatus?: SkillResolutionReviewStatus;
 }) {
   const query = new URLSearchParams({
     page: String(params?.page ?? 0),
     pageSize: String(params?.pageSize ?? 20),
   });
-  if (params?.taskStatus) query.set("taskStatus", params.taskStatus);
-  if (params?.reviewStatus) query.set("reviewStatus", params.reviewStatus);
+  if (params?.taskStatus) {
+    if (!SKILL_RESOLUTION_TASK_STATUSES.has(params.taskStatus)) {
+      throw new Error(`不支持的技能归一任务状态：${params.taskStatus}`);
+    }
+    query.set("taskStatus", params.taskStatus);
+  }
+  if (params?.reviewStatus) {
+    // 技能归一只有待审核和已通过，不支持岗位分析域的 REJECTED。
+    if (!SKILL_RESOLUTION_REVIEW_STATUSES.has(params.reviewStatus)) {
+      throw new Error(`不支持的技能归一审核状态：${params.reviewStatus}`);
+    }
+    query.set("reviewStatus", params.reviewStatus);
+  }
 
   const index = await request<{
     ids?: JsonId[];

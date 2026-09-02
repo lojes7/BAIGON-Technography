@@ -8,7 +8,13 @@ import { Btn, Card, PageHeader, UnderlineTabs, Pagination } from "../components/
 import P from "../constants/palette";
 import T from "../constants/tokens";
 import { isHttpErrorStatus } from "../services/http-error";
-import { getJobAnalysisTask, listJobAnalysisTasks, reviewJobAnalysisTask } from "../services/job-analysis";
+import {
+  getJobAnalysisTask,
+  listJobAnalysisTasks,
+  reviewJobAnalysisTask,
+  type JobAnalysisReviewStatus,
+  type JobAnalysisTaskStatus,
+} from "../services/job-analysis";
 import { lookupMajors, lookupOccupations } from "../services/occupation";
 import type {
   JobAnalysisResult,
@@ -26,7 +32,6 @@ const REVIEW_STATUS_LABEL: Record<string, string> = {
 
 const TASK_STATUS_LABEL: Record<string, string> = {
   PENDING: "等待中",
-  RUNNING: "处理中",
   SUCCESS: "已完成",
   FAILED: "失败",
 };
@@ -46,8 +51,8 @@ export default function JobAnalysisPage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [taskStatusFilter, setTaskStatusFilter] = useState<"SUCCESS" | "FAILED" | "RUNNING" | "PENDING">("SUCCESS");
-  const [reviewFilter, setReviewFilter] = useState<"all" | "PENDING" | "PASSED" | "REJECTED">("all");
+  const [taskStatusFilter, setTaskStatusFilter] = useState<JobAnalysisTaskStatus>("SUCCESS");
+  const [reviewFilter, setReviewFilter] = useState<"all" | JobAnalysisReviewStatus>("all");
   const [openingId, setOpeningId] = useState("");
   const [jobs, setJobs] = useState<Record<string, JobData>>({});
   const [majorNames, setMajorNames] = useState<Record<string, string>>({});
@@ -281,22 +286,21 @@ export default function JobAnalysisPage() {
           {
             value: taskStatusFilter,
             onChange: (value) => {
-              setTaskStatusFilter(value as "SUCCESS" | "FAILED" | "RUNNING" | "PENDING");
+              setTaskStatusFilter(value as JobAnalysisTaskStatus);
               setReviewFilter("all");
               setPage(1);
             },
             options: [
               { value: "SUCCESS", label: "成功" },
               { value: "FAILED", label: "失败" },
-              { value: "RUNNING", label: "处理中" },
-              { value: "PENDING", label: "等待中" },
+              { value: "PENDING", label: "等待中 / 处理中" },
             ],
           },
           // 只有成功任务进入岗位分析复核，审核状态使用后端单值筛选。
           ...(taskStatusFilter === "SUCCESS" ? [{
             value: reviewFilter,
             onChange: (value: string) => {
-              setReviewFilter(value as "all" | "PENDING" | "PASSED" | "REJECTED");
+              setReviewFilter(value as "all" | JobAnalysisReviewStatus);
               setPage(1);
             },
             options: [
@@ -321,7 +325,7 @@ export default function JobAnalysisPage() {
                 <tr style={{ background: P.sky }}>
                   <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: P.primaryDeep }}>岗位名称</th>
                   <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: P.primaryDeep }}>岗位原专业</th>
-                  {taskStatusFilter === "RUNNING" && (
+                  {taskStatusFilter === "PENDING" && (
                     <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: P.primaryDeep }}>分析进度</th>
                   )}
                   <th className="px-4 py-2.5 text-left text-[12px] font-medium" style={{ color: P.primaryDeep }}>确认结果</th>
@@ -335,7 +339,7 @@ export default function JobAnalysisPage() {
                   <tr key={item.id} className="transition-colors hover:bg-gray-50" style={{ borderTop: `1px solid ${P.border}` }}>
                     <td className="px-4 py-2 font-medium" style={{ color: P.ink }}>{jobs[item.jobId]?.name || `岗位 #${item.jobId}`}</td>
                     <td className="max-w-44 px-4 py-2 text-[12px]" style={{ color: P.muted }}>{jobs[item.jobId]?.major || "-"}</td>
-                    {taskStatusFilter === "RUNNING" && (
+                    {taskStatusFilter === "PENDING" && (
                       <td className="px-4 py-2 text-[11px] leading-5" style={{ color: P.muted }}>
                         <div>专业：{TASK_STATUS_LABEL[item.majorAnalysisStatus] || item.majorAnalysisStatus || "-"}</div>
                         <div>职业：{TASK_STATUS_LABEL[item.occupationAnalysisStatus] || item.occupationAnalysisStatus || "-"}</div>

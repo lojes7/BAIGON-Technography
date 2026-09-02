@@ -21,6 +21,12 @@ const hdrs = (hasBody = false) => ({
 
 type JsonId = string | number;
 
+export type JobAnalysisTaskStatus = "PENDING" | "SUCCESS" | "FAILED";
+export type JobAnalysisReviewStatus = "PENDING" | "PASSED" | "REJECTED";
+
+const JOB_ANALYSIS_TASK_STATUSES = new Set<JobAnalysisTaskStatus>(["PENDING", "SUCCESS", "FAILED"]);
+const JOB_ANALYSIS_REVIEW_STATUSES = new Set<JobAnalysisReviewStatus>(["PENDING", "PASSED", "REJECTED"]);
+
 interface RawTaskSummary {
   id?: JsonId;
   jobId?: JsonId;
@@ -194,15 +200,26 @@ export async function lookupJobAnalysisResults(ids: Array<string | number>) {
 export async function listJobAnalysisTasks(params?: {
   page?: number;
   pageSize?: number;
-  taskStatus?: string;
-  reviewStatus?: string;
+  taskStatus?: JobAnalysisTaskStatus;
+  reviewStatus?: JobAnalysisReviewStatus;
 }) {
   const query = new URLSearchParams({
     page: String(params?.page ?? 0),
     pageSize: String(params?.pageSize ?? 20),
   });
-  if (params?.taskStatus) query.set("taskStatus", params.taskStatus);
-  if (params?.reviewStatus) query.set("reviewStatus", params.reviewStatus);
+  if (params?.taskStatus) {
+    // 岗位分析使用通用 TaskStatus，后端没有 RUNNING；前端不得发送跨域枚举。
+    if (!JOB_ANALYSIS_TASK_STATUSES.has(params.taskStatus)) {
+      throw new Error(`不支持的岗位分析任务状态：${params.taskStatus}`);
+    }
+    query.set("taskStatus", params.taskStatus);
+  }
+  if (params?.reviewStatus) {
+    if (!JOB_ANALYSIS_REVIEW_STATUSES.has(params.reviewStatus)) {
+      throw new Error(`不支持的岗位分析审核状态：${params.reviewStatus}`);
+    }
+    query.set("reviewStatus", params.reviewStatus);
+  }
 
   const index = await request<{ ids?: JsonId[]; total?: number; page?: number; pageSize?: number }>(
     `${BASE}?${query}`,
