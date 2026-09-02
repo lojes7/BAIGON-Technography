@@ -11,7 +11,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
+import java.time.OffsetDateTime;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -46,8 +48,10 @@ class SkillRelationServiceTest {
 
         service.link(job, 300L);
 
-        verify(occupationSkillRepository).insertIfAbsent(1001L, 200L, 300L);
-        verify(majorSkillRepository).insertIfAbsent(1002L, 201L, 300L);
+        verify(occupationSkillRepository).insertIfAbsent(
+                1001L, 200L, 300L, 199L, OffsetDateTime.parse("2026-05-08T09:00:00+08:00"));
+        verify(majorSkillRepository).insertIfAbsent(
+                1002L, 201L, 300L, 199L, OffsetDateTime.parse("2026-05-08T09:00:00+08:00"));
     }
 
     @Test
@@ -59,8 +63,10 @@ class SkillRelationServiceTest {
 
         service.link(job, 300L);
 
-        verify(occupationSkillRepository).insertIfAbsent(1001L, 200L, 300L);
-        verify(majorSkillRepository, never()).insertIfAbsent(anyLong(), anyLong(), anyLong());
+        verify(occupationSkillRepository).insertIfAbsent(
+                1001L, 200L, 300L, 199L, OffsetDateTime.parse("2026-05-08T09:00:00+08:00"));
+        verify(majorSkillRepository, never()).insertIfAbsent(
+                anyLong(), anyLong(), anyLong(), anyLong(), any());
     }
 
     @Test
@@ -75,16 +81,22 @@ class SkillRelationServiceTest {
 
         verify(occupationSkillRepository, times(2))
                 .insertIfAbsent(anyLong(), org.mockito.ArgumentMatchers.eq(200L),
-                        org.mockito.ArgumentMatchers.eq(300L));
+                        org.mockito.ArgumentMatchers.eq(300L),
+                        org.mockito.ArgumentMatchers.eq(199L),
+                        org.mockito.ArgumentMatchers.eq(OffsetDateTime.parse("2026-05-08T09:00:00+08:00")));
         verify(majorSkillRepository, times(2))
                 .insertIfAbsent(anyLong(), org.mockito.ArgumentMatchers.eq(201L),
-                        org.mockito.ArgumentMatchers.eq(300L));
+                        org.mockito.ArgumentMatchers.eq(300L),
+                        org.mockito.ArgumentMatchers.eq(199L),
+                        org.mockito.ArgumentMatchers.eq(OffsetDateTime.parse("2026-05-08T09:00:00+08:00")));
     }
 
     private Job job() {
         Job job = new Job();
+        job.setId(199L);
         job.setOccupationId(200L);
         job.setMajorId(201L);
+        job.setPublishDate(OffsetDateTime.parse("2026-05-08T09:00:00+08:00"));
         return job;
     }
 

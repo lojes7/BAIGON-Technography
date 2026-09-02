@@ -17,12 +17,26 @@ service OccupationService {
 
   // 七级专业/职业目录分页查询。
   rpc ListDisciplineCategories (CatalogListRequest) returns (CatalogListResponse) {}
+  rpc GetDisciplineCategory (CatalogDetailRequest) returns (CatalogDetailResponse) {}
+  rpc LookupDisciplineCategories (CatalogLookupRequest) returns (CatalogLookupResponse) {}
   rpc ListMajorCategories (ChildCatalogListRequest) returns (CatalogListResponse) {}
+  rpc GetMajorCategory (CatalogDetailRequest) returns (CatalogDetailResponse) {}
+  rpc LookupMajorCategories (CatalogLookupRequest) returns (CatalogLookupResponse) {}
   rpc ListMajors (ChildCatalogListRequest) returns (EmbeddableCatalogListResponse) {}
+  rpc GetMajor (CatalogDetailRequest) returns (CatalogDetailResponse) {}
+  rpc LookupMajors (CatalogLookupRequest) returns (CatalogLookupResponse) {}
   rpc ListOccupationMajorCategories (CatalogListRequest) returns (CatalogListResponse) {}
+  rpc GetOccupationMajorCategory (CatalogDetailRequest) returns (CatalogDetailResponse) {}
+  rpc LookupOccupationMajorCategories (CatalogLookupRequest) returns (CatalogLookupResponse) {}
   rpc ListOccupationSubCategories (ChildCatalogListRequest) returns (CatalogListResponse) {}
+  rpc GetOccupationSubCategory (CatalogDetailRequest) returns (CatalogDetailResponse) {}
+  rpc LookupOccupationSubCategories (CatalogLookupRequest) returns (CatalogLookupResponse) {}
   rpc ListOccupationCategories (ChildCatalogListRequest) returns (CatalogListResponse) {}
+  rpc GetOccupationCategory (CatalogDetailRequest) returns (CatalogDetailResponse) {}
+  rpc LookupOccupationCategories (CatalogLookupRequest) returns (CatalogLookupResponse) {}
   rpc ListOccupations (ChildCatalogListRequest) returns (EmbeddableCatalogListResponse) {}
+  rpc GetOccupation (CatalogDetailRequest) returns (CatalogDetailResponse) {}
+  rpc LookupOccupations (CatalogLookupRequest) returns (CatalogLookupResponse) {}
 
   // 专业、职业与规范技能名称向量化进度。
   rpc GetEmbeddingProgress (EmbeddingTaskRequest) returns (GetEmbeddingProgressResponse) {}
@@ -45,18 +59,40 @@ service OccupationService {
   // 岗位分析任务查询与人工确认；最终专业、职业不受 AI 候选范围限制。
   rpc ListJobAnalysisTasks (ListJobAnalysisTasksRequest) returns (ListJobAnalysisTasksResponse) {}
   rpc GetJobAnalysisTask (GetJobAnalysisTaskRequest) returns (GetJobAnalysisTaskResponse) {}
-  rpc ReviewJobAnalysisTask (ReviewJobAnalysisTaskRequest) returns (GetJobAnalysisTaskResponse) {}
+  rpc LookupJobAnalysisTasks (CatalogLookupRequest) returns (LookupJobAnalysisTasksResponse) {}
+  rpc GetJobAnalysisOccupationCandidate (GetJobAnalysisTaskRequest) returns (GetJobAnalysisOccupationCandidateResponse) {}
+  rpc LookupJobAnalysisOccupationCandidates (CatalogLookupRequest) returns (LookupJobAnalysisOccupationCandidatesResponse) {}
+  rpc GetJobAnalysisMajorCandidate (GetJobAnalysisTaskRequest) returns (GetJobAnalysisMajorCandidateResponse) {}
+  rpc LookupJobAnalysisMajorCandidates (CatalogLookupRequest) returns (LookupJobAnalysisMajorCandidatesResponse) {}
+  rpc GetJobAnalysisResult (GetJobAnalysisTaskRequest) returns (GetJobAnalysisResultResponse) {}
+  rpc LookupJobAnalysisResults (CatalogLookupRequest) returns (LookupJobAnalysisResultsResponse) {}
+  rpc ReviewJobAnalysisTask (ReviewJobAnalysisTaskRequest) returns (ResourceIdResponse) {}
 
   // 全局规范技能搜索与岗位技能归一审核。
   rpc ListSkills (ListSkillsRequest) returns (ListSkillsResponse) {}
+  rpc GetSkill (GetSkillRequest) returns (GetSkillResponse) {}
+  rpc LookupSkills (LookupSkillsRequest) returns (LookupSkillsResponse) {}
+  rpc GetSkillRelations (GetSkillRelationsRequest) returns (GetSkillRelationsResponse) {}
+  // 按职业或专业及自然月边界查询岗位直接贡献的技能图谱。
+  rpc GetSkillGraph (GetSkillGraphRequest) returns (GetSkillGraphResponse) {}
+  rpc LookupSkillGraphMetrics (LookupSkillGraphMetricsRequest) returns (LookupSkillGraphMetricsResponse) {}
+  rpc ListSkillGraphEvidenceJobs (ListSkillGraphEvidenceJobsRequest) returns (ListSkillGraphEvidenceJobsResponse) {}
+  rpc AddSkillRelation (SkillRelationMutationRequest) returns (SkillRelationMutationResponse) {}
+  rpc DeleteSkillRelation (SkillRelationMutationRequest) returns (SkillRelationMutationResponse) {}
   rpc ListJobSkillResolutionTasks (ListJobSkillResolutionTasksRequest) returns (ListJobSkillResolutionTasksResponse) {}
   rpc GetJobSkillResolutionTask (GetJobSkillResolutionTaskRequest) returns (GetJobSkillResolutionTaskResponse) {}
+  rpc LookupJobSkillResolutionTasks (CatalogLookupRequest) returns (LookupJobSkillResolutionTasksResponse) {}
+  rpc GetJobSkillResolutionCandidate (GetJobSkillResolutionTaskRequest) returns (GetJobSkillResolutionCandidateResponse) {}
+  rpc LookupJobSkillResolutionCandidates (CatalogLookupRequest) returns (LookupJobSkillResolutionCandidatesResponse) {}
   rpc ListJobSkillResolutionSimilarSkills (GetJobSkillResolutionTaskRequest) returns (ListJobSkillResolutionSimilarSkillsResponse) {}
-  rpc ReviewJobSkillResolutionTask (ReviewJobSkillResolutionTaskRequest) returns (GetJobSkillResolutionTaskResponse) {}
+  rpc ReviewJobSkillResolutionTask (ReviewJobSkillResolutionTaskRequest) returns (ResourceIdResponse) {}
 
   // 已审核岗位的分页检索与聚合详情。
   rpc ListJobs (ListJobsRequest) returns (ListJobsResponse) {}
   rpc GetJob (GetJobRequest) returns (GetJobResponse) {}
+  rpc LookupJobs (CatalogLookupRequest) returns (LookupJobsResponse) {}
+  rpc GetJobSkill (GetJobRequest) returns (GetJobSkillResponse) {}
+  rpc LookupJobSkills (CatalogLookupRequest) returns (LookupJobSkillsResponse) {}
 }
 
 // 根目录分页查询；page 从 0 开始，page_size 默认 20、最大 100。
@@ -103,17 +139,66 @@ message EmbeddableCatalogItem {
 }
 
 message CatalogListResponse {
-  repeated CatalogItem items = 1;
+  reserved 1;
+  reserved "items";
   int64 total = 2;
   int32 page = 3;
   int32 page_size = 4;
+  repeated int64 ids = 5;
 }
 
 message EmbeddableCatalogListResponse {
-  repeated EmbeddableCatalogItem items = 1;
+  reserved 1;
+  reserved "items";
   int64 total = 2;
   int32 page = 3;
   int32 page_size = 4;
+  repeated int64 ids = 5;
+}
+
+message CatalogDetailRequest {
+  int64 id = 1;
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+message CatalogLookupRequest {
+  repeated int64 ids = 1;
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+// 七级目录共用内部传输结构；Gateway 按具体 collection 精确裁剪 REST 字段。
+message CatalogDetailData {
+  int64 id = 1;
+  string code = 2;
+  string name = 3;
+  int64 discipline_category_id = 4;
+  int64 major_category_id = 5;
+  bool is_embed = 6;
+  int64 occupation_major_category_id = 7;
+  int64 occupation_sub_category_id = 8;
+  int64 occupation_category_id = 9;
+  string description = 10;
+}
+
+message CatalogDetailResponse {
+  CatalogDetailData item = 1;
+}
+
+message CatalogLookupResponse {
+  repeated CatalogDetailData items = 1;
+  repeated int64 missing_ids = 2;
 }
 
 // 无业务参数的任务接口仍携带完整审计上下文。
@@ -154,6 +239,7 @@ message ListJobAnalysisTasksRequest {
   int32 page = 1;
   int32 page_size = 2;
   string review_status = 3; // PENDING / PASSED / REJECTED，空表示全部
+  string task_status = 4; // PENDING / SUCCESS / FAILED，空表示全部
 
   string trace_id = 10;
   int64 user_id = 11;
@@ -204,36 +290,43 @@ message JobAnalysisSkillReview {
 message JobAnalysisTaskSummary {
   int64 id = 1;
   int64 job_id = 2;
-  int64 trace_id = 3;
-  string job_name = 4;
+  reserved 3, 4;
+  reserved "trace_id", "job_name";
   string task_status = 5;
   string review_status = 6;
   int64 selected_occupation_id = 7;
-  string model_name = 8;
-  string error_msg = 9;
+  reserved 8, 9;
+  reserved "model_name", "error_msg";
   int32 attempts = 10;
   string created_at = 11;
   string reviewed_at = 12;
   int64 reviewed_by = 13;
   string occupation_analysis_status = 14;
   string jd_analysis_status = 15;
-  string job_major = 16;
+  reserved 16;
+  reserved "job_major";
   int64 selected_major_id = 17;
   string major_analysis_status = 18;
+  reserved 19, 20;
+  reserved "selected_occupation_name", "selected_major_name";
 }
 
 message JobAnalysisCandidate {
   int64 occupation_id = 1;
-  string occupation_name = 2;
+  reserved 2;
+  reserved "occupation_name";
   int32 rank = 3;
   double similarity = 4;
+  int64 id = 5;
 }
 
 message JobAnalysisMajorCandidate {
   int64 major_id = 1;
-  string major_name = 2;
+  reserved 2;
+  reserved "major_name";
   int32 rank = 3;
   double similarity = 4;
+  int64 id = 5;
 }
 
 message JobAnalysisResult {
@@ -254,20 +347,56 @@ message JobAnalysisResult {
 
 message JobAnalysisTaskDetail {
   JobAnalysisTaskSummary task = 1;
-  repeated JobAnalysisCandidate candidates = 2;
-  repeated JobAnalysisResult results = 3;
-  repeated JobAnalysisMajorCandidate major_candidates = 4;
+  reserved 2, 3, 4;
+  reserved "candidates", "results", "major_candidates";
+  repeated int64 candidate_ids = 5;
+  repeated int64 result_ids = 6;
+  repeated int64 major_candidate_ids = 7;
 }
 
 message ListJobAnalysisTasksResponse {
-  repeated JobAnalysisTaskSummary items = 1;
+  reserved 1;
+  reserved "items";
   int64 total = 2;
   int32 page = 3;
   int32 page_size = 4;
+  repeated int64 ids = 5;
 }
 
 message GetJobAnalysisTaskResponse {
   JobAnalysisTaskDetail analysis = 1;
+}
+
+message LookupJobAnalysisTasksResponse {
+  repeated JobAnalysisTaskSummary items = 1;
+  repeated int64 missing_ids = 2;
+}
+
+message GetJobAnalysisOccupationCandidateResponse {
+  JobAnalysisCandidate item = 1;
+}
+
+message LookupJobAnalysisOccupationCandidatesResponse {
+  repeated JobAnalysisCandidate items = 1;
+  repeated int64 missing_ids = 2;
+}
+
+message GetJobAnalysisMajorCandidateResponse {
+  JobAnalysisMajorCandidate item = 1;
+}
+
+message LookupJobAnalysisMajorCandidatesResponse {
+  repeated JobAnalysisMajorCandidate items = 1;
+  repeated int64 missing_ids = 2;
+}
+
+message GetJobAnalysisResultResponse {
+  JobAnalysisResult item = 1;
+}
+
+message LookupJobAnalysisResultsResponse {
+  repeated JobAnalysisResult items = 1;
+  repeated int64 missing_ids = 2;
 }
 
 // 规范技能分页搜索；page 从 0 开始，page_size 默认 20、最大 100。
@@ -292,10 +421,168 @@ message SkillData {
 }
 
 message ListSkillsResponse {
-  repeated SkillData items = 1;
+  reserved 1;
+  reserved "items";
   int64 total = 2;
   int32 page = 3;
   int32 page_size = 4;
+  // 列表只返回规范技能 ID；详情由 LookupSkills 批量解析。
+  repeated int64 ids = 5;
+}
+
+message GetSkillRequest {
+  int64 id = 1;
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+message SkillDetailData {
+  SkillData skill = 1;
+  reserved 2, 3;
+  reserved "parent_skill_ids", "child_skill_ids";
+}
+
+message GetSkillResponse {
+  SkillDetailData skill = 1;
+}
+
+message LookupSkillsRequest {
+  repeated int64 skill_ids = 1;
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+message SkillLookupData {
+  int64 id = 1;
+  string name = 2;
+  bool is_embed = 3;
+}
+
+message LookupSkillsResponse {
+  // 仅返回仍活动的规范技能，并按 id 升序排列。
+  repeated SkillLookupData items = 1;
+  // 不存在或已软删除的请求 ID；去重并按 id 升序排列。
+  repeated int64 missing_skill_ids = 2;
+}
+
+message GetSkillRelationsRequest {
+  int64 id = 1;
+  string direction = 2; // parents / children
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+message GetSkillRelationsResponse {
+  // 只返回指定方向的一跳活动关系 ID，不返回祖先或后代闭包。
+  repeated int64 skill_ids = 1;
+}
+
+message GetSkillGraphRequest {
+  string scope_type = 1; // OCCUPATION / MAJOR
+  int64 scope_id = 2;
+  string from_month = 3; // YYYY-MM，包含；空表示不设下界
+  string to_month = 4;   // YYYY-MM，不包含；空表示不设上界
+  reserved 5;
+  reserved "evidence_limit";
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+message GetSkillGraphResponse {
+  reserved 1, 2, 3, 4;
+  reserved "scope", "timeline", "total_job_count", "skills";
+  int64 scope_id = 5;
+  // 仅包含岗位在时间窗内直接贡献的规范技能 ID。
+  repeated int64 direct_skill_ids = 6;
+}
+
+message LookupSkillGraphMetricsRequest {
+  string scope_type = 1; // OCCUPATION / MAJOR
+  int64 scope_id = 2;
+  repeated int64 skill_ids = 3;
+  string from_month = 4; // YYYY-MM，包含；空表示不设下界
+  string to_month = 5;   // YYYY-MM，不包含；空表示不设上界
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+message SkillGraphMetric {
+  int64 skill_id = 1;
+  int64 job_count = 2;
+  // 0 到 1；只统计岗位直接要求，不向父技能推导。
+  double coverage = 3;
+}
+
+message LookupSkillGraphMetricsResponse {
+  repeated SkillGraphMetric items = 1;
+  // 不是当前范围在时间窗内直接技能的请求 ID。
+  repeated int64 missing_ids = 2;
+}
+
+message ListSkillGraphEvidenceJobsRequest {
+  string scope_type = 1; // OCCUPATION / MAJOR
+  int64 scope_id = 2;
+  int64 skill_id = 3;
+  string from_month = 4; // YYYY-MM，包含；空表示不设下界
+  string to_month = 5;   // YYYY-MM，不包含；空表示不设上界
+  int32 page = 6;
+  int32 page_size = 7;
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+message ListSkillGraphEvidenceJobsResponse {
+  repeated int64 job_ids = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message SkillRelationMutationRequest {
+  int64 parent_skill_id = 1;
+  int64 child_skill_id = 2;
+
+  string trace_id = 10;
+  int64 user_id = 11;
+  string user_name = 12;
+  string user_ip = 13;
+  string request_method = 14;
+  string request_url = 15;
+}
+
+message SkillRelationMutationResponse {
+  int64 parent_skill_id = 1;
+  int64 child_skill_id = 2;
 }
 
 message ListJobSkillResolutionTasksRequest {
@@ -331,6 +618,8 @@ message ReviewJobSkillResolutionTaskRequest {
   int64 skill_id = 3;
   // CREATE_NEW 必填；其余动作必须为空。
   string new_skill_name = 4;
+  // 仅 CREATE_NEW 可选；去重后最多 20 个现有活动父技能。
+  repeated int64 parent_skill_ids = 5;
 
   string trace_id = 10;
   int64 user_id = 11;
@@ -343,15 +632,14 @@ message ReviewJobSkillResolutionTaskRequest {
 message JobSkillResolutionTaskSummary {
   int64 id = 1;
   int64 job_skill_id = 2;
-  int64 job_id = 3;
-  int64 trace_id = 4;
-  string skill_name = 5;
+  reserved 3, 4, 5;
+  reserved "job_id", "trace_id", "skill_name";
   string task_status = 6;
   string review_status = 7;
   string resolution_action = 8;
   int64 selected_skill_id = 9;
-  string model_name = 10;
-  string error_msg = 11;
+  reserved 10, 11;
+  reserved "model_name", "error_msg";
   int32 attempts = 12;
   string created_at = 13;
   string reviewed_at = 14;
@@ -360,26 +648,46 @@ message JobSkillResolutionTaskSummary {
 
 message JobSkillResolutionCandidate {
   int64 skill_id = 1;
-  string skill_name = 2;
+  reserved 2;
+  reserved "skill_name";
   int32 rank = 3;
   double similarity = 4;
+  // 持久化候选的资源 ID；实时 Top 5 相似项为 0。
+  int64 id = 5;
 }
 
 message JobSkillResolutionTaskDetail {
   JobSkillResolutionTaskSummary task = 1;
-  JobSkillData job_skill = 2;
-  repeated JobSkillResolutionCandidate candidates = 3;
+  reserved 2, 3;
+  reserved "job_skill", "candidates";
+  repeated int64 candidate_ids = 4;
 }
 
 message ListJobSkillResolutionTasksResponse {
-  repeated JobSkillResolutionTaskSummary items = 1;
+  reserved 1;
+  reserved "items";
   int64 total = 2;
   int32 page = 3;
   int32 page_size = 4;
+  repeated int64 ids = 5;
 }
 
 message GetJobSkillResolutionTaskResponse {
   JobSkillResolutionTaskDetail resolution = 1;
+}
+
+message LookupJobSkillResolutionTasksResponse {
+  repeated JobSkillResolutionTaskSummary items = 1;
+  repeated int64 missing_ids = 2;
+}
+
+message GetJobSkillResolutionCandidateResponse {
+  JobSkillResolutionCandidate item = 1;
+}
+
+message LookupJobSkillResolutionCandidatesResponse {
+  repeated JobSkillResolutionCandidate items = 1;
+  repeated int64 missing_ids = 2;
 }
 
 // 待审技能向量对应的 Top 5 规范技能；无可用向量时 items 为空。
@@ -444,6 +752,7 @@ message JobData {
   string created_at = 18;
   string updated_at = 19;
   int64 major_id = 20;
+  repeated int64 job_skill_ids = 21;
 }
 
 message JobMajorData {
@@ -468,20 +777,41 @@ message JobSkillData {
   string evidence = 4;
   // 0 表示技能身份仍在等待人工归一审核。
   int64 skill_id = 5;
+  reserved 6, 7;
+  reserved "parent_skill_ids", "child_skill_ids";
+  int64 job_id = 8;
 }
 
 message ListJobsResponse {
-  repeated JobData items = 1;
+  reserved 1;
+  reserved "items";
   int64 total = 2;
   int32 page = 3;
   int32 page_size = 4;
+  repeated int64 ids = 5;
 }
 
 message GetJobResponse {
   JobData job = 1;
-  // occupation_id 为空或对应职业已软删除时不设置 occupation。
-  JobOccupationData occupation = 2;
-  repeated JobSkillData job_skills = 3;
-  // major_id 为空或对应专业已软删除时不设置 major。
-  JobMajorData major = 4;
+  reserved 2, 3, 4;
+  reserved "occupation", "job_skills", "major";
+}
+
+message LookupJobsResponse {
+  repeated JobData items = 1;
+  repeated int64 missing_ids = 2;
+}
+
+message GetJobSkillResponse {
+  JobSkillData job_skill = 1;
+}
+
+message LookupJobSkillsResponse {
+  repeated JobSkillData items = 1;
+  repeated int64 missing_ids = 2;
+}
+
+// 所有资源写操作的最小返回值。
+message ResourceIdResponse {
+  int64 id = 1;
 }

@@ -2,12 +2,10 @@
 package com.baigon.occupation.service.skill;
 
 import com.baigon.occupation.entity.ReviewStatus;
-import com.baigon.occupation.entity.job.JobSkill;
 import com.baigon.occupation.entity.skill.JobSkillResolutionCandidate;
 import com.baigon.occupation.entity.skill.JobSkillResolutionTask;
 import com.baigon.occupation.entity.skill.Skill;
 import com.baigon.occupation.entity.skill.SkillResolutionTaskStatus;
-import com.baigon.occupation.repository.job.JobSkillRepository;
 import com.baigon.occupation.repository.skill.JobSkillResolutionCandidateRepository;
 import com.baigon.occupation.repository.skill.JobSkillResolutionTaskRepository;
 import com.baigon.occupation.repository.skill.SkillCandidateProjection;
@@ -18,12 +16,14 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 
 @Service
 @Transactional(readOnly = true)
@@ -31,22 +31,20 @@ public class SkillResolutionQueryService {
 
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
+    private static final int MAX_LOOKUP_IDS = 200;
     private static final int SIMILAR_SKILL_LIMIT = 5;
 
     private final SkillRepository skillRepository;
     private final JobSkillResolutionTaskRepository taskRepository;
     private final JobSkillResolutionCandidateRepository candidateRepository;
-    private final JobSkillRepository jobSkillRepository;
 
     public SkillResolutionQueryService(
             SkillRepository skillRepository,
             JobSkillResolutionTaskRepository taskRepository,
-            JobSkillResolutionCandidateRepository candidateRepository,
-            JobSkillRepository jobSkillRepository) {
+            JobSkillResolutionCandidateRepository candidateRepository) {
         this.skillRepository = skillRepository;
         this.taskRepository = taskRepository;
         this.candidateRepository = candidateRepository;
-        this.jobSkillRepository = jobSkillRepository;
     }
 
     /** 规范技能按名称、主键稳定排序，供候选外人工选择已有技能。 */
@@ -56,8 +54,8 @@ public class SkillResolutionQueryService {
         return skillRepository.search(keyword == null ? "" : keyword.trim(), pageable);
     }
 
-    /** 候选生成状态和人工审核状态均可独立筛选。 */
-    public Page<ResolutionTaskListItem> listTasks(int page,
+    /** 任务列表只读任务 ID 页，不再为复制岗位技能正文做聚合查询。 */
+    public Page<JobSkillResolutionTask> listTasks(int page,
                                                   int pageSize,
                                                   String taskStatus,
                                                   String reviewStatus) {
@@ -65,33 +63,50 @@ public class SkillResolutionQueryService {
         ReviewStatus parsedReviewStatus = parseReviewStatus(reviewStatus);
         PageRequest pageable = pageable(page, pageSize,
                 Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
-        Page<JobSkillResolutionTask> tasks = findTasks(
-                parsedTaskStatus, parsedReviewStatus, pageable);
-
-        // 批量读取岗位技能，避免任务列表逐条查询 job_id。
-        Map<Long, JobSkill> jobSkills = jobSkillRepository.findAllById(
-                        tasks.getContent().stream()
-                                .map(JobSkillResolutionTask::getJobSkillId)
-                                .toList())
-                .stream()
-                .filter(skill -> skill.getDeletedAt() == null)
-                .collect(Collectors.toMap(JobSkill::getId, Function.identity()));
-        return tasks.map(task -> {
-            JobSkill jobSkill = jobSkills.get(task.getJobSkillId());
-            if (jobSkill == null) {
-                throw new IllegalStateException(
-                        "job skill not found for resolution task: " + task.getId());
-            }
-            return new ResolutionTaskListItem(task, jobSkill.getJobId());
-        });
+        return findTasks(parsedTaskStatus, parsedReviewStatus, pageable);
     }
 
-    /**
-     * 按实际存在的筛选条件选择查询，避免 PostgreSQL 无法推断空枚举参数的类型。
-     */
+    /** 详情只返回任务本体与持久化候选 ID。 */
+    public Optional<Detail> getDetail(Long id) {
+        long taskId = positiveId(id);
+        return taskRepository.findByIdAndDeletedAtIsNull(taskId).map(task ->
+                new Detail(task, candidateRepository
+                        .findByTaskIdAndDeletedAtIsNullOrderByRankAsc(taskId)
+                        .stream().map(JobSkillResolutionCandidate::getId).toList()));
+    }
+
+    public Lookup<JobSkillResolutionTask> lookupTasks(Collection<Long> ids) {
+        return lookup(ids, taskRepository::findByIdInAndDeletedAtIsNullOrderByIdAsc,
+                JobSkillResolutionTask::getId);
+    }
+
+    public Optional<JobSkillResolutionCandidate> getCandidate(Long id) {
+        return candidateRepository.findByIdAndDeletedAtIsNull(positiveId(id));
+    }
+
+    public Lookup<JobSkillResolutionCandidate> lookupCandidates(Collection<Long> ids) {
+        return lookup(ids, candidateRepository::findByIdInAndDeletedAtIsNullOrderByIdAsc,
+                JobSkillResolutionCandidate::getId);
+    }
+
+    /** 打开“选择现有技能”后，仅返回待审技能向量对应的 Top 5 规范技能。 */
+    public Optional<List<SkillCandidateProjection>> listSimilarSkills(Long taskId) {
+        long id = positiveId(taskId);
+        if (taskRepository.findByIdAndDeletedAtIsNull(id).isEmpty()) {
+            return Optional.empty();
+        }
+        Optional<String> vector = taskRepository.findSkillNameVectorLiteralById(id);
+        if (vector.isEmpty()) {
+            // AI 失败或尚未生成向量时仍允许使用普通技能分页列表。
+            return Optional.of(List.of());
+        }
+        return Optional.of(skillRepository.findNearestByNameVector(
+                vector.get(), SIMILAR_SKILL_LIMIT));
+    }
+
     private Page<JobSkillResolutionTask> findTasks(SkillResolutionTaskStatus taskStatus,
-                                                   ReviewStatus reviewStatus,
-                                                   PageRequest pageable) {
+                                                    ReviewStatus reviewStatus,
+                                                    PageRequest pageable) {
         if (taskStatus != null && reviewStatus != null) {
             return taskRepository.findByTaskStatusAndReviewStatusAndDeletedAtIsNull(
                     taskStatus, reviewStatus, pageable);
@@ -105,37 +120,36 @@ public class SkillResolutionQueryService {
         return taskRepository.findByDeletedAtIsNull(pageable);
     }
 
-    /** 详情同时返回岗位技能事实与按相似度排名保存的候选快照。 */
-    public Optional<Detail> getDetail(Long id) {
-        if (id == null || id <= 0) {
-            throw new IllegalArgumentException("id must be > 0");
-        }
-        return taskRepository.findByIdAndDeletedAtIsNull(id).map(task -> {
-            JobSkill jobSkill = jobSkillRepository
-                    .findByIdAndDeletedAtIsNull(task.getJobSkillId())
-                    .orElseThrow(() -> new IllegalStateException(
-                            "job skill not found for resolution task: " + task.getId()));
-            List<JobSkillResolutionCandidate> candidates = candidateRepository
-                    .findByTaskIdAndDeletedAtIsNullOrderByRankAsc(task.getId());
-            return new Detail(task, jobSkill, candidates);
-        });
+    private <T> Lookup<T> lookup(Collection<Long> values,
+                                 Function<Collection<Long>, List<T>> loader,
+                                 Function<T, Long> idExtractor) {
+        LinkedHashSet<Long> requestedIds = normalizedIds(values);
+        Map<Long, T> loadedById = new LinkedHashMap<>();
+        loader.apply(requestedIds).forEach(item -> loadedById.put(idExtractor.apply(item), item));
+        List<T> items = requestedIds.stream()
+                .map(loadedById::get)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        List<Long> missingIds = requestedIds.stream()
+                .filter(id -> !loadedById.containsKey(id))
+                .toList();
+        return new Lookup<>(List.copyOf(items), List.copyOf(missingIds));
     }
 
-    /** 打开“选择现有技能”后，仅返回待审技能向量对应的 Top 5 规范技能。 */
-    public Optional<List<SkillCandidateProjection>> listSimilarSkills(Long taskId) {
-        if (taskId == null || taskId <= 0) {
+    private LinkedHashSet<Long> normalizedIds(Collection<Long> values) {
+        if (values == null || values.isEmpty() || values.size() > MAX_LOOKUP_IDS) {
+            throw new IllegalArgumentException("ids must contain between 1 and 200 ids");
+        }
+        LinkedHashSet<Long> ids = new LinkedHashSet<>();
+        for (Long value : values) ids.add(positiveId(value));
+        return ids;
+    }
+
+    private long positiveId(Long value) {
+        if (value == null || value <= 0) {
             throw new IllegalArgumentException("id must be > 0");
         }
-        if (taskRepository.findByIdAndDeletedAtIsNull(taskId).isEmpty()) {
-            return Optional.empty();
-        }
-        Optional<String> vector = taskRepository.findSkillNameVectorLiteralById(taskId);
-        if (vector.isEmpty()) {
-            // AI 失败或尚未生成向量时仍允许使用下方普通技能分页列表。
-            return Optional.of(List.of());
-        }
-        return Optional.of(skillRepository.findNearestByNameVector(
-                vector.get(), SIMILAR_SKILL_LIMIT));
+        return value;
     }
 
     private PageRequest pageable(int page, int pageSize, Sort sort) {
@@ -176,11 +190,9 @@ public class SkillResolutionQueryService {
         throw new IllegalArgumentException("review_status must be PENDING or PASSED");
     }
 
-    public record ResolutionTaskListItem(JobSkillResolutionTask task, Long jobId) {
+    public record Detail(JobSkillResolutionTask task, List<Long> candidateIds) {
     }
 
-    public record Detail(JobSkillResolutionTask task,
-                         JobSkill jobSkill,
-                         List<JobSkillResolutionCandidate> candidates) {
+    public record Lookup<T>(List<T> items, List<Long> missingIds) {
     }
 }

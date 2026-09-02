@@ -85,8 +85,10 @@ class JobAnalysisReviewServiceTest {
         when(jobRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(job));
         when(resultRepository.findByTaskIdAndDeletedAtIsNullOrderByRankAsc(20L))
                 .thenReturn(results);
-        when(aliasRepository.findByJobNameForUpdate(job.getName())).thenReturn(Optional.empty());
-        when(majorAliasRepository.findByJobMajorForUpdate(job.getMajor())).thenReturn(Optional.empty());
+        when(aliasRepository.findActiveByNormalizedJobNameForUpdate(job.getName()))
+                .thenReturn(Optional.empty());
+        when(majorAliasRepository.findActiveByNormalizedJobMajorForUpdate(job.getMajor()))
+                .thenReturn(Optional.empty());
         when(aliasRepository.save(any(JobOccupationAlias.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(majorAliasRepository.save(any(JobMajorAlias.class)))
@@ -166,12 +168,13 @@ class JobAnalysisReviewServiceTest {
         when(jobRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(job));
         when(resultRepository.findByTaskIdAndDeletedAtIsNullOrderByRankAsc(20L))
                 .thenReturn(List.of());
-        when(aliasRepository.findByJobNameForUpdate(job.getName())).thenReturn(Optional.empty());
+        when(aliasRepository.findActiveByNormalizedJobNameForUpdate(job.getName()))
+                .thenReturn(Optional.empty());
 
         service.review(20L, 846L, 99L, List.of(), audit()).orElseThrow();
 
         assertEquals(846L, job.getMajorId());
-        verify(majorAliasRepository, never()).findByJobMajorForUpdate(any());
+        verify(majorAliasRepository, never()).findActiveByNormalizedJobMajorForUpdate(any());
         verify(majorAliasRepository, never()).save(any());
     }
 

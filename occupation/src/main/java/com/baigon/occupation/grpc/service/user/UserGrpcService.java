@@ -11,6 +11,10 @@ import com.baigon.occupation.service.user.analysis.UserAnalysisService;
 import com.baigon.occupation.service.user.resume.ResumeService;
 import com.baigon.user.AnalyzeMyResumeSkillsRequest;
 import com.baigon.user.AnalyzeMyResumeSkillsResponse;
+import com.baigon.user.BatchGetMySkillsRequest;
+import com.baigon.user.BatchGetMySkillsResponse;
+import com.baigon.user.BatchGetUsersRequest;
+import com.baigon.user.BatchGetUsersResponse;
 import com.baigon.user.BlockUserRequest;
 import com.baigon.user.BlockUserResponse;
 import com.baigon.user.CompleteResumeUploadRequest;
@@ -20,6 +24,8 @@ import com.baigon.user.CreateResumeUploadResponse;
 import com.baigon.user.EditMyResumeRequest;
 import com.baigon.user.EditMyResumeResponse;
 import com.baigon.user.GetLatestMyJobMatchRequest;
+import com.baigon.user.GetMySkillRequest;
+import com.baigon.user.GetMySkillResponse;
 import com.baigon.user.GetUserRequest;
 import com.baigon.user.GetUserResponse;
 import com.baigon.user.ListUsersRequest;
@@ -31,6 +37,8 @@ import com.baigon.user.GetMyResumeResponse;
 import com.baigon.user.LoginRequest;
 import com.baigon.user.LoginResponse;
 import com.baigon.user.OrganizationData;
+import com.baigon.user.OrganizationBatchRequest;
+import com.baigon.user.OrganizationBatchResponse;
 import com.baigon.user.OrganizationListRequest;
 import com.baigon.user.OrganizationListResponse;
 import com.baigon.user.MatchMyResumeToJobRequest;
@@ -75,7 +83,7 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
         logger.info("UserGrpcService 初始化完成");
     }
 
-    /** 登录接口保持既有 protobuf 契约不变。 */
+    /** 登录只签发凭证与用户引用；展示资料由 /me 独立读取。 */
     @Override
     public void login(LoginRequest request, StreamObserver<LoginResponse> responseObserver) {
         AuditContext audit = AuditContext.from(
@@ -87,9 +95,6 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
             responseObserver.onNext(LoginResponse.newBuilder()
                     .setToken(result.token())
                     .setUserId(result.userId())
-                    .setUid(result.uid())
-                    .setName(result.name())
-                    .setRole(result.role())
                     .build());
             responseObserver.onCompleted();
         } catch (AuthService.AuthException exception) {
@@ -122,7 +127,7 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
                             request.getName(), request.getRole(), request.getUniversityId(),
                             request.getSchoolId(), request.getDepartmentId()));
             ListUsersResponse response = ListUsersResponse.newBuilder()
-                    .addAllItems(page.getContent().stream().map(this::userData).toList())
+                    .addAllUserIds(page.getContent().stream().map(AdminUserService.UserData::id).toList())
                     .setTotal(page.getTotalElements())
                     .setPage(request.getPage())
                     .setPageSize(pageSize)
@@ -131,6 +136,25 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
             logService.info(audit, "list users: total=" + page.getTotalElements());
         } catch (Exception exception) {
             fail(observer, audit, exception, "list users failed");
+        }
+    }
+
+    @Override
+    public void batchGetUsers(BatchGetUsersRequest request,
+                              StreamObserver<BatchGetUsersResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            var users = userService.batchGetUsers(request.getIdsList());
+            respond(observer, BatchGetUsersResponse.newBuilder()
+                    .addAllItems(users.stream().map(this::userData).toList())
+                    .addAllMissingIds(missingIds(
+                            request.getIdsList(), users.stream().map(UserService.UserData::id).toList()))
+                    .build());
+            logService.info(audit, "batch get users: total=" + users.size());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "batch get users failed");
         }
     }
 
@@ -164,7 +188,7 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
                     .orElseThrow(() -> new ApiException(
                             ApiException.ErrorCode.NOT_FOUND, "user not found"));
             respond(observer, BlockUserResponse.newBuilder()
-                    .setUser(userData(user))
+                    .setUserId(user.id())
                     .build());
             logService.info(audit, "block user: id=" + request.getId());
         } catch (Exception exception) {
@@ -183,7 +207,7 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
                     .orElseThrow(() -> new ApiException(
                             ApiException.ErrorCode.NOT_FOUND, "user not found"));
             respond(observer, UnlockUserResponse.newBuilder()
-                    .setUser(userData(user))
+                    .setUserId(user.id())
                     .build());
             logService.info(audit, "unlock user: id=" + request.getId());
         } catch (Exception exception) {
@@ -202,7 +226,7 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
             var page = adminUserService.listUniversities(
                     request.getPage(), pageSize, request.getKeyword());
             respond(observer, organizationResponse(page.getContent().stream()
-                    .map(this::organizationData).toList(), page.getTotalElements(),
+                    .map(AdminUserService.OrganizationSummary::id).toList(), page.getTotalElements(),
                     request.getPage(), pageSize));
             logService.info(audit, "list universities: total=" + page.getTotalElements());
         } catch (Exception exception) {
@@ -221,7 +245,7 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
             var page = adminUserService.listSchools(
                     request.getParentId(), request.getPage(), pageSize, request.getKeyword());
             respond(observer, organizationResponse(page.getContent().stream()
-                    .map(this::organizationData).toList(), page.getTotalElements(),
+                    .map(AdminUserService.OrganizationSummary::id).toList(), page.getTotalElements(),
                     request.getPage(), pageSize));
             logService.info(audit, "list schools: total=" + page.getTotalElements());
         } catch (Exception exception) {
@@ -240,12 +264,42 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
             var page = adminUserService.listDepartments(
                     request.getParentId(), request.getPage(), pageSize, request.getKeyword());
             respond(observer, organizationResponse(page.getContent().stream()
-                    .map(this::organizationData).toList(), page.getTotalElements(),
+                    .map(AdminUserService.OrganizationSummary::id).toList(), page.getTotalElements(),
                     request.getPage(), pageSize));
             logService.info(audit, "list departments: total=" + page.getTotalElements());
         } catch (Exception exception) {
             fail(observer, audit, exception, "list departments failed");
         }
+    }
+
+    @Override
+    public void batchGetUniversities(OrganizationBatchRequest request,
+                                     StreamObserver<OrganizationBatchResponse> observer) {
+        batchGetOrganizations(
+                request,
+                observer,
+                () -> adminUserService.batchGetUniversities(request.getIdsList()),
+                "batch get universities");
+    }
+
+    @Override
+    public void batchGetSchools(OrganizationBatchRequest request,
+                                StreamObserver<OrganizationBatchResponse> observer) {
+        batchGetOrganizations(
+                request,
+                observer,
+                () -> adminUserService.batchGetSchools(request.getIdsList()),
+                "batch get schools");
+    }
+
+    @Override
+    public void batchGetDepartments(OrganizationBatchRequest request,
+                                    StreamObserver<OrganizationBatchResponse> observer) {
+        batchGetOrganizations(
+                request,
+                observer,
+                () -> adminUserService.batchGetDepartments(request.getIdsList()),
+                "batch get departments");
     }
 
     @Override
@@ -282,7 +336,7 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
             ResumeService.ResumeData resume = resumeService.completeUpload(
                     request.getUserId(), request.getUploadId(), request.getFileName(), audit);
             respond(observer, CompleteResumeUploadResponse.newBuilder()
-                    .setResume(resumeData(resume))
+                    .setResumeId(resume.id())
                     .build());
             logService.info(audit,
                     "complete resume upload and analyze content: id=" + resume.id());
@@ -320,7 +374,7 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
                     request.hasContent() ? request.getContent() : null,
                     request.getFieldsJson());
             respond(observer, EditMyResumeResponse.newBuilder()
-                    .setResume(resumeData(resume))
+                    .setResumeId(resume.id())
                     .build());
             logService.info(audit, "edit my resume: id=" + resume.id());
         } catch (Exception exception) {
@@ -340,7 +394,8 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
                     userAnalysisService.analyzeMyResumeSkills(request.getUserId(), audit);
             respond(observer, AnalyzeMyResumeSkillsResponse.newBuilder()
                     .setResumeId(result.resumeId())
-                    .addAllSkills(result.skills().stream().map(this::userSkillData).toList())
+                    .addAllUserSkillRecordIds(result.skills().stream()
+                            .map(UserAnalysisService.UserSkillData::id).toList())
                     .build());
             logService.info(audit, "analyze my resume skills: resume_id=" + result.resumeId()
                     + ", skills=" + result.skills().size());
@@ -357,13 +412,57 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
                 request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
                 request.getRequestMethod(), request.getRequestUrl());
         try {
-            var items = userAnalysisService.listMySkills(request.getUserId());
+            int pageSize = userAnalysisService.normalizedSkillPageSize(request.getPageSize());
+            var page = userAnalysisService.listMySkills(
+                    request.getUserId(), request.getPage(), pageSize);
             respond(observer, ListMySkillsResponse.newBuilder()
-                    .addAllItems(items.stream().map(this::userSkillData).toList())
+                    .addAllUserSkillRecordIds(page.getContent().stream()
+                            .map(UserAnalysisService.UserSkillData::id).toList())
+                    .setTotal(page.getTotalElements())
+                    .setPage(request.getPage())
+                    .setPageSize(pageSize)
                     .build());
-            logService.info(audit, "list my skills: total=" + items.size());
+            logService.info(audit, "list my skills: total=" + page.getTotalElements());
         } catch (Exception exception) {
             fail(observer, audit, exception, "list my skills failed");
+        }
+    }
+
+    @Override
+    public void getMySkill(GetMySkillRequest request,
+                           StreamObserver<GetMySkillResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            var skill = userAnalysisService.getMySkill(request.getUserId(), request.getId());
+            respond(observer, GetMySkillResponse.newBuilder()
+                    .setSkill(userSkillData(skill))
+                    .build());
+            logService.info(audit, "get my skill: id=" + request.getId());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "get my skill failed");
+        }
+    }
+
+    @Override
+    public void batchGetMySkills(BatchGetMySkillsRequest request,
+                                 StreamObserver<BatchGetMySkillsResponse> observer) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            var skills = userAnalysisService.batchGetMySkills(
+                    request.getUserId(), request.getIdsList());
+            respond(observer, BatchGetMySkillsResponse.newBuilder()
+                    .addAllItems(skills.stream().map(this::userSkillData).toList())
+                    .addAllMissingIds(missingIds(
+                            request.getIdsList(),
+                            skills.stream().map(UserAnalysisService.UserSkillData::id).toList()))
+                    .build());
+            logService.info(audit, "batch get my skills: total=" + skills.size());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, "batch get my skills failed");
         }
     }
 
@@ -398,6 +497,17 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
             respond(observer, jobMatchResponse(result));
             logService.info(audit, "get latest my job match: job_id=" + result.jobId()
                     + ", result_id=" + result.id());
+        } catch (ApiException exception) {
+            if (exception.getErrorCode() == ApiException.ErrorCode.NOT_FOUND) {
+                // 页面首次打开时没有历史匹配结果是正常状态，仍返回 404，但不记录为系统错误。
+                logger.info("get latest my job match: no saved result, user_id={}, job_id={}",
+                        request.getUserId(), request.getJobId());
+                logService.info(audit,
+                        "get latest my job match: no saved result, job_id=" + request.getJobId());
+                observer.onError(exception.asGrpcException());
+                return;
+            }
+            fail(observer, audit, exception, "get latest my job match failed");
         } catch (Exception exception) {
             fail(observer, audit, exception, "get latest my job match failed");
         }
@@ -434,9 +544,6 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
                 .setUniversityId(orZero(user.universityId()))
                 .setSchoolId(orZero(user.schoolId()))
                 .setDepartmentId(orZero(user.departmentId()))
-                .setUniversityName(orEmpty(user.universityName()))
-                .setSchoolName(orEmpty(user.schoolName()))
-                .setDepartmentName(orEmpty(user.departmentName()))
                 .build();
     }
 
@@ -450,9 +557,6 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
                 .setUniversityId(orZero(user.universityId()))
                 .setSchoolId(orZero(user.schoolId()))
                 .setDepartmentId(orZero(user.departmentId()))
-                .setUniversityName(orEmpty(user.universityName()))
-                .setSchoolName(orEmpty(user.schoolName()))
-                .setDepartmentName(orEmpty(user.departmentName()))
                 .build();
     }
 
@@ -460,6 +564,7 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
         return OrganizationData.newBuilder()
                 .setId(item.id())
                 .setName(orEmpty(item.name()))
+                .setParentId(orZero(item.parentId()))
                 .build();
     }
 
@@ -493,21 +598,54 @@ public class UserGrpcService extends UserServiceGrpc.UserServiceImplBase {
     }
 
     private OrganizationListResponse organizationResponse(
-            java.util.List<OrganizationData> items,
+            java.util.List<Long> ids,
             long total,
             int page,
             int pageSize) {
         return OrganizationListResponse.newBuilder()
-                .addAllItems(items)
+                .addAllOrganizationIds(ids)
                 .setTotal(total)
                 .setPage(page)
                 .setPageSize(pageSize)
                 .build();
     }
 
+    private void batchGetOrganizations(
+            OrganizationBatchRequest request,
+            StreamObserver<OrganizationBatchResponse> observer,
+            java.util.function.Supplier<java.util.List<AdminUserService.OrganizationSummary>> query,
+            String operation) {
+        AuditContext audit = AuditContext.from(
+                request.getTraceId(), request.getUserId(), request.getUserName(), request.getUserIp(),
+                request.getRequestMethod(), request.getRequestUrl());
+        try {
+            var items = query.get();
+            respond(observer, OrganizationBatchResponse.newBuilder()
+                    .addAllItems(items.stream().map(this::organizationData).toList())
+                    .addAllMissingIds(missingIds(
+                            request.getIdsList(),
+                            items.stream().map(AdminUserService.OrganizationSummary::id).toList()))
+                    .build());
+            logService.info(audit, operation + ": total=" + items.size());
+        } catch (Exception exception) {
+            fail(observer, audit, exception, operation + " failed");
+        }
+    }
+
     private <T> void respond(StreamObserver<T> observer, T response) {
         observer.onNext(response);
         observer.onCompleted();
+    }
+
+    /** 批量详情允许部分命中；缺失 ID 去重并保持首次请求顺序。 */
+    private java.util.List<Long> missingIds(
+            java.util.List<Long> requested,
+            java.util.List<Long> found) {
+        java.util.Set<Long> foundIds = new java.util.HashSet<>(found);
+        return requested.stream()
+                .distinct()
+                .filter(id -> !foundIds.contains(id))
+                .toList();
     }
 
     private <T> void fail(StreamObserver<T> observer,

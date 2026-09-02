@@ -12,10 +12,15 @@ from src.service.audit.log_query_service import AuditLogPage, AuditLogQueryServi
 class FakeRepository:
     def __init__(self):
         self.calls = []
+        self.items = []
 
     def paged_search(self, **kwargs):
         self.calls.append(kwargs)
-        return [], 0
+        return self.items, len(self.items)
+
+    def batch_get(self, ids):
+        self.calls.append({"ids": ids})
+        return [item for item in self.items if item.id in ids]
 
 
 class FakeLogService:
@@ -53,9 +58,26 @@ class AuditLogQueryServiceTest(unittest.TestCase):
                 created_at_from="", created_at_to="", target_user_id=0,
             )
 
+    def test_batch_get_deduplicates_and_preserves_request_order(self):
+        repository = FakeRepository()
+        repository.items = [SimpleNamespace(id=3), SimpleNamespace(id=9)]
+        result = AuditLogQueryService(repository).batch_get(
+            requester_role="ADMIN", ids=[9, 3, 9]
+        )
+        self.assertEqual([item.id for item in result], [9, 3])
+        self.assertEqual(repository.calls[-1]["ids"], [9, 3])
+        with self.assertRaises(PermissionError):
+            AuditLogQueryService(repository).batch_get(
+                requester_role="DATA_ANALYST", ids=[9]
+            )
+        with self.assertRaises(ValueError):
+            AuditLogQueryService(repository).batch_get(
+                requester_role="ADMIN", ids=[1] * 201
+            )
+
 
 class AIAuditLogGrpcTest(unittest.TestCase):
-    def test_maps_only_desensitized_log_fields(self):
+    def test_list_returns_ids_and_batch_returns_desensitized_details(self):
         item = SimpleNamespace(
             id=9007199254740993,
             trace_id=9007199254740995,
@@ -70,7 +92,8 @@ class AIAuditLogGrpcTest(unittest.TestCase):
             created_at=datetime(2026, 8, 25, tzinfo=timezone.utc),
         )
         query_service = SimpleNamespace(
-            paged_search=lambda **_kwargs: AuditLogPage([item], 1, 0, 20)
+            paged_search=lambda **_kwargs: AuditLogPage([item], 1, 0, 20),
+            batch_get=lambda **_kwargs: [item],
         )
         log_service = FakeLogService()
         servicer = AIServicer(
@@ -79,16 +102,29 @@ class AIAuditLogGrpcTest(unittest.TestCase):
             audit_log_query_service=query_service,
         )
 
-        response = servicer.PagedSearchAuditLogs(
+        list_response = servicer.PagedSearchAuditLogs(
             audit_pb2.PagedSearchAuditLogsRequest(
                 page=0, page_size=20, user_id=7, user_name="admin", user_role="ADMIN"
             ),
             context=SimpleNamespace(abort=lambda code, message: self.fail((code, message))),
         )
 
-        self.assertEqual(response.items[0].id, 9007199254740993)
-        self.assertEqual(response.items[0].error_msg, "MODEL_UNAVAILABLE")
-        self.assertEqual(response.items[0].user_type, "")
+        self.assertEqual(list(list_response.audit_log_ids), [9007199254740993])
+        self.assertEqual(len(list_response.detail_items), 0)
+
+        detail_response = servicer.PagedSearchAuditLogs(
+            audit_pb2.PagedSearchAuditLogsRequest(
+                target_log_ids=[9007199254740993, 8],
+                user_id=7,
+                user_name="admin",
+                user_role="ADMIN",
+            ),
+            context=SimpleNamespace(abort=lambda code, message: self.fail((code, message))),
+        )
+        self.assertEqual(detail_response.detail_items[0].id, 9007199254740993)
+        self.assertEqual(detail_response.detail_items[0].error_msg, "MODEL_UNAVAILABLE")
+        self.assertEqual(detail_response.detail_items[0].user_type, "")
+        self.assertEqual(list(detail_response.missing_audit_log_ids), [8])
         self.assertEqual(log_service.entries[-1][0], "INFO")
 
 

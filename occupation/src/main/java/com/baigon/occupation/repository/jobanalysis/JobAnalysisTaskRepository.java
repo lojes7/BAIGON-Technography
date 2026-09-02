@@ -2,6 +2,7 @@
 package com.baigon.occupation.repository.jobanalysis;
 
 import com.baigon.occupation.entity.ReviewStatus;
+import com.baigon.occupation.entity.TaskStatus;
 import com.baigon.occupation.entity.jobanalysis.JobAnalysisTask;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
@@ -14,6 +15,8 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
+import java.util.Collection;
+import java.util.List;
 
 public interface JobAnalysisTaskRepository extends JpaRepository<JobAnalysisTask, Long> {
 
@@ -21,10 +24,18 @@ public interface JobAnalysisTaskRepository extends JpaRepository<JobAnalysisTask
 
     Optional<JobAnalysisTask> findByIdAndDeletedAtIsNull(Long id);
 
+    List<JobAnalysisTask> findByIdInAndDeletedAtIsNullOrderByIdAsc(Collection<Long> ids);
+
     Page<JobAnalysisTask> findByDeletedAtIsNull(Pageable pageable);
 
     Page<JobAnalysisTask> findByReviewStatusAndDeletedAtIsNull(
             ReviewStatus reviewStatus, Pageable pageable);
+
+    Page<JobAnalysisTask> findByTaskStatusAndDeletedAtIsNull(
+            TaskStatus taskStatus, Pageable pageable);
+
+    Page<JobAnalysisTask> findByTaskStatusAndReviewStatusAndDeletedAtIsNull(
+            TaskStatus taskStatus, ReviewStatus reviewStatus, Pageable pageable);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT task FROM JobAnalysisTask task WHERE task.id = :id AND task.deletedAt IS NULL")

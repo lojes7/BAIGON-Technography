@@ -29,9 +29,20 @@ public interface SkillRepository extends JpaRepository<Skill, Long> {
 
     Optional<Skill> findByIdAndDeletedAtIsNull(Long id);
 
+    List<Skill> findByIdInAndDeletedAtIsNullOrderByIdAsc(Collection<Long> ids);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT skill FROM Skill skill WHERE skill.id = :id AND skill.deletedAt IS NULL")
     Optional<Skill> findByIdForUpdate(@Param("id") Long id);
+
+    /** 按主键升序锁定全部活动技能，保证关系增删的并发锁顺序稳定。 */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT skill FROM Skill skill
+            WHERE skill.deletedAt IS NULL AND skill.id IN :ids
+            ORDER BY skill.id ASC
+            """)
+    List<Skill> findActiveByIdsForUpdate(@Param("ids") Collection<Long> ids);
 
     /** 按数据库唯一索引使用的同一规则查询规范技能名。 */
     @Query("""

@@ -22,9 +22,11 @@ func RegisterDataSourceRoutes(api *gin.RouterGroup, pool *grpcpool.GrpcClientPoo
 	data.Use(middleware.RoleAuth("ADMIN", "DATA_REVIEWER"))
 
 	// 展示所有 cleaned_job_source（分页查询，POST + body 携带筛选条件）
-	// 仅返回 岗位名，公司名，来源，发布时间，获取时间，复核状态等字段
+	// 列表仅返回 ID 与分页元数据，展示信息由 lookup 批量解析。
 	// 支持按照是否复核，发布时间进行筛选查询
 	data.POST("", handler.ListCleanedJobsHandler(pool))
+	// 列表只返回 ID；当前页展示字段由批量详情接口补齐。
+	data.POST("/lookup", handler.BatchGetCleanedJobsHandler(pool))
 
 	// 查看某条 cleaned_job_source 的详细信息
 	// 返回所有字段

@@ -2,12 +2,10 @@
 package com.baigon.occupation.service.skill;
 
 import com.baigon.occupation.entity.ReviewStatus;
-import com.baigon.occupation.entity.job.JobSkill;
 import com.baigon.occupation.entity.skill.JobSkillResolutionCandidate;
 import com.baigon.occupation.entity.skill.JobSkillResolutionTask;
 import com.baigon.occupation.entity.skill.Skill;
 import com.baigon.occupation.entity.skill.SkillResolutionTaskStatus;
-import com.baigon.occupation.repository.job.JobSkillRepository;
 import com.baigon.occupation.repository.skill.JobSkillResolutionCandidateRepository;
 import com.baigon.occupation.repository.skill.JobSkillResolutionTaskRepository;
 import com.baigon.occupation.repository.skill.SkillCandidateProjection;
@@ -35,7 +33,6 @@ class SkillResolutionQueryServiceTest {
     private SkillRepository skillRepository;
     private JobSkillResolutionTaskRepository taskRepository;
     private JobSkillResolutionCandidateRepository candidateRepository;
-    private JobSkillRepository jobSkillRepository;
     private SkillResolutionQueryService service;
 
     @BeforeEach
@@ -43,9 +40,8 @@ class SkillResolutionQueryServiceTest {
         skillRepository = mock(SkillRepository.class);
         taskRepository = mock(JobSkillResolutionTaskRepository.class);
         candidateRepository = mock(JobSkillResolutionCandidateRepository.class);
-        jobSkillRepository = mock(JobSkillRepository.class);
         service = new SkillResolutionQueryService(
-                skillRepository, taskRepository, candidateRepository, jobSkillRepository);
+                skillRepository, taskRepository, candidateRepository);
     }
 
     @Test
@@ -63,20 +59,17 @@ class SkillResolutionQueryServiceTest {
     }
 
     @Test
-    void listTasksShouldParseBothStatusesAndIncludeJobId() {
+    void listTasksShouldParseBothStatusesAndReturnTaskBodies() {
         JobSkillResolutionTask task = task();
-        JobSkill jobSkill = jobSkill();
         when(taskRepository.findByTaskStatusAndReviewStatusAndDeletedAtIsNull(
                 eq(SkillResolutionTaskStatus.SUCCESS), eq(ReviewStatus.PENDING), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(task)));
-        when(jobSkillRepository.findAllById(List.of(100L))).thenReturn(List.of(jobSkill));
 
-        Page<SkillResolutionQueryService.ResolutionTaskListItem> page =
+        Page<JobSkillResolutionTask> page =
                 service.listTasks(0, 10, "success", "pending");
 
         assertEquals(1, page.getTotalElements());
-        assertEquals(200L, page.getContent().get(0).jobId());
-        assertEquals(task, page.getContent().get(0).task());
+        assertEquals(task, page.getContent().get(0));
     }
 
     @Test
@@ -86,8 +79,6 @@ class SkillResolutionQueryServiceTest {
                 eq(SkillResolutionTaskStatus.SUCCESS), any(Pageable.class))).thenReturn(Page.empty());
         when(taskRepository.findByReviewStatusAndDeletedAtIsNull(
                 eq(ReviewStatus.PENDING), any(Pageable.class))).thenReturn(Page.empty());
-        when(jobSkillRepository.findAllById(List.of())).thenReturn(List.of());
-
         service.listTasks(0, 20, "", "");
         service.listTasks(0, 20, "SUCCESS", "");
         service.listTasks(0, 20, "", "PENDING");
@@ -108,24 +99,21 @@ class SkillResolutionQueryServiceTest {
     }
 
     @Test
-    void getDetailShouldAggregateActiveJobSkillAndRankedCandidates() {
+    void getDetailShouldReturnTaskAndRankedCandidateIds() {
         JobSkillResolutionTask task = task();
-        JobSkill jobSkill = jobSkill();
         JobSkillResolutionCandidate candidate = new JobSkillResolutionCandidate();
+        candidate.setId(50L);
         candidate.setTaskId(10L);
         candidate.setSkillId(300L);
         candidate.setRank(1);
         when(taskRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(task));
-        when(jobSkillRepository.findByIdAndDeletedAtIsNull(100L))
-                .thenReturn(Optional.of(jobSkill));
         when(candidateRepository.findByTaskIdAndDeletedAtIsNullOrderByRankAsc(10L))
                 .thenReturn(List.of(candidate));
 
         SkillResolutionQueryService.Detail detail = service.getDetail(10L).orElseThrow();
 
         assertEquals(task, detail.task());
-        assertEquals(jobSkill, detail.jobSkill());
-        assertEquals(List.of(candidate), detail.candidates());
+        assertEquals(List.of(50L), detail.candidateIds());
     }
 
     @Test
@@ -165,10 +153,4 @@ class SkillResolutionQueryServiceTest {
         return task;
     }
 
-    private JobSkill jobSkill() {
-        JobSkill skill = new JobSkill();
-        skill.setId(100L);
-        skill.setJobId(200L);
-        return skill;
-    }
 }

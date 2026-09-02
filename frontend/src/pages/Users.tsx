@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
 import T from "../constants/tokens";
@@ -34,19 +34,45 @@ function UsersPage() {
   const [universities, setUniversities] = useState<OrganizationItem[]>([]);
   const [schools, setSchools] = useState<OrganizationItem[]>([]);
   const [departments, setDepartments] = useState<OrganizationItem[]>([]);
+  const usersRequestRef = useRef(0);
 
   const fetchUsers = () => {
+    const requestId = ++usersRequestRef.current;
     setLoading(true);
     listUsers({
       page: page - 1, // 新版 page 从 0 开始
       pageSize: 20,
       role: filterRole || undefined,
-      schoolId: filterSchool ? Number(filterSchool) : undefined,
-      departmentId: filterDept ? Number(filterDept) : undefined,
+      schoolId: filterSchool || undefined,
+      departmentId: filterDept || undefined,
     })
-      .then((res) => { setUsers(res.data.items ?? []); setTotal(res.data.total ?? 0); })
+      .then(async (res) => {
+        const nextUsers = res.data.items ?? [];
+        const schoolIds = referencedOrganizationIds(nextUsers.map((user) => user.schoolId));
+        const departmentIds = referencedOrganizationIds(nextUsers.map((user) => user.departmentId));
+        // 筛选器可只预载前 100 条；当前页引用名称必须按 ID 批量补齐。
+        const [referencedSchools, referencedDepartments] = await Promise.all([
+          schoolIds.length > 0
+            ? batchGetOrganizations("schools", schoolIds)
+                .then((response) => response.data.items)
+                .catch(() => [])
+            : Promise.resolve([]),
+          departmentIds.length > 0
+            ? batchGetOrganizations("departments", departmentIds)
+                .then((response) => response.data.items)
+                .catch(() => [])
+            : Promise.resolve([]),
+        ]);
+        if (usersRequestRef.current !== requestId) return;
+        setUsers(nextUsers);
+        setTotal(res.data.total ?? 0);
+        setSchools((current) => mergeOrganizationItems(current, referencedSchools));
+        setDepartments((current) => mergeOrganizationItems(current, referencedDepartments));
+      })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (usersRequestRef.current === requestId) setLoading(false);
+      });
   };
 
   const fetchMeta = () => {
@@ -56,9 +82,9 @@ function UsersPage() {
       getDepartments({ page: 0, pageSize: 100 }),
     ])
       .then(([u, s, d]) => {
-        setUniversities(u.data.items ?? []);
-        setSchools(s.data.items ?? []);
-        setDepartments(d.data.items ?? []);
+        setUniversities((current) => mergeOrganizationItems(current, u.data.items ?? []));
+        setSchools((current) => mergeOrganizationItems(current, s.data.items ?? []));
+        setDepartments((current) => mergeOrganizationItems(current, d.data.items ?? []));
       })
       .catch(() => {});
   };
@@ -87,6 +113,10 @@ function UsersPage() {
   };
 
   const roleLabel = (role: string) => ROLE_OPTIONS.find(r => r.value === role)?.label || role;
+  // 系部详情只携带直接父级 ID；据此在前端完成学院 -> 系部级联。
+  const visibleDepartments = filterSchool
+    ? departments.filter((item) => String(item.parentId) === String(filterSchool))
+    : departments;
 
   return (
     <div className="flex flex-col gap-5">
@@ -116,7 +146,7 @@ function UsersPage() {
           <select className="px-3 py-1.5 rounded-md text-[13px] outline-none" style={{ background: T.cloud, border: `1px solid ${T.border}`, color: T.ink }}
             value={filterDept} onChange={e => setFilterDept(e.target.value)}>
             <option value="">全部系部</option>
-            {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+            {visibleDepartments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
           {(filterRole || filterSchool || filterDept) && (
             <button className="text-[12px]" style={{ color: T.teal }}
@@ -146,6 +176,24 @@ function UsersPage() {
       </Card>
     </div>
   );
+}
+
+function organizationName(items: OrganizationItem[], id: string | number): string {
+  if (!id || String(id) === "0") return "—";
+  return items.find((item) => String(item.id) === String(id))?.name ?? `#${id}`;
+}
+
+function referencedOrganizationIds(ids: Array<string | number>): string[] {
+  return Array.from(new Set(ids.map(String).filter((id) => id !== "" && id !== "0")));
+}
+
+function mergeOrganizationItems(
+  current: OrganizationItem[],
+  incoming: OrganizationItem[],
+): OrganizationItem[] {
+  const byId = new Map(current.map((item) => [String(item.id), item]));
+  incoming.forEach((item) => byId.set(String(item.id), item));
+  return Array.from(byId.values());
 }
 
 function OrgList({ title, items }: { title: string; items: OrganizationItem[] }) {

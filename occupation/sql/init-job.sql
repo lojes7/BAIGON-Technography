@@ -44,8 +44,9 @@ CREATE TABLE "job_occupation_aliases" (
     "reviewed_by" bigint NOT NULL
 );
 
+-- 岗位别名按去首尾空格、忽略大小写后保持唯一，与 Repository 匹配语义一致。
 CREATE UNIQUE INDEX "idx_job_occupation_aliases_job_name"
-    ON "job_occupation_aliases" ("job_name") WHERE "deleted_at" IS NULL;
+    ON "job_occupation_aliases" (lower(btrim("job_name"))) WHERE "deleted_at" IS NULL;
 CREATE INDEX "idx_job_occupation_aliases_trace_id"
     ON "job_occupation_aliases" ("trace_id") WHERE "deleted_at" IS NULL;
 
@@ -63,7 +64,8 @@ CREATE TABLE "job_major_aliases" (
     "reviewed_by" bigint NOT NULL
 );
 
+-- 专业别名按去首尾空格、忽略大小写后保持唯一，与 Repository 匹配语义一致。
 CREATE UNIQUE INDEX "idx_job_major_aliases_job_major"
-    ON "job_major_aliases" ("job_major") WHERE "deleted_at" IS NULL;
+    ON "job_major_aliases" (lower(btrim("job_major"))) WHERE "deleted_at" IS NULL;
 CREATE INDEX "idx_job_major_aliases_trace_id"
     ON "job_major_aliases" ("trace_id") WHERE "deleted_at" IS NULL;

@@ -33,6 +33,36 @@ const PROFICIENCIES: ResumeProficiency[] = ["", "Basic", "Familiar", "Advanced",
 const PROFICIENCY_LABEL: Record<string, string> = {
   "": "未注明", Basic: "基础", Familiar: "熟悉", Advanced: "熟练", Expert: "精通",
 };
+const RESUME_DATE_PATTERN = /^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$/;
+
+function isLeapYear(year: number) {
+  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+}
+
+function daysInMonth(year: number, month: number) {
+  const days = [31, isLeapYear(year) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return days[month - 1] ?? 0;
+}
+
+// 不同精度日期按其可能覆盖的最早、最晚日期比较，避免为缺失的月或日作假设。
+function resumeDateBounds(value: string): [number, number] | null {
+  const matched = RESUME_DATE_PATTERN.exec(value);
+  if (!matched) return null;
+  const year = Number(matched[1]);
+  const month = matched[2] ? Number(matched[2]) : null;
+  const day = matched[3] ? Number(matched[3]) : null;
+  if (year < 1 || (month !== null && (month < 1 || month > 12))) return null;
+  if (day !== null && (month === null || day < 1 || day > daysInMonth(year, month))) return null;
+
+  const lowerMonth = month ?? 1;
+  const upperMonth = month ?? 12;
+  const lowerDay = day ?? 1;
+  const upperDay = day ?? daysInMonth(year, upperMonth);
+  return [
+    year * 10_000 + lowerMonth * 100 + lowerDay,
+    year * 10_000 + upperMonth * 100 + upperDay,
+  ];
+}
 
 // ── 空条目工厂 ──
 const emptyEdu = (): EducationExperience => ({ major: "", university_name: "", start_date: "", end_date: "", description: "" });
@@ -107,7 +137,7 @@ function buildContentFromFields(f: ResumeFields): string {
 // 首尾空格 trim，避免后端 requireString 的 strip 校验拒绝
 const trimStr = (s: string) => (s ?? "").trim();
 
-// 清洗编辑表单：trim + 过滤「身份字段全空」的空条目 + 校验日期范围。
+// 清洗编辑表单：trim + 过滤「身份字段全空」的空条目 + 校验日期格式及范围。
 // 规则严格对齐后端 ResumeAnalysisValidator.parseEdited（空记录/首尾空格/日期顺序均为 400）。
 function sanitizeFields(f: ResumeFields): { fields: ResumeFields; error?: string } {
   const education = f.education_experience
@@ -130,9 +160,21 @@ function sanitizeFields(f: ResumeFields): { fields: ResumeFields; error?: string
     .map(a => ({ ...a, award_name: trimStr(a.award_name), date: trimStr(a.date), description: trimStr(a.description) }))
     .filter(a => a.award_name);
 
-  // 日期范围校验：start_date 不得晚于 end_date（education / work / project 均有起止日期）
+  const dateValues = [
+    ...education.flatMap(item => [item.start_date, item.end_date]),
+    ...work.flatMap(item => [item.start_date, item.end_date]),
+    ...project.flatMap(item => [item.start_date, item.end_date]),
+    ...awards.map(item => item.date),
+  ];
+  if (dateValues.some(value => value && !resumeDateBounds(value))) {
+    return { fields: f, error: "日期应为 YYYY、YYYY-MM、YYYY-MM-DD 或留空" };
+  }
+
+  // 只有开始时间确定晚于结束时间的最大可能值时才拒绝。
   for (const item of [...education, ...work, ...project]) {
-    if (item.start_date && item.end_date && item.start_date > item.end_date) {
+    const startBounds = item.start_date ? resumeDateBounds(item.start_date) : null;
+    const endBounds = item.end_date ? resumeDateBounds(item.end_date) : null;
+    if (startBounds && endBounds && startBounds[0] > endBounds[1]) {
       return { fields: f, error: "开始日期不能晚于结束日期" };
     }
   }
@@ -215,8 +257,9 @@ export default function MyResume() {
     try {
       // 已有正文则保留；无正文时用结构化字段自动拼接，保证「我的能力」技能分析有 content 依据（否则 400）
       const content = (resume?.content?.trim() || buildContentFromFields(fields).trim()) || undefined;
-      const res = await editMyResume({ content, fields });
-      setResume(res.data);
+      await editMyResume({ content, fields });
+      const refreshed = await getMyResume();
+      setResume(refreshed.data?.id ? refreshed.data : null);
       setEditing(false);
       setEditForm(null);
       toast.success("简历已更新");

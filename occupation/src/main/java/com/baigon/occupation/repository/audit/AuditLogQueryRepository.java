@@ -12,9 +12,12 @@ import org.springframework.data.repository.Repository;
 
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 public interface AuditLogQueryRepository extends Repository<Log, Long>, JpaSpecificationExecutor<Log> {
+
+    List<Log> findByIdInAndDeletedAtIsNull(Collection<Long> ids);
 
     /**
      * 只为实际传入的筛选项生成谓词，避免 PostgreSQL 无法推断“空参数 IS NULL”的类型。

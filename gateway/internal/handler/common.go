@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	occupationpb "baigon-technography/gateway/pb/occupationpb"
 
@@ -16,48 +17,28 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// embeddableCatalogItems 显式保留 is_embed=false，避免 protobuf 的 omitempty 丢字段。
-func embeddableCatalogItems(items []*occupationpb.EmbeddableCatalogItem) []gin.H {
-	result := make([]gin.H, 0, len(items))
-	for _, item := range items {
-		result = append(result, gin.H{
-			"id": item.GetId(), "code": item.GetCode(), "name": item.GetName(),
-			"is_embed": item.GetIsEmbed(),
-		})
+// CanonicalSkillData 将单个规范技能映射为技能列表与详情共用的稳定字段。
+func CanonicalSkillData(item *occupationpb.SkillData) gin.H {
+	if item == nil {
+		return nil
 	}
-	return result
-}
-
-// canonicalSkillItems 显式保留 is_embed=false，供人工选择尚未向量化的规范技能。
-func canonicalSkillItems(items []*occupationpb.SkillData) []gin.H {
-	result := make([]gin.H, 0, len(items))
-	for _, item := range items {
-		result = append(result, gin.H{
-			"id": item.GetId(), "name": item.GetName(), "is_embed": item.GetIsEmbed(),
-		})
+	return gin.H{
+		"id": item.GetId(), "name": item.GetName(), "isEmbed": item.GetIsEmbed(),
 	}
-	return result
-}
-
-// skillResolutionCandidateItems 将 Top 5 相似技能映射为稳定的前端字段。
-func skillResolutionCandidateItems(items []*occupationpb.JobSkillResolutionCandidate) []gin.H {
-	result := make([]gin.H, 0, len(items))
-	for _, item := range items {
-		result = append(result, gin.H{
-			"skill_id": item.GetSkillId(), "skill_name": item.GetSkillName(),
-			"rank": item.GetRank(), "similarity": item.GetSimilarity(),
-		})
-	}
-	return result
 }
 
 // embeddingTaskData 将三类任务的统一状态映射成稳定的前端字段。
 func embeddingTaskData(status *occupationpb.EmbeddingTaskStatus) gin.H {
 	return gin.H{
-		"status": status.GetStatus(), "traceId": status.GetTraceId(), "total": status.GetTotal(),
+		"id": status.GetTraceId(), "status": status.GetStatus(), "total": status.GetTotal(),
 		"processed": status.GetProcessed(), "succeeded": status.GetSucceeded(), "failed": status.GetFailed(),
 		"message": status.GetMessage(), "startedAt": status.GetStartedAt(), "finishedAt": status.GetFinishedAt(),
 	}
+}
+
+// embeddingCommandData 仅返回本次启动或停止命令关联的追踪 ID。
+func embeddingCommandData(status *occupationpb.EmbeddingTaskStatus) gin.H {
+	return gin.H{"id": status.GetTraceId()}
 }
 
 // CatalogPageQuery 目录列表统一分页搜索参数。
@@ -111,6 +92,53 @@ func OptionalPositiveQueryID(c *gin.Context, name string) (int64, error) {
 		return 0, fmt.Errorf("invalid %s", name)
 	}
 	return id, nil
+}
+
+// PositivePathID 解析路径中的雪花 ID，要求为正整数。
+func PositivePathID(c *gin.Context, name string) (int64, error) {
+	value, err := strconv.ParseInt(c.Param(name), 10, 64)
+	if err != nil || value <= 0 {
+		return 0, fmt.Errorf("invalid %s", name)
+	}
+	return value, nil
+}
+
+// SkillGraphQuery 技能图谱按自然月过滤；toMonth 是不包含的上界。
+type SkillGraphQuery struct {
+	FromMonth string
+	ToMonth   string
+}
+
+// ParseSkillGraphQuery 校验技能图谱的 YYYY-MM 半开时间窗。
+func ParseSkillGraphQuery(c *gin.Context) (SkillGraphQuery, error) {
+	fromMonth := c.Query("fromMonth")
+	toMonth := c.Query("toMonth")
+	from, err := parseOptionalMonth(fromMonth, "fromMonth")
+	if err != nil {
+		return SkillGraphQuery{}, err
+	}
+	to, err := parseOptionalMonth(toMonth, "toMonth")
+	if err != nil {
+		return SkillGraphQuery{}, err
+	}
+	if !from.IsZero() && !to.IsZero() && !from.Before(to) {
+		return SkillGraphQuery{}, fmt.Errorf("fromMonth must be before toMonth")
+	}
+
+	return SkillGraphQuery{
+		FromMonth: fromMonth, ToMonth: toMonth,
+	}, nil
+}
+
+func parseOptionalMonth(value string, field string) (time.Time, error) {
+	if value == "" {
+		return time.Time{}, nil
+	}
+	parsed, err := time.Parse("2006-01", value)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid %s", field)
+	}
+	return parsed, nil
 }
 
 const grpcErrorCodeTrailer = "baigon-error-code"

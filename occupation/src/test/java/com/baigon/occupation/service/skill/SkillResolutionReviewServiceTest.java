@@ -23,6 +23,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -43,6 +44,7 @@ class SkillResolutionReviewServiceTest {
     private SkillRepository skillRepository;
     private SkillAliasRepository aliasRepository;
     private SkillRelationService relationService;
+    private SkillHierarchyService hierarchyService;
     private SkillEmbeddingService embeddingService;
     private Snowflake snowflake;
     private SkillResolutionReviewService service;
@@ -56,11 +58,12 @@ class SkillResolutionReviewServiceTest {
         skillRepository = mock(SkillRepository.class);
         aliasRepository = mock(SkillAliasRepository.class);
         relationService = mock(SkillRelationService.class);
+        hierarchyService = mock(SkillHierarchyService.class);
         embeddingService = mock(SkillEmbeddingService.class);
         snowflake = mock(Snowflake.class);
         service = new SkillResolutionReviewService(
                 taskRepository, candidateRepository, jobSkillRepository, jobRepository,
-                skillRepository, aliasRepository, relationService, embeddingService,
+                skillRepository, aliasRepository, relationService, hierarchyService, embeddingService,
                 mock(LogService.class), snowflake);
         when(aliasRepository.insertIfAbsent(
                 anyLong(), anyLong(), anyLong(), anyString(), any(), anyLong()))
@@ -76,7 +79,7 @@ class SkillResolutionReviewServiceTest {
         when(skillRepository.findByIdForUpdate(300L)).thenReturn(Optional.of(skill));
 
         JobSkillResolutionTask reviewed = service.review(
-                10L, SkillResolutionAction.SELECT_CANDIDATE, 300L, "", audit())
+                10L, SkillResolutionAction.SELECT_CANDIDATE, 300L, "", List.of(), audit())
                 .orElseThrow();
 
         assertEquals(300L, jobSkill().getSkillId());
@@ -95,7 +98,7 @@ class SkillResolutionReviewServiceTest {
                 .thenReturn(false);
         when(skillRepository.findByIdForUpdate(301L)).thenReturn(Optional.of(skill));
 
-        service.review(10L, SkillResolutionAction.SELECT_EXISTING, 301L, null, audit())
+        service.review(10L, SkillResolutionAction.SELECT_EXISTING, 301L, null, List.of(), audit())
                 .orElseThrow();
 
         assertEquals(301L, jobSkill().getSkillId());
@@ -109,7 +112,7 @@ class SkillResolutionReviewServiceTest {
                 .thenReturn(true);
 
         ApiException exception = assertThrows(ApiException.class, () -> service.review(
-                10L, SkillResolutionAction.SELECT_EXISTING, 300L, null, audit()));
+                10L, SkillResolutionAction.SELECT_EXISTING, 300L, null, List.of(), audit()));
 
         assertEquals(ApiException.ErrorCode.BAD_REQUEST, exception.getErrorCode());
         verify(skillRepository, never()).findByIdForUpdate(anyLong());
@@ -124,12 +127,38 @@ class SkillResolutionReviewServiceTest {
         when(skillRepository.findByIdForUpdate(500L)).thenReturn(Optional.of(created));
 
         service.review(10L, SkillResolutionAction.CREATE_NEW, null,
-                "  大模型检索  ", audit()).orElseThrow();
+                "  大模型检索  ", List.of(301L, 302L, 301L), audit()).orElseThrow();
 
         verify(skillRepository).insertPendingIfAbsent(500L, "大模型检索");
         verify(embeddingService).submitAfterCommit(500L, audit());
         assertEquals(500L, jobSkill().getSkillId());
         verify(relationService).link(job(), 500L);
+        verify(hierarchyService).addParents(500L, List.of(301L, 302L));
+    }
+
+    @Test
+    void existingSkillActionsMustRejectParentSkillIds() {
+        arrangeTask(SkillResolutionTaskStatus.SUCCESS);
+
+        ApiException exception = assertThrows(ApiException.class, () -> service.review(
+                10L, SkillResolutionAction.SELECT_EXISTING, 301L, null,
+                List.of(400L), audit()));
+
+        assertEquals(ApiException.ErrorCode.BAD_REQUEST, exception.getErrorCode());
+        verify(jobSkillRepository, never()).findByIdForUpdate(anyLong());
+    }
+
+    @Test
+    void createNewMustRejectMoreThanTwentyDistinctParents() {
+        arrangeTask(SkillResolutionTaskStatus.SUCCESS);
+        List<Long> parents = java.util.stream.LongStream.rangeClosed(1, 21)
+                .boxed().toList();
+
+        ApiException exception = assertThrows(ApiException.class, () -> service.review(
+                10L, SkillResolutionAction.CREATE_NEW, null, "RAG", parents, audit()));
+
+        assertEquals(ApiException.ErrorCode.BAD_REQUEST, exception.getErrorCode());
+        verify(skillRepository, never()).insertPendingIfAbsent(anyLong(), anyString());
     }
 
     @Test
@@ -137,7 +166,7 @@ class SkillResolutionReviewServiceTest {
         arrangeTask(SkillResolutionTaskStatus.RUNNING);
 
         ApiException exception = assertThrows(ApiException.class, () -> service.review(
-                10L, SkillResolutionAction.CREATE_NEW, null, "RAG", audit()));
+                10L, SkillResolutionAction.CREATE_NEW, null, "RAG", List.of(), audit()));
 
         assertEquals(ApiException.ErrorCode.BAD_REQUEST, exception.getErrorCode());
         verify(jobSkillRepository, never()).findByIdForUpdate(anyLong());
@@ -159,7 +188,7 @@ class SkillResolutionReviewServiceTest {
                 .thenReturn(Optional.of(conflict));
 
         ApiException exception = assertThrows(ApiException.class, () -> service.review(
-                10L, SkillResolutionAction.SELECT_CANDIDATE, 300L, null, audit()));
+                10L, SkillResolutionAction.SELECT_CANDIDATE, 300L, null, List.of(), audit()));
 
         assertEquals(ApiException.ErrorCode.CONFLICT, exception.getErrorCode());
         verify(relationService, never()).link(any(), anyLong());

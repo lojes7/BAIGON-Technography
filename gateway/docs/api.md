@@ -305,7 +305,7 @@ Consul 健康探测端点，**不需要认证**。
 
 #### PUT /api/auth/data-source/{id}/review — 修改后通过复核
 
-请求体携带修改后的字段（jobName / companyName / salary / city / education / experience / jobDescription）。`cleaned_job_sources` 只更新审核参数，原业务字段保持不变；合并编辑后的版本写入 `reviewed_cleaned_job_sources`，并沿用来源记录的 `trace_id`。
+请求体携带修改后的字段（jobName / companyName / majorName / salary / city / education / experience / jobDescription），其中 `majorName` 对应岗位的专业要求。`cleaned_job_sources` 只更新审核参数，原业务字段保持不变；合并编辑后的版本写入 `reviewed_cleaned_job_sources`，并沿用来源记录的 `trace_id`。
 
 三个审核端点都使用数据库行级悲观锁。并发请求取得锁后如果发现状态已经不是 `PENDING`，返回 HTTP 403：
 
@@ -343,8 +343,8 @@ Consul 健康探测端点，**不需要认证**。
 
 岗位分析审核允许 **ADMIN / DATA_REVIEWER**：
 
-- `GET /job-analysis`：分页查询任务，`reviewStatus` 可选。
-- `GET /job-analysis/{id}`：返回任务、专业/职业候选与 `job_analysis_results` 技能结果。
+- `GET /job-analysis`：分页查询任务，`reviewStatus` 可选；任务同时返回最终专业/职业 ID 及对应名称。
+- `GET /job-analysis/{id}`：返回任务、专业/职业候选与 `job_analysis_results` 技能结果；即使 alias 命中后没有候选，任务中的 `selected_major_name` / `selected_occupation_name` 仍可直接展示。
 - `PUT /job-analysis/{id}/review`：确认专业、职业并逐条审核全部技能结果；两者均可选择对应目录中的任意有效记录。
 
 审核请求示例：

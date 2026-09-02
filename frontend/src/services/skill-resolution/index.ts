@@ -1,14 +1,20 @@
 import type {
   ApiResponse,
   CanonicalSkillItem,
+  CanonicalSkillLookupData,
+  CanonicalSkillRelations,
   JobSkillData,
   JobSkillResolutionCandidate,
+  JobSkillResolutionSimilarSkill,
   JobSkillResolutionTaskDetail,
   JobSkillResolutionTaskSummary,
   PaginatedData,
+  PaginatedIds,
   ReviewJobSkillResolutionParams,
+  SkillRelationDirection,
 } from "../../types/api";
 import { HttpError } from "../http-error";
+import { lookupJobSkills } from "../jobs";
 import { parseJson, stringifyNumericIdBody } from "../lossless";
 
 const BASE = "/api/auth/occupation/job-skill-resolution";
@@ -22,41 +28,42 @@ type JsonId = string | number;
 
 interface RawTaskSummary {
   id?: JsonId;
-  job_skill_id?: JsonId;
-  job_id?: JsonId;
-  trace_id?: JsonId;
-  skill_name?: string;
-  task_status?: string;
-  review_status?: string;
-  resolution_action?: string;
-  selected_skill_id?: JsonId;
-  model_name?: string;
-  error_msg?: string;
+  jobSkillId?: JsonId;
+  taskStatus?: string;
+  reviewStatus?: string;
+  resolutionAction?: string;
+  selectedSkillId?: JsonId;
   attempts?: number;
-  created_at?: string;
-  reviewed_at?: string;
-  reviewed_by?: JsonId;
+  createdAt?: string;
+  reviewedAt?: string;
+  reviewedBy?: JsonId;
 }
 
 interface RawCandidate {
-  skill_id?: JsonId;
-  skill_name?: string;
+  id?: JsonId;
+  skillId?: JsonId;
   rank?: number;
   similarity?: number;
 }
 
-interface RawJobSkill {
-  id?: JsonId;
-  skill_id?: JsonId;
-  skill_name?: string;
-  skill_proficiency?: string;
-  evidence?: string;
+interface RawSimilarSkill {
+  skillId?: JsonId;
+  rank?: number;
+  similarity?: number;
 }
 
-interface RawTaskDetail {
-  task?: RawTaskSummary;
-  job_skill?: RawJobSkill;
-  candidates?: RawCandidate[];
+interface RawCanonicalSkill {
+  id?: JsonId;
+  name?: string;
+  isEmbed?: boolean;
+}
+
+interface RawCanonicalSkillRelations {
+  skillIds?: JsonId[];
+}
+
+interface RawTaskDetail extends RawTaskSummary {
+  candidateIds?: JsonId[];
 }
 
 async function request<T>(url: string, init?: RequestInit): Promise<ApiResponse<T>> {
@@ -74,56 +81,80 @@ async function request<T>(url: string, init?: RequestInit): Promise<ApiResponse<
   return parseJson(text) as ApiResponse<T>;
 }
 
-function nullableId(value: JsonId | undefined): JsonId | null {
-  return value === undefined || value === 0 || value === "0" ? null : value;
+function nullableStringId(value: JsonId | undefined): string | null {
+  return value === undefined || value === 0 || value === "0" ? null : String(value);
 }
 
-// 归一审核接口直接返回 protobuf 对象，统一在 service 边界转换字段命名。
+function uniqueIds(ids: Array<string | number>) {
+  return Array.from(new Set(ids.map(String).filter(Boolean)));
+}
+
+// 任务摘要只保留任务自身字段与岗位技能引用，不再复制岗位技能正文。
 function normalizeTask(raw: RawTaskSummary = {}): JobSkillResolutionTaskSummary {
   return {
     id: String(raw.id ?? ""),
-    jobSkillId: String(raw.job_skill_id ?? ""),
-    jobId: String(raw.job_id ?? ""),
-    traceId: String(raw.trace_id ?? ""),
-    skillName: raw.skill_name ?? "",
-    taskStatus: raw.task_status ?? "",
-    reviewStatus: raw.review_status ?? "",
-    resolutionAction: raw.resolution_action ?? "",
-    selectedSkillId: nullableId(raw.selected_skill_id),
-    modelName: raw.model_name ?? "",
-    errorMsg: raw.error_msg ?? "",
+    jobSkillId: String(raw.jobSkillId ?? ""),
+    taskStatus: raw.taskStatus ?? "",
+    reviewStatus: raw.reviewStatus ?? "",
+    resolutionAction: raw.resolutionAction ?? "",
+    selectedSkillId: nullableStringId(raw.selectedSkillId),
     attempts: raw.attempts ?? 0,
-    createdAt: raw.created_at ?? "",
-    reviewedAt: raw.reviewed_at || null,
-    reviewedBy: nullableId(raw.reviewed_by),
+    createdAt: raw.createdAt ?? "",
+    reviewedAt: raw.reviewedAt || null,
+    reviewedBy: nullableStringId(raw.reviewedBy),
   };
 }
 
 function normalizeCandidate(raw: RawCandidate): JobSkillResolutionCandidate {
   return {
-    skillId: String(raw.skill_id ?? ""),
-    skillName: raw.skill_name ?? "",
+    id: String(raw.id ?? ""),
+    skillId: String(raw.skillId ?? ""),
     rank: raw.rank ?? 0,
     similarity: raw.similarity ?? 0,
   };
 }
 
-function normalizeJobSkill(raw: RawJobSkill = {}): JobSkillData {
+function normalizeSimilarSkill(raw: RawSimilarSkill): JobSkillResolutionSimilarSkill {
   return {
-    id: String(raw.id ?? ""),
-    skillId: nullableId(raw.skill_id),
-    skillName: raw.skill_name ?? "",
-    skillProficiency: raw.skill_proficiency ?? "",
-    evidence: raw.evidence ?? "",
+    skillId: String(raw.skillId ?? ""),
+    rank: raw.rank ?? 0,
+    similarity: raw.similarity ?? 0,
   };
 }
 
-function normalizeDetail(raw: RawTaskDetail = {}): JobSkillResolutionTaskDetail {
+// 所有规范技能 ID 都在 service 边界转为字符串，避免调用方误用 JS Number。
+function normalizeCanonicalSkill(raw: RawCanonicalSkill = {}): CanonicalSkillItem {
   return {
-    task: normalizeTask(raw.task),
-    jobSkill: normalizeJobSkill(raw.job_skill),
-    candidates: (raw.candidates ?? []).map(normalizeCandidate),
+    id: String(raw.id ?? ""),
+    name: raw.name ?? "",
+    isEmbed: raw.isEmbed ?? false,
   };
+}
+
+async function lookupTaskSummaries(ids: Array<string | number>) {
+  const requestedIds = uniqueIds(ids);
+  if (requestedIds.length === 0) return [];
+  const response = await request<{ items?: RawTaskSummary[]; missingIds?: JsonId[] }>(`${BASE}/lookup`, {
+    method: "POST",
+    headers: hdrs(true),
+    body: stringifyNumericIdBody({ ids: requestedIds }, [], ["ids"]),
+  });
+  const items = (response.data.items ?? []).map(normalizeTask);
+  const itemById = new Map(items.map((item) => [item.id, item]));
+  return requestedIds.flatMap((id) => itemById.get(id) ?? []);
+}
+
+export async function lookupSkillResolutionCandidates(ids: Array<string | number>) {
+  const requestedIds = uniqueIds(ids);
+  if (requestedIds.length === 0) return [];
+  const response = await request<{ items?: RawCandidate[]; missingIds?: JsonId[] }>(`${BASE}/candidates/lookup`, {
+    method: "POST",
+    headers: hdrs(true),
+    body: stringifyNumericIdBody({ ids: requestedIds }, [], ["ids"]),
+  });
+  const items = (response.data.items ?? []).map(normalizeCandidate);
+  const itemById = new Map(items.map((item) => [item.id, item]));
+  return requestedIds.flatMap((id) => itemById.get(id) ?? []);
 }
 
 export async function listSkillResolutionTasks(params?: {
@@ -139,66 +170,204 @@ export async function listSkillResolutionTasks(params?: {
   if (params?.taskStatus) query.set("taskStatus", params.taskStatus);
   if (params?.reviewStatus) query.set("reviewStatus", params.reviewStatus);
 
-  const response = await request<{
-    items?: RawTaskSummary[];
+  const index = await request<{
+    ids?: JsonId[];
     total?: number;
     page?: number;
     pageSize?: number;
   }>(`${BASE}?${query}`, { headers: hdrs() });
-  const data = response.data;
+  const ids = (index.data.ids ?? []).map(String);
+  const items = await lookupTaskSummaries(ids);
+  // 岗位技能原始文本统一从公开岗位技能批量详情获取，不由归一任务复制。
+  const jobSkills = await lookupJobSkills(items.map((item) => item.jobSkillId));
   return {
-    ...response,
+    code: index.code,
     data: {
-      items: (data.items ?? []).map(normalizeTask),
-      total: Number(data.total ?? 0),
-      page: data.page ?? 0,
-      pageSize: data.pageSize ?? 20,
+      items,
+      jobSkills: jobSkills.data.items,
+      total: Number(index.data.total ?? 0),
+      page: Number(index.data.page ?? 0),
+      pageSize: Number(index.data.pageSize ?? 20),
     },
-  } as ApiResponse<PaginatedData<JobSkillResolutionTaskSummary>>;
+  } as ApiResponse<PaginatedData<JobSkillResolutionTaskSummary> & { jobSkills: JobSkillData[] }>;
 }
 
 export async function getSkillResolutionTask(id: string | number) {
-  const response = await request<{ resolution?: RawTaskDetail }>(`${BASE}/${id}`, { headers: hdrs() });
+  const response = await request<RawTaskDetail>(`${BASE}/${id}`, { headers: hdrs() });
+  const task = normalizeTask(response.data);
+  const [candidates, jobSkills] = await Promise.all([
+    lookupSkillResolutionCandidates((response.data.candidateIds ?? []).map(String)),
+    lookupJobSkills([task.jobSkillId]),
+  ]);
+  const canonicalSkills = await lookupCanonicalSkills([
+    ...candidates.map((candidate) => candidate.skillId),
+    ...(task.selectedSkillId ? [task.selectedSkillId] : []),
+  ]);
+  const jobSkill = jobSkills.data.items[0] ?? {
+    id: task.jobSkillId,
+    jobId: "",
+    skillId: null,
+    skillName: "",
+    skillProficiency: "",
+    evidence: "",
+  };
   return {
     ...response,
-    data: { resolution: normalizeDetail(response.data.resolution) },
-  } as ApiResponse<{ resolution: JobSkillResolutionTaskDetail }>;
+    data: {
+      task,
+      jobSkill,
+      candidates,
+      canonicalSkills: canonicalSkills.data.items,
+    },
+  } as ApiResponse<JobSkillResolutionTaskDetail>;
 }
 
 export async function listSkillResolutionSimilarSkills(id: string | number) {
-  const response = await request<{ items?: RawCandidate[] }>(
+  const response = await request<{ items?: RawSimilarSkill[] }>(
     `${BASE}/${id}/similar-skills`,
     { headers: hdrs() },
   );
   return {
     ...response,
     data: {
-      items: (response.data.items ?? []).map(normalizeCandidate),
+      items: (response.data.items ?? []).map(normalizeSimilarSkill),
     },
-  } as ApiResponse<{ items: JobSkillResolutionCandidate[] }>;
+  } as ApiResponse<{ items: JobSkillResolutionSimilarSkill[] }>;
 }
 
 export async function reviewSkillResolutionTask(id: string | number, body: ReviewJobSkillResolutionParams) {
   const payload = body.resolutionAction === "CREATE_NEW"
-    ? { resolutionAction: body.resolutionAction, skillId: 0, newSkillName: body.newSkillName.trim() }
+    ? {
+        resolutionAction: body.resolutionAction,
+        skillId: 0,
+        newSkillName: body.newSkillName.trim(),
+        parentSkillIds: body.parentSkillIds ?? [],
+      }
     : { resolutionAction: body.resolutionAction, skillId: body.skillId, newSkillName: "" };
-  const response = await request<{ resolution?: RawTaskDetail }>(`${BASE}/${id}/review`, {
+  const response = await request<{ id?: JsonId }>(`${BASE}/${id}/review`, {
     method: "PUT",
     headers: hdrs(true),
     // skillId 是 int64，保留字符串精度后再无损转成 JSON 数字字面量。
-    body: stringifyNumericIdBody(payload, ["skillId"]),
+    body: stringifyNumericIdBody(payload, ["skillId"], ["parentSkillIds"]),
   });
-  return {
-    ...response,
-    data: { resolution: normalizeDetail(response.data.resolution) },
-  } as ApiResponse<{ resolution: JobSkillResolutionTaskDetail }>;
+  return { ...response, data: { id: String(response.data.id ?? "") } } as ApiResponse<{ id: string }>;
 }
 
-export function searchCanonicalSkills(params?: { page?: number; pageSize?: number; keyword?: string }) {
+export async function listCanonicalSkillIds(params?: { page?: number; pageSize?: number; keyword?: string }) {
   const query = new URLSearchParams({
     page: String(params?.page ?? 0),
     pageSize: String(params?.pageSize ?? 20),
   });
   if (params?.keyword?.trim()) query.set("keyword", params.keyword.trim());
-  return request<PaginatedData<CanonicalSkillItem>>(`${SKILLS_BASE}?${query}`, { headers: hdrs() });
+  const response = await request<{
+    ids?: JsonId[];
+    total?: number;
+    page?: number;
+    pageSize?: number;
+  }>(
+    `${SKILLS_BASE}?${query}`,
+    { headers: hdrs() },
+  );
+  return {
+    ...response,
+    data: {
+      ids: (response.data.ids ?? []).map(String),
+      total: Number(response.data.total ?? 0),
+      page: Number(response.data.page ?? 0),
+      pageSize: Number(response.data.pageSize ?? 20),
+    },
+  } as ApiResponse<PaginatedIds>;
+}
+
+export async function getCanonicalSkillDetail(id: string | number) {
+  const response = await request<RawCanonicalSkill>(`${SKILLS_BASE}/${id}`, { headers: hdrs() });
+  return {
+    ...response,
+    data: normalizeCanonicalSkill(response.data),
+  } as ApiResponse<CanonicalSkillItem>;
+}
+
+export async function lookupCanonicalSkills(skillIds: Array<string | number>) {
+  const uniqueIds = Array.from(new Map(skillIds.map((id) => [String(id), id])).values());
+  if (uniqueIds.length === 0) {
+    return { code: 200, data: { items: [], missingIds: [] } } as ApiResponse<CanonicalSkillLookupData>;
+  }
+
+  // Gateway 单次最多接收 200 个 ID；超出时在客户端分批并合并结果。
+  const requests: Array<Promise<ApiResponse<{ items?: RawCanonicalSkill[]; missingIds?: JsonId[] }>>> = [];
+  for (let offset = 0; offset < uniqueIds.length; offset += 200) {
+    const batch = uniqueIds.slice(offset, offset + 200);
+    requests.push(request<{ items?: RawCanonicalSkill[]; missingIds?: JsonId[] }>(`${SKILLS_BASE}/lookup`, {
+      method: "POST",
+      headers: hdrs(true),
+      body: stringifyNumericIdBody({ skillIds: batch }, [], ["skillIds"]),
+    }));
+  }
+  const responses = await Promise.all(requests);
+  const items = responses
+    .flatMap((response) => response.data.items ?? [])
+    .map(normalizeCanonicalSkill);
+  const itemById = new Map(items.map((item) => [item.id, item]));
+  const responseMissingIds = responses.flatMap((response) => response.data.missingIds ?? []).map(String);
+  const inferredMissingIds = uniqueIds.map(String).filter((id) => !itemById.has(id));
+  return {
+    code: 200,
+    data: {
+      // 按请求 ID 顺序重排，保证 ID 索引分页的稳定顺序不会被批量详情响应打乱。
+      items: uniqueIds.map(String).flatMap((id) => itemById.get(id) ?? []),
+      missingIds: Array.from(new Set([...responseMissingIds, ...inferredMissingIds])),
+    },
+  } as ApiResponse<CanonicalSkillLookupData>;
+}
+
+export async function loadCanonicalSkillPage(params?: { page?: number; pageSize?: number; keyword?: string }) {
+  const index = await listCanonicalSkillIds(params);
+  const details = await lookupCanonicalSkills(index.data.ids);
+  return {
+    code: index.code,
+    data: {
+      items: details.data.items,
+      total: index.data.total,
+      page: index.data.page,
+      pageSize: index.data.pageSize,
+    },
+  } as ApiResponse<PaginatedData<CanonicalSkillItem>>;
+}
+
+export async function listCanonicalSkillRelations(
+  skillId: string | number,
+  direction: SkillRelationDirection,
+) {
+  const query = new URLSearchParams({ direction });
+  const response = await request<RawCanonicalSkillRelations>(
+    `${SKILLS_BASE}/${skillId}/relations?${query}`,
+    { headers: hdrs() },
+  );
+  return {
+    ...response,
+    data: { skillIds: (response.data.skillIds ?? []).map(String) },
+  } as ApiResponse<CanonicalSkillRelations>;
+}
+
+export function addCanonicalSkillRelation(
+  skillId: string | number,
+  direction: SkillRelationDirection,
+  relatedSkillId: string | number,
+) {
+  return request<unknown>(`${SKILLS_BASE}/${skillId}/relations/${direction}`, {
+    method: "POST",
+    headers: hdrs(true),
+    body: stringifyNumericIdBody({ relatedSkillId }, ["relatedSkillId"]),
+  });
+}
+
+export function deleteCanonicalSkillRelation(
+  skillId: string | number,
+  direction: SkillRelationDirection,
+  relatedSkillId: string | number,
+) {
+  return request<unknown>(`${SKILLS_BASE}/${skillId}/relations/${direction}/${relatedSkillId}`, {
+    method: "DELETE",
+    headers: hdrs(),
+  });
 }

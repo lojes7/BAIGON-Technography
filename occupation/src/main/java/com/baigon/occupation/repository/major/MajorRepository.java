@@ -27,6 +27,15 @@ public interface MajorRepository extends JpaRepository<Major, Long> {
                        @Param("keyword") String keyword,
                        Pageable pageable);
 
+    /** 图谱范围选择允许跨专业类搜索全部专业。 */
+    @Query("""
+            SELECT item FROM Major item
+            WHERE item.deletedAt IS NULL
+              AND (:keyword = '' OR LOWER(item.name) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                   OR LOWER(item.code) LIKE LOWER(CONCAT('%', :keyword, '%')))
+            """)
+    Page<Major> searchAll(@Param("keyword") String keyword, Pageable pageable);
+
     List<Major> findByDeletedAtIsNullAndEmbeddingStatusNotOrderByIdAsc(TaskStatus status);
 
     long countByDeletedAtIsNull();
@@ -34,6 +43,10 @@ public interface MajorRepository extends JpaRepository<Major, Long> {
     long countByDeletedAtIsNullAndEmbeddingStatus(TaskStatus status);
 
     Optional<Major> findByIdAndDeletedAtIsNull(Long id);
+
+    List<Major> findByIdInAndDeletedAtIsNull(Collection<Long> ids);
+
+    List<Major> findByIdInAndDeletedAtIsNullOrderByIdAsc(Collection<Long> ids);
 
     Optional<Major> findByCodeAndDeletedAtIsNull(String code);
 

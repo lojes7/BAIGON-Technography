@@ -12,6 +12,18 @@ export interface PaginatedData<T> {
   pageSize: number;
 }
 
+// 轻量索引分页只承载资源 ID，展示字段由批量详情接口补齐。
+export interface PaginatedIds {
+  ids: string[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface ResourceIdData {
+  id: string;
+}
+
 export interface OccupationFamily {
   id: string;
   name: string;
@@ -545,80 +557,78 @@ export interface ComboEvolutionData {
 
 // 启动采集响应
 export interface CrawlerResult {
-  count: string;
-  trace_id: string;
+  id: string;
 }
 
 // 采集状态响应
-  export interface CrawlerStatus {
-  status: "idle" | "running" | "success" | "failed" | "stopped";
+export interface CrawlerStatus {
+  id: string;
+  status: "idle" | "running" | "stopping" | "success" | "failed" | "stopped";
   count: string;
   message: string;
-  currentCategory?: string;
-  progress?: number;
-  totalCleaned?: number;
+  currentCategory: string;
+  progress: number;
+  totalCleaned: string;
 }
 
-// 清洗后岗位列表摘要（后端返回 snake_case）
+// 列表 lookup 只返回当前表格需要的摘要字段。
 export interface DataSourceItem {
   id: string;
-  job_name: string;
-  company_name: string;
-  source_platform: string;
-  publish_date: string;
-  created_at: string;
-  review_status: string;
+  jobName: string;
+  companyName: string;
+  sourcePlatform: string;
+  publishDate: string;
+  createdAt: string;
+  reviewStatus: string;
 }
 
-// 清洗后岗位详情（全字段，后端 snake_case）
+// 清洗后岗位详情（Gateway 对外统一 camelCase）
 export interface DataSourceDetail {
   id: string;
-  trace_id: string;
-  publish_date: string;
-  source_platform: string;
-  source_url: string;
+  publishDate: string;
+  sourcePlatform: string;
+  sourceUrl: string;
   city: string;
   tags: string;
   major: string;
   nature: string;
   salary: string;
-  job_name: string;
-  company_name: string;
-  company_size: string;
+  jobName: string;
+  companyName: string;
+  companySize: string;
   province: string;
   education: string;
   experience: string;
-  job_description: string;
-  review_status: string;
-  reviewed_at: string | null;
-  reviewed_by: string | null;
+  jobDescription: string;
+  reviewStatus: string;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+  createdAt: string;
 }
 
-// 原始记录（追溯用，后端 snake_case）
+// 原始记录（追溯用）是独立扁平资源，不嵌套在 source 字段中。
 export interface SourceJobDetail {
   id: string;
-  trace_id: string;
-  publish_date: string;
-  source_platform: string;
-  source_url: string;
+  publishDate: string;
+  sourcePlatform: string;
+  sourceUrl: string;
   city: string;
   tags: string;
   major: string;
   nature: string;
   salary: string;
-  job_name: string;
-  company_name: string;
-  company_size: string;
+  jobName: string;
+  companyName: string;
+  companySize: string;
   province: string;
   education: string;
   experience: string;
-  job_description: string;
-  clean_status: string;
+  jobDescription: string;
 }
 
 // 复核响应
 export interface DataSourceReviewResult {
-  job: DataSourceDetail;
+  id: string;
 }
 
 // 数据源列表查询参数
@@ -653,9 +663,7 @@ export interface IngestJob {
 
 // 模拟采集响应
 export interface IngestResult {
-  count: string;
-  trace_id: string;
-  status: string;
+  id: string;
 }
 
 // ── 专业职业管理（occupation）模块 ──
@@ -667,17 +675,83 @@ export interface CatalogItem {
   name: string;
 }
 
-// 可向量化目录项（专业 / 职业），is_embed 表示名称是否已完成向量化
-export interface EmbeddableCatalogItem extends CatalogItem {
-  is_embed: boolean;
+// 子级详情仅保留自身字段与直接父级 ID。
+export interface MajorCategoryItem extends CatalogItem {
+  disciplineCategoryId: string;
 }
 
-// 目录分页响应（gateway 返回 pageSize，字段为 camelCase）
+export interface OccupationSubCategoryItem extends CatalogItem {
+  occupationMajorCategoryId: string;
+}
+
+export interface OccupationCategoryItem extends CatalogItem {
+  occupationSubCategoryId: string;
+}
+
+// 可向量化目录项（专业 / 职业），isEmbed 表示名称是否已完成向量化。
+export interface EmbeddableCatalogItem extends CatalogItem {
+  isEmbed: boolean;
+}
+
+export interface MajorCatalogItem extends EmbeddableCatalogItem {
+  majorCategoryId: string;
+}
+
+export interface OccupationCatalogItem extends EmbeddableCatalogItem {
+  occupationCategoryId: string;
+  description: string;
+}
+
+// 前端由目录 ID 页与对应类型的 batch detail 组装出的展示分页。
 export interface CatalogPage<T> {
   items: T[];
   total: number;
   page: number;
   pageSize: number;
+}
+
+export interface CatalogLookupData<T extends CatalogItem> {
+  items: T[];
+  missingIds: string[];
+}
+
+// ── 职业/专业技能时间图谱 ──
+
+export type SkillGraphScopeType = "OCCUPATION" | "MAJOR";
+
+// 图谱入口只返回范围 ID 与一跳直接技能 ID，不混入名称、父级或证据详情。
+export interface SkillGraphData {
+  scopeId: string;
+  directSkillIds: string[];
+}
+
+export interface SkillGraphMetric {
+  skillId: string;
+  // json-bigint 会将整数保留为字符串；兼容普通 JSON 解析器返回 number。
+  jobCount: number | string;
+  coverage: number;
+}
+
+export interface SkillGraphMetricsData {
+  items: SkillGraphMetric[];
+  missingIds: string[];
+}
+
+export interface SkillGraphEvidencePage {
+  jobIds: string[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+// 前端通过技能批量详情与图谱指标批量接口组装的展示模型。
+export interface SkillGraphViewSkill extends SkillGraphMetric {
+  skillName: string;
+}
+
+export interface SkillGraphViewData {
+  scopeId: string;
+  skills: SkillGraphViewSkill[];
 }
 
 // 向量化进度（embedded / total）
@@ -695,8 +769,8 @@ export interface EmbeddingProgressResponse {
 
 // 向量化任务状态（gateway 返回 camelCase）
 export interface EmbeddingTaskStatus {
+  id: string;
   status: string;
-  traceId: string;
   total: number;
   processed: number;
   succeeded: number;
@@ -779,19 +853,16 @@ export interface TeacherStudentItem {
 }
 
 // ── 8.1 当前用户资料（GET /api/auth/me）──
-// 扁平用户对象：基础字段为 camelCase，组织字段为 snake_case（后端 userData 混合返回）
+// 用户详情只保留组织 ID；组织名称由组织详情接口按需查询。
 export interface CurrentUser {
   id: string; // 雪花 ID int64，lossless 解析为字符串
   uid: string;
   name: string;
   role: string;
   status: string;
-  university_id: string | number; // 未归属为 0，否则雪花 ID
-  university_name: string;
-  school_id: string | number;
-  school_name: string;
-  department_id: string | number;
-  department_name: string;
+  universityId: string | number; // 未归属为 0，否则雪花 ID
+  schoolId: string | number;
+  departmentId: string | number;
 }
 
 // ── 8.2 用户管理（仅 ADMIN）──
@@ -802,15 +873,16 @@ export interface ListUsersParams {
   pageSize?: number;
   name?: string; // 包含匹配
   role?: string; // 精确匹配
-  universityId?: number;
-  schoolId?: number;
-  departmentId?: number;
+  universityId?: string | number;
+  schoolId?: string | number;
+  departmentId?: string | number;
 }
 
-// 组织目录项（高校 / 学院 / 系部，统一返回 id + name）
+// 组织目录项：学院/系部通过 parentId 引用直接父级，高校 parentId 为 0。
 export interface OrganizationItem {
   id: string;
   name: string;
+  parentId: string;
 }
 
 // ── 8.3 用户简历直传（已登录用户）──
@@ -822,7 +894,7 @@ export type ResumeProficiency = "" | "Basic" | "Familiar" | "Advanced" | "Expert
 export interface EducationExperience {
   major: string;
   university_name: string;
-  start_date: string; // YYYY-MM-DD 或空串
+  start_date: string; // YYYY、YYYY-MM、YYYY-MM-DD 或空串
   end_date: string;
   description: string;
 }
@@ -853,7 +925,7 @@ export interface ProfessionalSkill {
 // 获奖
 export interface ResumeAward {
   award_name: string;
-  date: string; // YYYY-MM-DD 或空串
+  date: string; // YYYY、YYYY-MM、YYYY-MM-DD 或空串
   description: string;
 }
 
@@ -899,6 +971,11 @@ export interface CompleteResumeUploadParams {
   fileName: string;
 }
 
+// 完成上传与人工编辑均只返回新简历引用。
+export interface ResumeMutationResult {
+  id: string;
+}
+
 // 编辑简历请求体（PUT /api/auth/resumes）
 export interface EditMyResumeParams {
   content?: string; // 可选正文
@@ -911,36 +988,31 @@ export interface EditMyResumeParams {
 export interface JobAnalysisTaskSummary {
   id: string;
   jobId: string;
-  traceId: string;
-  jobName: string;
   taskStatus: string;
   reviewStatus: string;
-  selectedOccupationId: string | number | null;
-  modelName: string;
-  errorMsg: string;
+  selectedOccupationId: string | null;
   attempts: number;
   createdAt: string;
   reviewedAt: string | null;
-  reviewedBy: string | number | null;
+  reviewedBy: string | null;
   occupationAnalysisStatus: string;
   jdAnalysisStatus: string;
-  jobMajor: string;
-  selectedMajorId: string | number | null;
+  selectedMajorId: string | null;
   majorAnalysisStatus: string;
 }
 
 // 职业候选
 export interface JobAnalysisCandidate {
-  occupationId: string | number;
-  occupationName: string;
+  id: string;
+  occupationId: string;
   rank: number;
   similarity: number;
 }
 
 // 专业候选
 export interface JobAnalysisMajorCandidate {
-  majorId: string | number;
-  majorName: string;
+  id: string;
+  majorId: string;
   rank: number;
   similarity: number;
 }
@@ -959,12 +1031,13 @@ export interface JobAnalysisResult {
   reviewedSkillProficiency: string;
   reviewedEvidence: string;
   reviewedAt: string | null;
-  reviewedBy: string | number | null;
+  reviewedBy: string | null;
 }
 
 // 岗位分析任务详情
 export interface JobAnalysisTaskDetail {
   task: JobAnalysisTaskSummary;
+  job: JobData | null;
   candidates: JobAnalysisCandidate[];
   majorCandidates: JobAnalysisMajorCandidate[];
   results: JobAnalysisResult[];
@@ -988,36 +1061,50 @@ export interface ReviewJobAnalysisParams {
 
 // ── 8.5 岗位技能归一审核（ADMIN / DATA_REVIEWER）──
 
-// 全局规范技能（GET /api/auth/occupation/skills）
+// 规范技能详情（single / batch detail）
 export interface CanonicalSkillItem {
   id: string;
   name: string;
-  is_embed: boolean;
+  isEmbed: boolean;
 }
+
+// 规范技能批量详情保留未命中的 ID，调用方无需逐个回退查询。
+export interface CanonicalSkillLookupData {
+  items: CanonicalSkillItem[];
+  missingIds: string[];
+}
+
+export interface CanonicalSkillRelations {
+  skillIds: string[];
+}
+
+export type SkillRelationDirection = "parents" | "children";
 
 export type SkillResolutionAction = "SELECT_CANDIDATE" | "SELECT_EXISTING" | "CREATE_NEW";
 
 export interface JobSkillResolutionTaskSummary {
   id: string;
   jobSkillId: string;
-  jobId: string;
-  traceId: string;
-  skillName: string;
   taskStatus: string;
   reviewStatus: string;
   resolutionAction: string;
-  selectedSkillId: string | number | null;
-  modelName: string;
-  errorMsg: string;
+  selectedSkillId: string | null;
   attempts: number;
   createdAt: string;
   reviewedAt: string | null;
-  reviewedBy: string | number | null;
+  reviewedBy: string | null;
 }
 
 export interface JobSkillResolutionCandidate {
+  id: string;
   skillId: string;
-  skillName: string;
+  rank: number;
+  similarity: number;
+}
+
+// 实时相似度结果不是持久化候选资源，因此不携带候选资源 ID。
+export interface JobSkillResolutionSimilarSkill {
+  skillId: string;
   rank: number;
   similarity: number;
 }
@@ -1026,6 +1113,7 @@ export interface JobSkillResolutionTaskDetail {
   task: JobSkillResolutionTaskSummary;
   jobSkill: JobSkillData;
   candidates: JobSkillResolutionCandidate[];
+  canonicalSkills: CanonicalSkillItem[];
 }
 
 export type ReviewJobSkillResolutionParams =
@@ -1036,16 +1124,18 @@ export type ReviewJobSkillResolutionParams =
   | {
       resolutionAction: "CREATE_NEW";
       newSkillName: string;
+      parentSkillIds?: Array<string | number>;
     };
 
 // ── 8.6 岗位查询（所有已登录角色）──
 
-// 已审核岗位数据（POST /api/jobs 列表项 / 详情 job）
+// 岗位自身详情（GET detail / POST lookup），关系仅保留 ID。
 export interface JobData {
   id: string;
   name: string;
-  occupationId: string | number | null;
-  majorId: string | number | null;
+  occupationId: string | null;
+  majorId: string | null;
+  jobSkillIds: string[];
   publishDate: string;
   sourcePlatform: string;
   sourceUrl: string;
@@ -1064,30 +1154,25 @@ export interface JobData {
   updatedAt: string;
 }
 
-// 岗位关联专业
-export interface JobMajorData {
-  id: string;
-  code: string;
-  name: string;
-  majorCategoryId: string | number;
-}
-
-// 岗位关联职业
-export interface JobOccupationData {
-  id: string;
-  code: string;
-  name: string;
-  occupationCategoryId: string | number;
-  description: string;
-}
-
 // 正式岗位技能
 export interface JobSkillData {
   id: string;
-  skillId: string | number | null;
+  jobId: string;
+  skillId: string | null;
   skillName: string;
   skillProficiency: string;
   evidence: string;
+}
+
+// 岗位批量详情供岗位列表与图谱证据分页复用。
+export interface JobLookupData {
+  items: JobData[];
+  missingIds: string[];
+}
+
+export interface JobSkillLookupData {
+  items: JobSkillData[];
+  missingIds: string[];
 }
 
 // 岗位列表查询请求体
@@ -1107,12 +1192,11 @@ export interface ListJobsParams {
   companySize?: string;
 }
 
-// 岗位详情聚合
-export interface JobDetail {
-  job: JobData;
-  major: JobMajorData | null;
-  occupation: JobOccupationData | null;
-  jobSkills: JobSkillData[];
+// 岗位详情不再嵌套目录与技能对象，仅返回自身字段和关系 ID。
+export type JobDetail = JobData;
+
+export interface JobMatchMutationResult {
+  id: string;
 }
 
 // ── 8.7 用户技能分析与能力时间线（已登录用户）──
@@ -1133,13 +1217,11 @@ export interface UserSkillData {
 // 分析我的简历技能响应（POST /api/auth/resumes/analyze-skills）
 export interface AnalyzeResumeSkillsResult {
   resumeId: string;
-  skills: UserSkillData[];
+  userSkillRecordIds: string[];
 }
 
-// 能力时间线响应（GET /api/auth/me/skills，无记录时 items 为空数组）
-export interface MySkillsResult {
-  items: UserSkillData[];
-}
+// 能力时间线经 ID 分页与批量详情组合后交给页面。
+export type MySkillsResult = PaginatedData<UserSkillData>;
 
 // ── 8.8 人岗匹配（POST /api/jobs/{id}/match）──
 

@@ -24,12 +24,12 @@ interface DirectoryPickerProps {
 
 const inputCls = "h-9 w-full rounded-md bg-white px-3 text-[13px] outline-none";
 
-function toItems(items: Array<{ id: string; name: string; code?: string; is_embed?: boolean }>): CascaderItem[] {
+function toItems(items: Array<{ id: string; name: string; code?: string; isEmbed?: boolean }>): CascaderItem[] {
   return items.map((item) => ({
     id: String(item.id),
     name: item.name,
     code: item.code,
-    is_embed: item.is_embed,
+    isEmbed: item.isEmbed,
   }));
 }
 

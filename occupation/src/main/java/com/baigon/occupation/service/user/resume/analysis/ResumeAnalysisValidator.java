@@ -17,6 +17,8 @@ import org.springframework.stereotype.Component;
 import java.text.Normalizer;
 import java.time.DateTimeException;
 import java.time.LocalDate;
+import java.time.Year;
+import java.time.YearMonth;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -30,7 +32,8 @@ public class ResumeAnalysisValidator {
     private static final int MAX_ITEMS = 100;
     private static final int MAX_NAME_LENGTH = 200;
     private static final int MAX_DESCRIPTION_LENGTH = 2_000;
-    private static final Pattern DATE_PATTERN = Pattern.compile("^\\d{4}-\\d{2}-\\d{2}$");
+    private static final Pattern DATE_PATTERN = Pattern.compile(
+            "^\\d{4}(?:-\\d{2}(?:-\\d{2})?)?$");
     private static final Pattern CLAUSE_SEPARATOR = Pattern.compile("[。！？!?；;，,\\r\\n]+");
 
     private final ObjectMapper objectMapper;
@@ -131,8 +134,7 @@ public class ResumeAnalysisValidator {
             validateText("university_name", item.universityName(), MAX_NAME_LENGTH,
                     content, requireGrounding);
             validateDates(item.startDate(), item.endDate(), content, requireGrounding);
-            validateText("description", item.description(), MAX_DESCRIPTION_LENGTH,
-                    content, requireGrounding);
+            validateDescription(item.description(), content, requireGrounding);
         });
         work.forEach(item -> {
             requireIdentity("work_experience", item.occupationName(), item.company());
@@ -140,16 +142,14 @@ public class ResumeAnalysisValidator {
                     content, requireGrounding);
             validateText("company", item.company(), MAX_NAME_LENGTH, content, requireGrounding);
             validateDates(item.startDate(), item.endDate(), content, requireGrounding);
-            validateText("description", item.description(), MAX_DESCRIPTION_LENGTH,
-                    content, requireGrounding);
+            validateDescription(item.description(), content, requireGrounding);
         });
         project.forEach(item -> {
             requireIdentity("project_experience", item.projectName());
             validateText("project_name", item.projectName(), MAX_NAME_LENGTH,
                     content, requireGrounding);
             validateDates(item.startDate(), item.endDate(), content, requireGrounding);
-            validateText("description", item.description(), MAX_DESCRIPTION_LENGTH,
-                    content, requireGrounding);
+            validateDescription(item.description(), content, requireGrounding);
         });
         skills.forEach(item -> validateSkill(item, content, requireGrounding));
         awards.forEach(item -> {
@@ -157,8 +157,7 @@ public class ResumeAnalysisValidator {
             validateText("award_name", item.awardName(), MAX_NAME_LENGTH,
                     content, requireGrounding);
             validateDate("date", item.date(), content, requireGrounding);
-            validateText("description", item.description(), MAX_DESCRIPTION_LENGTH,
-                    content, requireGrounding);
+            validateDescription(item.description(), content, requireGrounding);
         });
 
         rejectDuplicate("education_experience", education, Function.identity());
@@ -197,7 +196,7 @@ public class ResumeAnalysisValidator {
         validateDate("end_date", endDate, content, requireGrounding);
         if (startDate != null && endDate != null
                 && !startDate.isEmpty() && !endDate.isEmpty()
-                && LocalDate.parse(startDate).isAfter(LocalDate.parse(endDate))) {
+                && lowerDateBound(startDate).isAfter(upperDateBound(endDate))) {
             throw new IllegalArgumentException("start_date is after end_date");
         }
     }
@@ -212,10 +211,11 @@ public class ResumeAnalysisValidator {
             return;
         }
         if (!DATE_PATTERN.matcher(value).matches()) {
-            throw new IllegalArgumentException(field + " must use YYYY-MM-DD");
+            throw new IllegalArgumentException(
+                    field + " must use YYYY, YYYY-MM, or YYYY-MM-DD");
         }
         try {
-            LocalDate.parse(value);
+            lowerDateBound(value);
         } catch (DateTimeException exception) {
             throw new IllegalArgumentException(field + " is not a calendar date", exception);
         }
@@ -235,6 +235,32 @@ public class ResumeAnalysisValidator {
                 && !normalize(content).contains(normalize(value))) {
             throw new IllegalArgumentException(field + " is not grounded in resume content");
         }
+    }
+
+    /** 描述逐行核对并忽略排版空白，避免 PDF 换行或中英文空格导致整段误判。 */
+    private void validateDescription(
+            String value,
+            String content,
+            boolean requireGrounding) {
+        requireString("description", value, MAX_DESCRIPTION_LENGTH, !requireGrounding);
+        if (requireGrounding && value != null && !value.isEmpty()
+                && !descriptionGrounded(value, content)) {
+            throw new IllegalArgumentException("description is not grounded in resume content");
+        }
+    }
+
+    private boolean descriptionGrounded(String value, String content) {
+        String normalizedContent = normalizeDescription(content);
+        return value.lines()
+                .map(String::strip)
+                .filter(line -> !line.isEmpty())
+                .map(this::normalizeDescription)
+                .allMatch(normalizedContent::contains);
+    }
+
+    private String normalizeDescription(String value) {
+        return Normalizer.normalize(value == null ? "" : value, Normalizer.Form.NFKC)
+                .replaceAll("\\s+", "");
     }
 
     private void requireString(String field, String value, int maxLength, boolean allowNull) {
@@ -263,16 +289,63 @@ public class ResumeAnalysisValidator {
 
     private boolean dateGrounded(String value, String content) {
         String normalizedContent = normalize(content);
-        if (normalizedContent.contains(value)) {
-            return true;
+        String[] parts = value.split("-");
+        int year = Integer.parseInt(parts[0]);
+        Pattern sourceDate;
+        if (parts.length == 1) {
+            sourceDate = Pattern.compile("(?<!\\d)" + year + "(?!\\d)");
+        } else if (parts.length == 2) {
+            int month = Integer.parseInt(parts[1]);
+            sourceDate = Pattern.compile(
+                    "(?<!\\d)" + year
+                            + "\\s*(?:年|[-/.])\\s*0?" + month
+                            + "\\s*月?(?!\\d)");
+        } else {
+            int month = Integer.parseInt(parts[1]);
+            int day = Integer.parseInt(parts[2]);
+            sourceDate = Pattern.compile(
+                    "(?<!\\d)" + year
+                            + "\\s*(?:年|[-/.])\\s*0?" + month
+                            + "\\s*(?:月|[-/.])\\s*0?" + day
+                            + "\\s*日?(?!\\d)");
         }
-        LocalDate date = LocalDate.parse(value);
-        Pattern sourceDate = Pattern.compile(
-                "(?<!\\d)" + date.getYear()
-                        + "\\s*(?:年|[-/.])\\s*0?" + date.getMonthValue()
-                        + "\\s*(?:月|[-/.])\\s*0?" + date.getDayOfMonth()
-                        + "\\s*日?(?!\\d)");
         return sourceDate.matcher(normalizedContent).find();
+    }
+
+    /** 返回当前日期精度可能覆盖的最早日期。 */
+    private LocalDate lowerDateBound(String value) {
+        String[] parts = value.split("-");
+        int year = parseYear(parts[0]);
+        if (parts.length == 1) {
+            return Year.of(year).atDay(1);
+        }
+        int month = Integer.parseInt(parts[1]);
+        if (parts.length == 2) {
+            return YearMonth.of(year, month).atDay(1);
+        }
+        return LocalDate.of(year, month, Integer.parseInt(parts[2]));
+    }
+
+    /** 返回当前日期精度可能覆盖的最晚日期。 */
+    private LocalDate upperDateBound(String value) {
+        String[] parts = value.split("-");
+        int year = parseYear(parts[0]);
+        if (parts.length == 1) {
+            return Year.of(year).atMonth(12).atEndOfMonth();
+        }
+        int month = Integer.parseInt(parts[1]);
+        if (parts.length == 2) {
+            return YearMonth.of(year, month).atEndOfMonth();
+        }
+        return LocalDate.of(year, month, Integer.parseInt(parts[2]));
+    }
+
+    private int parseYear(String value) {
+        int year = Integer.parseInt(value);
+        if (year < 1) {
+            throw new DateTimeException("year must be greater than zero");
+        }
+        return year;
     }
 
     private boolean proficiencyGrounded(String skillName, String proficiency, String content) {

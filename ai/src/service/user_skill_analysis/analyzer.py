@@ -8,7 +8,7 @@ from src.config import model_config
 from src.llm.exceptions import ModelResponseError
 from src.llm.spark_model import SparkModel
 from src.service.analysis_result import LLMAnalysisResult
-from src.service.resume_analysis.grounding import text_is_grounded
+from src.service.resume_analysis.grounding import layout_text_is_grounded
 from src.service.resume_analysis.models import MAX_RESUME_CONTENT_LENGTH
 
 MAX_USER_SKILLS = 100
@@ -20,7 +20,7 @@ USER_SKILL_ANALYSIS_SYSTEM_PROMPT = """
 1. skills 只包含简历原文明示或由工作、项目内容直接证明的技能，不得使用外部知识推测。
 2. 技能可以包括编程语言、框架、工具、办公软件、设备操作、业务知识、方法论、语言、沟通协作和管理能力；学历、公司名、岗位名、年龄、性别等不属于技能。
 3. 同一技能只返回一次；不同技能必须拆开，不要合并成笼统名称。
-4. 每项必须包含 name、proficiency 和 evidence。evidence 必须是简历原文中连续出现的原句或原文片段，不得改写、概括、纠错，也不得添加引号。
+4. 每项必须包含 name、proficiency 和 evidence。evidence 必须是简历原文中连续出现的原句或原文片段，不得改写、概括、纠错，也不得添加引号；PDF/OCR 在词语中间产生的纯排版换行或空格可以移除，但不得改变其他字符。
 5. proficiency 只能按以下标准选择：
    - EXPERT：原文明示精通、专家级、深度掌握，或能主导复杂架构及项目。
    - ADVANCED：原文明示熟练掌握、可独立完成生产级工作，或有丰富实践经验。
@@ -55,7 +55,10 @@ USER_SKILL_ANALYSIS_RESPONSE_FUNCTION = {
                             "type": "string",
                             "minLength": 1,
                             "maxLength": 1_000,
-                            "description": "必须逐字来自简历原文的连续片段。",
+                            "description": (
+                                "必须逐字来自简历原文的连续片段；可忽略词语中间的"
+                                "PDF/OCR 排版空白，不得改变其他字符。"
+                            ),
                         },
                     },
                 },
@@ -116,12 +119,15 @@ def analyze_user_skills(
         response_function=USER_SKILL_ANALYSIS_RESPONSE_FUNCTION,
         timeout_seconds=model_config.provider_long_timeout_seconds,
     )
-    # 供应商结果先经过严格结构校验，再逐项执行确定性的原文来源校验。
+    # 供应商结果先经过严格结构校验，再逐项过滤无原文依据的技能。
     try:
-        result = UserSkillAnalysisResult.model_validate_json(response.output)
-        for skill in result.skills:
-            if not text_is_grounded(skill.evidence, normalized_content):
-                raise ValueError(f"技能 {skill.name} 的 evidence 无法在简历原文中定位")
+        untrusted_result = UserSkillAnalysisResult.model_validate_json(response.output)
+        grounded_skills = [
+            skill
+            for skill in untrusted_result.skills
+            if layout_text_is_grounded(skill.evidence, normalized_content)
+        ]
+        result = UserSkillAnalysisResult(skills=grounded_skills)
     except ValueError as exception:
         raise ModelResponseError(
             "用户技能分析响应校验失败", response.source_llm_response

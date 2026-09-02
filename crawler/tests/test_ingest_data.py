@@ -108,7 +108,8 @@ class IngestDataTest(unittest.TestCase):
 
         response = servicer.IngestData(make_request(1), FakeContext())
 
-        self.assertEqual(response.status, "running")
+        # 启动命令只返回任务身份，运行状态从 GetCrawlStatus 查询。
+        self.assertEqual(response.id, 1001)
         self.assertTrue(pipeline.submitted.wait(timeout=1))
         self.assertTrue(servicer._worker.is_alive())
         delivery: Future = Future()
@@ -123,14 +124,12 @@ class IngestDataTest(unittest.TestCase):
         servicer._worker.join(timeout=2)
         self.assertFalse(servicer._worker.is_alive())
 
-    def test_returns_running_and_processes_twenty_records_per_batch(self):
+    def test_returns_task_id_and_processes_twenty_records_per_batch(self):
         servicer, pipeline, log_service = make_servicer()
 
         response = servicer.IngestData(make_request(45), FakeContext())
 
-        self.assertEqual(response.status, "running")
-        self.assertEqual(response.count, "0")
-        self.assertEqual(response.trace_id, "1001")
+        self.assertEqual(response.id, 1001)
         servicer._worker.join(timeout=2)
         self.assertFalse(servicer._worker.is_alive())
         self.assertEqual(pipeline.batch_sizes, [20, 20, 5])
@@ -139,6 +138,26 @@ class IngestDataTest(unittest.TestCase):
         self.assertEqual(servicer._status["total_cleaned"], 45)
         self.assertEqual(servicer._status["progress"], 100)
         self.assertEqual(log_service.errors, [])
+
+        status = servicer.GetCrawlStatus(
+            crawler_pb2.GetCrawlStatusRequest(trace_id="1002"),
+            FakeContext(),
+        )
+        self.assertEqual(status.id, 1001)
+        self.assertEqual(status.status, "success")
+
+    def test_stop_returns_current_task_id(self):
+        servicer, _, _ = make_servicer()
+        servicer._status.update(id=1001, status="running")
+        servicer._stop_event = threading.Event()
+
+        response = servicer.StopCrawl(
+            crawler_pb2.StopCrawlRequest(trace_id="1002"),
+            FakeContext(),
+        )
+
+        self.assertEqual(response.id, 1001)
+        self.assertTrue(servicer._stop_event.is_set())
 
     def test_rejects_when_another_collection_task_is_running(self):
         servicer, _, _ = make_servicer()

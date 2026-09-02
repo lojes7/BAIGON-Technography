@@ -1,5 +1,5 @@
 // 新版登录接口：POST /api/login
-// 响应格式：{ code: 200, data: { token, user: { id, uid, name, role } } }
+// 响应格式：{ code: 200, data: { token, userId } }
 
 import { parseJson } from "./lossless";
 
@@ -7,12 +7,7 @@ const BASE = "/api";
 
 export interface LoginResult {
   token: string;
-  user: {
-    id: string; // 雪花 ID int64，lossless 解析为字符串避免精度丢失
-    uid: string;
-    name: string;
-    role: string;
-  };
+  userId: string; // 雪花 ID int64，lossless 解析为字符串避免精度丢失
 }
 
 export async function login(uid: string, password: string): Promise<LoginResult> {
@@ -31,7 +26,7 @@ export async function login(uid: string, password: string): Promise<LoginResult>
           : `登录失败 (${res.status})`;
     throw new Error(msg);
   }
-  // 用 lossless 解析，避免 user.id（雪花 ID）丢精度
+  // 用 lossless 解析，避免 userId（雪花 ID）丢精度
   const text = await res.text();
   const body = parseJson(text) as { data: LoginResult };
   return body.data;

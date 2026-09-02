@@ -25,13 +25,13 @@ type loginRequest struct {
 
 // LoginHandler 处理用户登录，网关 REST → gRPC 调用 UserService
 // @Summary      用户登录
-// @Description  校验账号密码，成功返回 JWT Token 和用户信息。
+// @Description  校验账号密码，成功只返回 JWT Token 和用户 ID；展示资料由 /me 查询。
 // @Description  统一响应格式：成功 {"code":200,"data":{...}}；失败仅 {"code":<HTTP状态码>}
 // @Tags         认证
 // @Accept       json
 // @Produce      json
 // @Param        request body loginRequest true "登录请求"
-// @Success      200  {object}  response.SuccessBody  "登录成功，data 内含 token 与 user"
+// @Success      200  {object}  response.SuccessBody{data=user.LoginData}  "登录成功，data 内含 token 与 userId"
 // @Failure      400  {object}  response.ErrorBody    "请求体格式错误"
 // @Failure      401  {object}  response.ErrorBody    "账号或密码错误"
 // @Failure      403  {object}  response.ErrorBody    "账号已被锁定"
@@ -72,24 +72,17 @@ func LoginHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 
 		// 统一响应格式: {"code": 200, "data": {...}}
 		response.Success(c, gin.H{
-			"token": resp.GetToken(),
-			"user": gin.H{
-				"id":   resp.GetUserId(),
-				"uid":  resp.GetUid(),
-				"name": resp.GetName(),
-				"role": resp.GetRole(),
-			},
+			"token": resp.GetToken(), "userId": resp.GetUserId(),
 		})
 	}
 }
-
 
 // GetCurrentUserHandler 根据 JWT 中的用户 ID 查询当前用户资料。
 // @Summary      查询当前用户资料
 // @Tags         认证
 // @Produce      json
 // @Security     Bearer
-// @Success      200 {object} response.SuccessBody "data 为当前用户及扁平组织字段"
+// @Success      200 {object} response.SuccessBody{data=user.UserData} "data 为当前用户自身字段及 universityId/schoolId/departmentId，不嵌入组织名称"
 // @Failure      401 {object} response.ErrorBody
 // @Failure      404 {object} response.ErrorBody
 // @Failure      503 {object} response.ErrorBody

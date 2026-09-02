@@ -15,11 +15,15 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
+import java.util.Collection;
+import java.util.List;
 
 public interface JobSkillResolutionTaskRepository
         extends JpaRepository<JobSkillResolutionTask, Long> {
 
     Optional<JobSkillResolutionTask> findByIdAndDeletedAtIsNull(Long id);
+
+    List<JobSkillResolutionTask> findByIdInAndDeletedAtIsNullOrderByIdAsc(Collection<Long> ids);
 
     Optional<JobSkillResolutionTask> findByJobSkillIdAndDeletedAtIsNull(Long jobSkillId);
 

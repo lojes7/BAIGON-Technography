@@ -5,9 +5,9 @@
 //         POST/DELETE/PUT /api/auth/data-source/{id}/review（复核通过/拒绝/修改后通过）
 
 import type {
-  ApiResponse, PaginatedData,
+  ApiResponse, PaginatedData, PaginatedIds,
   CrawlerResult, CrawlerStatus,
-  DataSourceItem, DataSourceDetail, SourceJobDetail,
+  DataSourceItem, DataSourceDetail, DataSourceReviewResult, SourceJobDetail,
   DataSourceListParams, IngestJob, IngestResult,
 } from "../types/api";
 import { parseJson } from "./lossless";
@@ -74,7 +74,7 @@ export async function getCrawlerStatus() {
 
 // 停止采集
 export async function stopCrawler() {
-  return request<{ status: string }>(`${BASE}/crawl`, {
+  return request<{ id: string }>(`${BASE}/crawl`, {
     method: "DELETE",
     headers: hdrs(),
   });
@@ -155,7 +155,26 @@ export async function getDataSourceRealTotal(reviewStatus: string): Promise<numb
       publishDateTo: "",
     }),
   });
-  return res.data?.total ?? 0;
+  const details = page.data.ids.length > 0
+    ? await batchGetDataSourceDetails(page.data.ids)
+    : { code: 200, data: { items: [] } } as ApiResponse<{ items: DataSourceItem[] }>;
+  return {
+    ...page,
+    data: {
+      items: details.data.items,
+      total: page.data.total,
+      page: page.data.page,
+      pageSize: page.data.pageSize,
+    },
+  } as ApiResponse<PaginatedData<DataSourceItem>>;
+}
+
+export async function batchGetDataSourceDetails(ids: Array<string | number>) {
+  return request<{ items: DataSourceItem[]; missingIds: string[] }>(`${BASE}/data-source/lookup`, {
+    method: "POST",
+    headers: hdrs(),
+    body: stringifyNumericIdBody({ ids }, [], ["ids"]),
+  });
 }
 
 // 查看清洗后岗位详情；演示记录由本地数据池合成
@@ -212,6 +231,7 @@ export async function rejectReview(id: string) {
 export async function editAndApproveReview(id: string, edits: {
   jobName?: string;
   companyName?: string;
+  majorName?: string;
   salary?: string;
   city?: string;
   education?: string;
@@ -234,9 +254,8 @@ export async function editAndApproveReview(id: string, edits: {
 }
 
 export async function reviewDataSource(dsId: string, reviewStatus: string) {
-  if (reviewStatus === "REVIEW_PASSED" || reviewStatus === "PASSED") {
+  if (reviewStatus === "PASSED") {
     return approveReview(dsId);
   }
   return rejectReview(dsId);
 }
-

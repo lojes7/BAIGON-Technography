@@ -1,28 +1,60 @@
 """简历结构化结果的严格数据契约。"""
 
+from calendar import monthrange
 from datetime import date
 import re
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    model_validator,
+)
 
 MAX_RESUME_CONTENT_LENGTH = 50_000
 MAX_RESUME_ITEMS = 100
 MAX_NAME_LENGTH = 200
 MAX_DESCRIPTION_LENGTH = 2_000
 
-DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+DATE_PATTERN = re.compile(r"^\d{4}(?:-\d{2}(?:-\d{2})?)?$")
+MODEL_DATE_PATTERN = re.compile(
+    r"^(\d{4})(?:[./-](\d{2})(?:[./-](\d{2}))?)?$"
+)
 ResumeProficiency = Literal["", "Basic", "Familiar", "Advanced", "Expert"]
 
 
+def normalize_model_date_value(value: object) -> object:
+    """保留模型返回的日期精度，仅把常见分隔符规范化为连字符。"""
+    if not isinstance(value, str):
+        return value
+    stripped = value.strip()
+    if stripped == "":
+        return stripped
+    match = MODEL_DATE_PATTERN.fullmatch(stripped)
+    if match is None:
+        return stripped
+    parts = (match.group(1), match.group(2), match.group(3))
+    return "-".join(part for part in parts if part)
+
+
 def validate_date_value(value: str) -> str:
-    """日期只能为空，或为真实存在的完整 ISO 日期。"""
+    """日期允许为空、年、年月或完整 ISO 日期，并校验日历合法性。"""
     if value == "":
         return value
     if not DATE_PATTERN.fullmatch(value):
-        raise ValueError("日期必须为空或使用 YYYY-MM-DD")
+        raise ValueError("日期必须为空或使用 YYYY、YYYY-MM、YYYY-MM-DD")
     try:
-        date.fromisoformat(value)
+        parts = [int(part) for part in value.split("-")]
+        year = parts[0]
+        if len(parts) == 1:
+            date(year, 1, 1)
+        elif len(parts) == 2:
+            date(year, parts[1], 1)
+        else:
+            date(year, parts[1], parts[2])
     except ValueError as exception:
         raise ValueError("日期不是合法日历日期") from exception
     return value
@@ -30,6 +62,7 @@ def validate_date_value(value: str) -> str:
 
 DateValue = Annotated[
     str,
+    BeforeValidator(normalize_model_date_value),
     Field(max_length=10),
     AfterValidator(validate_date_value),
 ]
@@ -41,9 +74,22 @@ class ResumeModel(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
 
 
+def date_bounds(value: str) -> tuple[date, date]:
+    """把不同精度日期转换为其可能覆盖的最早和最晚日期。"""
+    parts = [int(part) for part in value.split("-")]
+    year = parts[0]
+    if len(parts) == 1:
+        return date(year, 1, 1), date(year, 12, 31)
+    month = parts[1]
+    if len(parts) == 2:
+        return date(year, month, 1), date(year, month, monthrange(year, month)[1])
+    exact = date(year, month, parts[2])
+    return exact, exact
+
+
 def validate_date_range(start_date: str, end_date: str) -> None:
-    """仅在两个日期都存在时检查先后关系。"""
-    if start_date and end_date and start_date > end_date:
+    """只有开始日期确定晚于结束日期的最大可能值时才拒绝。"""
+    if start_date and end_date and date_bounds(start_date)[0] > date_bounds(end_date)[1]:
         raise ValueError("start_date 不能晚于 end_date")
 
 

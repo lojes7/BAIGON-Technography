@@ -8,6 +8,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
+import java.util.List;
+
 public interface SchoolRepository extends JpaRepository<School, Long> {
     @Query("""
             SELECT item FROM School item
@@ -18,4 +21,6 @@ public interface SchoolRepository extends JpaRepository<School, Long> {
     Page<School> search(@Param("universityId") Long universityId,
                         @Param("keyword") String keyword,
                         Pageable pageable);
+
+    List<School> findByIdInAndDeletedAtIsNull(Collection<Long> ids);
 }

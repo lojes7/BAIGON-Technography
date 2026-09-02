@@ -12,12 +12,21 @@ import java.util.Optional;
 
 public interface JobMajorAliasRepository extends JpaRepository<JobMajorAlias, Long> {
 
-    Optional<JobMajorAlias> findByJobMajorAndDeletedAtIsNull(String jobMajor);
+    /** 活动专业别名统一按去首尾空格、忽略大小写匹配。 */
+    @Query("""
+            SELECT alias FROM JobMajorAlias alias
+            WHERE alias.deletedAt IS NULL
+              AND LOWER(TRIM(alias.jobMajor)) = LOWER(TRIM(:jobMajor))
+            """)
+    Optional<JobMajorAlias> findActiveByNormalizedJobMajor(
+            @Param("jobMajor") String jobMajor);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             SELECT alias FROM JobMajorAlias alias
-            WHERE alias.jobMajor = :jobMajor AND alias.deletedAt IS NULL
+            WHERE alias.deletedAt IS NULL
+              AND LOWER(TRIM(alias.jobMajor)) = LOWER(TRIM(:jobMajor))
             """)
-    Optional<JobMajorAlias> findByJobMajorForUpdate(@Param("jobMajor") String jobMajor);
+    Optional<JobMajorAlias> findActiveByNormalizedJobMajorForUpdate(
+            @Param("jobMajor") String jobMajor);
 }

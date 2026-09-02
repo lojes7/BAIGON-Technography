@@ -8,7 +8,7 @@ export interface CatalogNodeData {
   id: string; // 雪花 ID int64，lossless 解析为字符串避免精度丢失
   code: string;
   name: string;
-  is_embed?: boolean; // 叶子节点（专业/职业）的名称向量化状态
+  isEmbed?: boolean; // 叶子节点（专业/职业）的名称向量化状态
 }
 
 interface CatalogTreeProps {
@@ -82,7 +82,7 @@ function TreeNode({
 
         {/* 叶子节点向量化徽章 */}
         {isLeaf && leafEmbedBadge && (
-          node.is_embed ? (
+          node.isEmbed ? (
             <span className="text-[11px] px-1.5 py-0.5 rounded flex-shrink-0"
               style={{ background: `${T.emerging}12`, color: T.emerging }}>已向量化</span>
           ) : (

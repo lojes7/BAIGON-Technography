@@ -31,6 +31,7 @@ type listCleanedJobsRequest struct {
 type editReviewRequest struct {
 	JobName        string `json:"jobName"`        // 岗位名称
 	CompanyName    string `json:"companyName"`    // 公司名称
+	MajorName      string `json:"majorName"`      // 专业要求
 	Salary         string `json:"salary"`         // 薪资
 	City           string `json:"city"`           // 城市
 	Education      string `json:"education"`      // 学历要求
@@ -38,15 +39,19 @@ type editReviewRequest struct {
 	JobDescription string `json:"jobDescription"` // 岗位描述
 }
 
+type dataSourceBatchRequest struct {
+	IDs []int64 `json:"ids" binding:"required"`
+}
+
 // ListCleanedJobsHandler 分页查询清洗后岗位列表
 // @Summary      分页查询清洗后岗位
-// @Description  分页查询 cleaned_job_sources，支持按复核状态、发布时间筛选；仅返回摘要字段
+// @Description  分页查询 cleaned_job_sources，支持按复核状态、发布时间筛选；仅返回记录 ID 与分页元数据
 // @Tags         数据治理
 // @Accept       json
 // @Produce      json
 // @Security     Bearer
 // @Param        request body listCleanedJobsRequest true "分页筛选请求"
-// @Success      200  {object}  response.SuccessBody  "列表，data 内含 items/total/page/pageSize"
+// @Success      200  {object}  response.SuccessBody{data=response.IDPageData}  "列表，data 内含 ids/total/page/pageSize"
 // @Failure      400  {object}  response.ErrorBody    "请求体格式错误"
 // @Failure      401  {object}  response.ErrorBody    "未认证"
 // @Failure      403  {object}  response.ErrorBody    "非 ADMIN / DATA_REVIEWER"
@@ -90,10 +95,66 @@ func ListCleanedJobsHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 		}
 
 		response.Success(c, gin.H{
-			"items":    resp.GetItems(),
+			"ids":      nonNilDataSourceIDs(resp.GetCleanedJobIds()),
 			"total":    resp.GetTotal(),
 			"page":     resp.GetPage(),
 			"pageSize": resp.GetPageSize(),
+		})
+	}
+}
+
+// BatchGetCleanedJobsHandler 按 ID 批量查询清洗岗位详情。
+// @Summary      批量查询清洗岗位摘要
+// @Tags         数据治理
+// @Accept       json
+// @Produce      json
+// @Security     Bearer
+// @Param        body body dataSourceBatchRequest true "1 至 200 个清洗岗位 ID"
+// @Success      200 {object} response.SuccessBody{data=datasource.CleanedJobLookupData}
+// @Failure      400 {object} response.ErrorBody
+// @Failure      403 {object} response.ErrorBody
+// @Router       /api/auth/data-source/lookup [post]
+func BatchGetCleanedJobsHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req dataSourceBatchRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+		ids, ok := normalizeDataSourceBatchIDs(req.IDs)
+		if !ok {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+		conn, err := pool.GetConn("occupation-service")
+		if err != nil {
+			response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+		var trailers metadata.MD
+		result, err := datasourcepb.NewDataSourceServiceClient(conn).BatchGetCleanedJobs(
+			ctx,
+			&datasourcepb.BatchGetCleanedJobsRequest{
+				Ids: ids, TraceId: c.GetString("trace_id"),
+				UserId: UserIDFromContext(c), UserName: c.GetString("uid"),
+				UserIp: c.ClientIP(), RequestMethod: c.Request.Method,
+				RequestUrl: c.Request.URL.Path,
+			},
+			grpc.Trailer(&trailers),
+		)
+		if err != nil {
+			httpCode, errorCode := GRPCErrorCodes(err, trailers)
+			response.Error(c, httpCode, errorCode)
+			return
+		}
+		items := make([]gin.H, 0, len(result.GetJobs()))
+		for _, job := range result.GetJobs() {
+			items = append(items, cleanedJobSummaryData(job))
+		}
+		response.Success(c, gin.H{
+			"items": items, "missingIds": nonNilDataSourceIDs(result.GetMissingIds()),
 		})
 	}
 }
@@ -105,7 +166,7 @@ func ListCleanedJobsHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 // @Produce      json
 // @Security     Bearer
 // @Param        id   path      int  true  "cleaned_job_sources.id"
-// @Success      200  {object}  response.SuccessBody  "详情，data 内含 job 全字段"
+// @Success      200  {object}  response.SuccessBody{data=datasource.CleanedJobData}  "详情，data 为扁平岗位对象"
 // @Failure      401  {object}  response.ErrorBody    "未认证"
 // @Failure      403  {object}  response.ErrorBody    "非 ADMIN / DATA_REVIEWER"
 // @Failure      404  {object}  response.ErrorBody    "记录不存在"
@@ -144,7 +205,7 @@ func GetCleanedJobHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			return
 		}
 
-		response.Success(c, gin.H{"job": resp.GetJob()})
+		response.Success(c, cleanedJobData(resp.GetJob()))
 	}
 }
 
@@ -155,7 +216,7 @@ func GetCleanedJobHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 // @Produce      json
 // @Security     Bearer
 // @Param        id   path      int  true  "cleaned_job_sources.id"
-// @Success      200  {object}  response.SuccessBody  "原始记录，data 内含 source 全字段"
+// @Success      200  {object}  response.SuccessBody{data=datasource.SourceJobData}  "原始记录，data 为扁平岗位对象"
 // @Failure      401  {object}  response.ErrorBody    "未认证"
 // @Failure      403  {object}  response.ErrorBody    "非 ADMIN / DATA_REVIEWER"
 // @Failure      404  {object}  response.ErrorBody    "记录不存在"
@@ -194,7 +255,7 @@ func GetSourceJobHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			return
 		}
 
-		response.Success(c, gin.H{"source": resp.GetSource()})
+		response.Success(c, sourceJobData(resp.GetSource()))
 	}
 }
 
@@ -205,7 +266,7 @@ func GetSourceJobHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 // @Produce      json
 // @Security     Bearer
 // @Param        id   path      int  true  "cleaned_job_sources.id"
-// @Success      200  {object}  response.SuccessBody  "复核后记录"
+// @Success      200  {object}  response.SuccessBody{data=response.IDData}  "data 仅含 cleaned-job id"
 // @Failure      401  {object}  response.ErrorBody    "未认证"
 // @Failure      403  {object}  response.ErrorBody    "无权限(code=403)或记录已被其他审核人处理(code=40301)"
 // @Failure      404  {object}  response.ErrorBody    "记录不存在"
@@ -222,7 +283,7 @@ func ApproveReviewHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 // @Produce      json
 // @Security     Bearer
 // @Param        id   path      int  true  "cleaned_job_sources.id"
-// @Success      200  {object}  response.SuccessBody  "复核后记录"
+// @Success      200  {object}  response.SuccessBody{data=response.IDData}  "data 仅含 cleaned-job id"
 // @Failure      401  {object}  response.ErrorBody    "未认证"
 // @Failure      403  {object}  response.ErrorBody    "无权限(code=403)或记录已被其他审核人处理(code=40301)"
 // @Failure      404  {object}  response.ErrorBody    "记录不存在"
@@ -241,7 +302,7 @@ func RejectReviewHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 // @Security     Bearer
 // @Param        id      path      int                 true  "cleaned_job_sources.id"
 // @Param        request body      editReviewRequest   true  "修改后的字段"
-// @Success      200  {object}  response.SuccessBody  "复核后记录"
+// @Success      200  {object}  response.SuccessBody{data=response.IDData}  "data 仅含 cleaned-job id"
 // @Failure      400  {object}  response.ErrorBody    "请求体格式错误"
 // @Failure      401  {object}  response.ErrorBody    "未认证"
 // @Failure      403  {object}  response.ErrorBody    "无权限(code=403)或记录已被其他审核人处理(code=40301)"
@@ -278,6 +339,7 @@ func EditReviewHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			Edited: &datasourcepb.CleanedJobDetail{
 				JobName:        req.JobName,
 				CompanyName:    req.CompanyName,
+				Major:          req.MajorName,
 				Salary:         req.Salary,
 				City:           req.City,
 				Education:      req.Education,
@@ -297,7 +359,110 @@ func EditReviewHandler(pool *grpcpool.GrpcClientPool) gin.HandlerFunc {
 			return
 		}
 
-		response.Success(c, gin.H{"job": resp.GetJob()})
+		response.Success(c, gin.H{"id": resp.GetCleanedJobId()})
+	}
+}
+
+func normalizeDataSourceBatchIDs(ids []int64) ([]int64, bool) {
+	if len(ids) == 0 || len(ids) > 200 {
+		return nil, false
+	}
+	seen := make(map[int64]struct{}, len(ids))
+	normalized := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			return nil, false
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		normalized = append(normalized, id)
+	}
+	return normalized, true
+}
+
+func nonNilDataSourceIDs(ids []int64) []int64 {
+	result := make([]int64, len(ids))
+	copy(result, ids)
+	return result
+}
+
+// cleanedJobData 在 REST 边界显式定义 camelCase DTO，避免泄漏 protobuf 的字段命名与包装层。
+func cleanedJobData(job *datasourcepb.CleanedJobDetail) gin.H {
+	if job == nil {
+		return gin.H{}
+	}
+	var reviewedAt any
+	if job.GetReviewedAt() != "" {
+		reviewedAt = job.GetReviewedAt()
+	}
+	var reviewedBy any
+	if job.GetReviewedBy() > 0 {
+		reviewedBy = job.GetReviewedBy()
+	}
+	return gin.H{
+		"id":             job.GetId(),
+		"publishDate":    job.GetPublishDate(),
+		"sourcePlatform": job.GetSourcePlatform(),
+		"sourceUrl":      job.GetSourceUrl(),
+		"city":           job.GetCity(),
+		"tags":           job.GetTags(),
+		"major":          job.GetMajor(),
+		"nature":         job.GetNature(),
+		"salary":         job.GetSalary(),
+		"jobName":        job.GetJobName(),
+		"companyName":    job.GetCompanyName(),
+		"companySize":    job.GetCompanySize(),
+		"province":       job.GetProvince(),
+		"education":      job.GetEducation(),
+		"experience":     job.GetExperience(),
+		"jobDescription": job.GetJobDescription(),
+		"reviewStatus":   job.GetReviewStatus(),
+		"reviewedAt":     reviewedAt,
+		"reviewedBy":     reviewedBy,
+		"createdAt":      job.GetCreatedAt(),
+	}
+}
+
+// sourceJobData 将跨服务原始记录投影成稳定的 REST DTO。
+func sourceJobData(job *datasourcepb.SourceJobDetail) gin.H {
+	if job == nil {
+		return gin.H{}
+	}
+	return gin.H{
+		"id":             job.GetId(),
+		"publishDate":    job.GetPublishDate(),
+		"sourcePlatform": job.GetSourcePlatform(),
+		"sourceUrl":      job.GetSourceUrl(),
+		"city":           job.GetCity(),
+		"tags":           job.GetTags(),
+		"major":          job.GetMajor(),
+		"nature":         job.GetNature(),
+		"salary":         job.GetSalary(),
+		"jobName":        job.GetJobName(),
+		"companyName":    job.GetCompanyName(),
+		"companySize":    job.GetCompanySize(),
+		"province":       job.GetProvince(),
+		"education":      job.GetEducation(),
+		"experience":     job.GetExperience(),
+		"jobDescription": job.GetJobDescription(),
+	}
+}
+
+// cleanedJobSummaryData 仅返回列表渲染所需字段，避免批量查询携带长描述等详情。
+func cleanedJobSummaryData(job *datasourcepb.CleanedJobDetail) gin.H {
+	if job == nil {
+		return gin.H{}
+	}
+	return gin.H{
+		"id":             job.GetId(),
+		"jobName":        job.GetJobName(),
+		"companyName":    job.GetCompanyName(),
+		"sourcePlatform": job.GetSourcePlatform(),
+		"publishDate":    job.GetPublishDate(),
+		"createdAt":      job.GetCreatedAt(),
+		"reviewStatus":   job.GetReviewStatus(),
 	}
 }
 
@@ -337,6 +502,6 @@ func reviewActionHandler(pool *grpcpool.GrpcClientPool, action datasourcepb.Revi
 			return
 		}
 
-		response.Success(c, gin.H{"job": resp.GetJob()})
+		response.Success(c, gin.H{"id": resp.GetCleanedJobId()})
 	}
 }

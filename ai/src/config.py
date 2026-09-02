@@ -12,7 +12,7 @@ class ModelConfig:
     # X2-Flash 是产品名称，OpenAI 兼容接口要求 model 参数固定传 spark-x。
     spark_model: str = "spark-x"
     dashscope_base_url: str = (
-        "https://ws-02585sz1ly0611yl.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+        "https://ws-3bk3ybhx56e8bow3.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
     )
     embedding_model: str = "qwen3.7-text-embedding"
     embedding_default_dimensions: int = 1024

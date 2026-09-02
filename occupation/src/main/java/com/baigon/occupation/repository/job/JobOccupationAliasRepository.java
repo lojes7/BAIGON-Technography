@@ -12,12 +12,21 @@ import java.util.Optional;
 
 public interface JobOccupationAliasRepository extends JpaRepository<JobOccupationAlias, Long> {
 
-    Optional<JobOccupationAlias> findByJobNameAndDeletedAtIsNull(String jobName);
+    /** 活动岗位别名统一按去首尾空格、忽略大小写匹配。 */
+    @Query("""
+            SELECT alias FROM JobOccupationAlias alias
+            WHERE alias.deletedAt IS NULL
+              AND LOWER(TRIM(alias.jobName)) = LOWER(TRIM(:jobName))
+            """)
+    Optional<JobOccupationAlias> findActiveByNormalizedJobName(
+            @Param("jobName") String jobName);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             SELECT alias FROM JobOccupationAlias alias
-            WHERE alias.jobName = :jobName AND alias.deletedAt IS NULL
+            WHERE alias.deletedAt IS NULL
+              AND LOWER(TRIM(alias.jobName)) = LOWER(TRIM(:jobName))
             """)
-    Optional<JobOccupationAlias> findByJobNameForUpdate(@Param("jobName") String jobName);
+    Optional<JobOccupationAlias> findActiveByNormalizedJobNameForUpdate(
+            @Param("jobName") String jobName);
 }

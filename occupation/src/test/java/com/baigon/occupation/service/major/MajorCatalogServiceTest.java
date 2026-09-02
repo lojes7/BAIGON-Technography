@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 class MajorCatalogServiceTest {
 
@@ -34,8 +35,16 @@ class MajorCatalogServiceTest {
     }
 
     @Test
-    void childQueryRequiresPositiveParentId() {
-        assertThrows(IllegalArgumentException.class,
-                () -> service.listMajors(0, 0, 20, ""));
+    void majorQueryWithoutParentShouldSearchAllForGraphSelection() {
+        MajorRepository repository = mock(MajorRepository.class);
+        service = new MajorCatalogService(
+                mock(DisciplineCategoryRepository.class),
+                mock(MajorCategoryRepository.class), repository);
+
+        service.listMajors(0, 0, 20, "软件");
+
+        verify(repository).searchAll(
+                org.mockito.ArgumentMatchers.eq("软件"),
+                org.mockito.ArgumentMatchers.any());
     }
 }

@@ -8,7 +8,7 @@ export interface CatalogSearchItem {
   id: string;
   code: string;
   name: string;
-  is_embed?: boolean;
+  isEmbed?: boolean;
 }
 
 export interface CatalogSearchLevel {
@@ -155,8 +155,8 @@ export default function CatalogSearch({
                     {item.code && (
                       <span className="text-[11px] font-mono flex-shrink-0" style={{ color: T.info }}>{item.code}</span>
                     )}
-                    {item.is_embed !== undefined && (
-                      item.is_embed ? (
+                    {item.isEmbed !== undefined && (
+                      item.isEmbed ? (
                         <span className="text-[11px] px-1.5 py-0.5 rounded flex-shrink-0"
                           style={{ background: `${T.emerging}12`, color: T.emerging }}>已向量化</span>
                       ) : (

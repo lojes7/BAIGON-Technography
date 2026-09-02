@@ -32,10 +32,16 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
 public class CleanedJobSourceService {
+
+    private static final int MAX_BATCH_SIZE = 200;
 
     /** 服务层审核动作，避免业务逻辑依赖 gRPC 生成类型。 */
     public enum ReviewAction {
@@ -141,6 +147,30 @@ public class CleanedJobSourceService {
         return cleanedJobSourceRepository.findByIdNotDeleted(id);
     }
 
+    /** 按请求顺序批量查询未删除的清洗岗位详情。 */
+    public List<CleanedJobSource> batchFindByIds(Collection<Long> values) {
+        if (values == null || values.isEmpty()) {
+            throw new IllegalArgumentException("ids must contain between 1 and 200 values");
+        }
+        if (values.size() > MAX_BATCH_SIZE) {
+            throw new IllegalArgumentException("ids must contain at most 200 values");
+        }
+        List<Long> ids = List.copyOf(values);
+        if (ids.stream().anyMatch(id -> id == null || id <= 0)) {
+            throw new IllegalArgumentException("ids must contain positive values");
+        }
+        // 在仓库查询前去重，并保持首次出现顺序。
+        ids = ids.stream().distinct().toList();
+        Map<Long, CleanedJobSource> byId = new LinkedHashMap<>();
+        cleanedJobSourceRepository.findByIdInAndDeletedAtIsNull(ids)
+                .forEach(item -> byId.put(item.getId(), item));
+        return ids.stream()
+                .distinct()
+                .map(byId::get)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+    }
+
     /**
      * 人工审核入口。
      *
@@ -184,7 +214,7 @@ public class CleanedJobSourceService {
 
         if (job.getOccupationId() == null && job.getName() != null && !job.getName().isBlank()) {
             Optional<JobOccupationAlias> alias =
-                    occupationAliasRepository.findByJobNameAndDeletedAtIsNull(job.getName());
+                    occupationAliasRepository.findActiveByNormalizedJobName(job.getName());
             if (alias.isPresent()) {
                 job.setOccupationId(alias.get().getOccupationId());
                 job.setUpdatedAt(now);
@@ -200,7 +230,7 @@ public class CleanedJobSourceService {
                 job.setUpdatedAt(now);
             } else {
                 Optional<JobMajorAlias> alias =
-                        majorAliasRepository.findByJobMajorAndDeletedAtIsNull(job.getMajor());
+                        majorAliasRepository.findActiveByNormalizedJobMajor(job.getMajor());
                 if (alias.isPresent()) {
                     job.setMajorId(alias.get().getMajorId());
                     job.setUpdatedAt(now);
@@ -325,6 +355,7 @@ public class CleanedJobSourceService {
         if (edited != null) {
             if (edited.getJobName() != null) target.setJobName(edited.getJobName());
             if (edited.getCompanyName() != null) target.setCompanyName(edited.getCompanyName());
+            if (edited.getMajor() != null) target.setMajor(edited.getMajor());
             if (edited.getSalary() != null) target.setSalary(edited.getSalary());
             if (edited.getCity() != null) target.setCity(edited.getCity());
             if (edited.getEducation() != null) target.setEducation(edited.getEducation());

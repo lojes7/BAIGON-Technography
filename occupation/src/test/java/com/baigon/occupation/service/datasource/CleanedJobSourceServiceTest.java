@@ -26,6 +26,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -92,7 +93,7 @@ class CleanedJobSourceServiceTest {
         when(cleanedRepository.findByIdForReview(source.getId())).thenReturn(Optional.of(source));
         when(jobRepository.findByTraceIdAndDeletedAtIsNull(source.getTraceId()))
                 .thenReturn(Optional.empty());
-        when(aliasRepository.findByJobNameAndDeletedAtIsNull(source.getJobName()))
+        when(aliasRepository.findActiveByNormalizedJobName(source.getJobName()))
                 .thenReturn(Optional.empty());
         when(taskRepository.findByJobIdAndDeletedAtIsNull(anyLong()))
                 .thenReturn(Optional.empty());
@@ -122,14 +123,16 @@ class CleanedJobSourceServiceTest {
     }
 
     @Test
-    void aliasHitShouldWriteOccupationIdAndStillCreateJdAnalysisTask() {
+    void occupationAliasHitShouldIgnoreCaseAndStillCreateJdAnalysisTask() {
         CleanedJobSource source = pendingSource();
+        source.setJobName("JAVA ENGINEER");
         JobOccupationAlias alias = new JobOccupationAlias();
+        alias.setJobName("java engineer");
         alias.setOccupationId(88L);
         when(cleanedRepository.findByIdForReview(source.getId())).thenReturn(Optional.of(source));
         when(jobRepository.findByTraceIdAndDeletedAtIsNull(source.getTraceId()))
                 .thenReturn(Optional.empty());
-        when(aliasRepository.findByJobNameAndDeletedAtIsNull(source.getJobName()))
+        when(aliasRepository.findActiveByNormalizedJobName(source.getJobName()))
                 .thenReturn(Optional.of(alias));
 
         service.review(source.getId(), CleanedJobSourceService.ReviewAction.APPROVE,
@@ -156,7 +159,7 @@ class CleanedJobSourceServiceTest {
         when(cleanedRepository.findByIdForReview(source.getId())).thenReturn(Optional.of(source));
         when(jobRepository.findByTraceIdAndDeletedAtIsNull(source.getTraceId()))
                 .thenReturn(Optional.empty());
-        when(aliasRepository.findByJobNameAndDeletedAtIsNull(edited.getJobName()))
+        when(aliasRepository.findActiveByNormalizedJobName(edited.getJobName()))
                 .thenReturn(Optional.of(alias));
 
         var result = service.review(
@@ -172,15 +175,48 @@ class CleanedJobSourceServiceTest {
     }
 
     @Test
-    void majorAliasHitShouldWriteMajorIdAndSkipMajorEmbeddingBranch() {
+    void approveWithEditShouldUseEditedMajorForSnapshotAndMajorLookup() {
         CleanedJobSource source = pendingSource();
-        source.setMajor("计算机科学与技术");
+        source.setMajor("原专业");
+        CleanedJobSource edited = new CleanedJobSource();
+        edited.setMajor("软件工程");
         JobMajorAlias alias = new JobMajorAlias();
         alias.setMajorId(77L);
         when(cleanedRepository.findByIdForReview(source.getId())).thenReturn(Optional.of(source));
         when(jobRepository.findByTraceIdAndDeletedAtIsNull(source.getTraceId()))
                 .thenReturn(Optional.empty());
-        when(majorAliasRepository.findByJobMajorAndDeletedAtIsNull(source.getMajor()))
+        when(majorAliasRepository.findActiveByNormalizedJobMajor("软件工程"))
+                .thenReturn(Optional.of(alias));
+
+        var result = service.review(
+                source.getId(), CleanedJobSourceService.ReviewAction.APPROVE_WITH_EDIT,
+                edited, audit()).orElseThrow();
+
+        // 原始清洗数据保持不变，编辑后的专业只进入审核快照和后续分析链路。
+        assertEquals("原专业", source.getMajor());
+        assertEquals("软件工程", result.approvedVersion().getMajor());
+        ArgumentCaptor<Job> jobCaptor = ArgumentCaptor.forClass(Job.class);
+        verify(jobRepository).save(jobCaptor.capture());
+        assertEquals("软件工程", jobCaptor.getValue().getMajor());
+        assertEquals(77L, jobCaptor.getValue().getMajorId());
+        ArgumentCaptor<JobAnalysisTask> taskCaptor = ArgumentCaptor.forClass(JobAnalysisTask.class);
+        verify(taskRepository).save(taskCaptor.capture());
+        assertEquals("软件工程", taskCaptor.getValue().getJobMajor());
+        assertEquals(77L, taskCaptor.getValue().getSelectedMajorId());
+        assertEquals(TaskStatus.SUCCESS, taskCaptor.getValue().getMajorAnalysisStatus());
+    }
+
+    @Test
+    void majorAliasHitShouldIgnoreCaseAndSkipMajorEmbeddingBranch() {
+        CleanedJobSource source = pendingSource();
+        source.setMajor("SOFTWARE ENGINEERING");
+        JobMajorAlias alias = new JobMajorAlias();
+        alias.setJobMajor("software engineering");
+        alias.setMajorId(77L);
+        when(cleanedRepository.findByIdForReview(source.getId())).thenReturn(Optional.of(source));
+        when(jobRepository.findByTraceIdAndDeletedAtIsNull(source.getTraceId()))
+                .thenReturn(Optional.empty());
+        when(majorAliasRepository.findActiveByNormalizedJobMajor(source.getMajor()))
                 .thenReturn(Optional.of(alias));
 
         service.review(source.getId(), CleanedJobSourceService.ReviewAction.APPROVE,
@@ -191,7 +227,7 @@ class CleanedJobSourceServiceTest {
         assertEquals(77L, jobCaptor.getValue().getMajorId());
         ArgumentCaptor<JobAnalysisTask> taskCaptor = ArgumentCaptor.forClass(JobAnalysisTask.class);
         verify(taskRepository).save(taskCaptor.capture());
-        assertEquals("计算机科学与技术", taskCaptor.getValue().getJobMajor());
+        assertEquals("SOFTWARE ENGINEERING", taskCaptor.getValue().getJobMajor());
         assertEquals(TaskStatus.SUCCESS, taskCaptor.getValue().getMajorAnalysisStatus());
         assertEquals(77L, taskCaptor.getValue().getSelectedMajorId());
     }
@@ -211,7 +247,7 @@ class CleanedJobSourceServiceTest {
         verify(jobRepository).save(jobCaptor.capture());
         assertEquals(846L, jobCaptor.getValue().getMajorId());
         verify(majorAliasRepository, never())
-                .findByJobMajorAndDeletedAtIsNull(any());
+                .findActiveByNormalizedJobMajor(any());
     }
 
     @Test
@@ -248,6 +284,28 @@ class CleanedJobSourceServiceTest {
         when(cleanedRepository.findByIdForReview(404L)).thenReturn(Optional.empty());
         assertTrue(service.review(
                 404L, CleanedJobSourceService.ReviewAction.APPROVE, null, audit()).isEmpty());
+    }
+
+    @Test
+    void batchFindShouldDeduplicateAndKeepRequestOrder() {
+        CleanedJobSource first = pendingSource();
+        first.setId(9L);
+        CleanedJobSource second = pendingSource();
+        second.setId(3L);
+        when(cleanedRepository.findByIdInAndDeletedAtIsNull(List.of(9L, 3L, 8L)))
+                .thenReturn(List.of(second, first));
+
+        List<CleanedJobSource> result =
+                service.batchFindByIds(List.of(9L, 3L, 9L, 8L));
+
+        assertEquals(List.of(9L, 3L), result.stream().map(CleanedJobSource::getId).toList());
+        verify(cleanedRepository).findByIdInAndDeletedAtIsNull(List.of(9L, 3L, 8L));
+    }
+
+    @Test
+    void batchFindShouldRejectEmptyRawIds() {
+        assertThrows(IllegalArgumentException.class,
+                () -> service.batchFindByIds(List.of()));
     }
 
     private CleanedJobSource pendingSource() {

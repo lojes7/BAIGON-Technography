@@ -1,6 +1,7 @@
 // 百工谱 — 职业目录查询业务层
 package com.baigon.occupation.service.occupation;
 
+import com.baigon.occupation.entity.TaskStatus;
 import com.baigon.occupation.entity.occupation.Occupation;
 import com.baigon.occupation.entity.occupation.OccupationCategory;
 import com.baigon.occupation.entity.occupation.OccupationMajorCategory;
@@ -9,12 +10,18 @@ import com.baigon.occupation.repository.occupation.OccupationCategoryRepository;
 import com.baigon.occupation.repository.occupation.OccupationMajorCategoryRepository;
 import com.baigon.occupation.repository.occupation.OccupationRepository;
 import com.baigon.occupation.repository.occupation.OccupationSubCategoryRepository;
+import com.baigon.occupation.service.catalog.CatalogDetail;
+import com.baigon.occupation.service.catalog.CatalogLookupResult;
+import com.baigon.occupation.service.catalog.CatalogLookupSupport;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Collection;
+import java.util.Optional;
 
 @Service
 @Transactional(readOnly = true)
@@ -51,7 +58,59 @@ public class OccupationCatalogService {
     }
 
     public Page<Occupation> listOccupations(long parentId, int page, int pageSize, String keyword) {
-        return occupationRepository.search(parent(parentId), keyword(keyword), pageable(page, pageSize));
+        String normalizedKeyword = keyword(keyword);
+        Pageable normalizedPage = pageable(page, pageSize);
+        return parentId == 0
+                ? occupationRepository.searchAll(normalizedKeyword, normalizedPage)
+                : occupationRepository.search(parent(parentId), normalizedKeyword, normalizedPage);
+    }
+
+    public Optional<CatalogDetail> getMajorCategory(Long id) {
+        return majorCategoryRepository.findByIdAndDeletedAtIsNull(
+                        CatalogLookupSupport.positiveId(id))
+                .map(this::majorCategoryDetail);
+    }
+
+    public CatalogLookupResult lookupMajorCategories(Collection<Long> ids) {
+        return CatalogLookupSupport.resolve(ids,
+                majorCategoryRepository::findByIdInAndDeletedAtIsNullOrderByIdAsc,
+                this::majorCategoryDetail);
+    }
+
+    public Optional<CatalogDetail> getSubCategory(Long id) {
+        return subCategoryRepository.findByIdAndDeletedAtIsNull(
+                        CatalogLookupSupport.positiveId(id))
+                .map(this::subCategoryDetail);
+    }
+
+    public CatalogLookupResult lookupSubCategories(Collection<Long> ids) {
+        return CatalogLookupSupport.resolve(ids,
+                subCategoryRepository::findByIdInAndDeletedAtIsNullOrderByIdAsc,
+                this::subCategoryDetail);
+    }
+
+    public Optional<CatalogDetail> getCategory(Long id) {
+        return categoryRepository.findByIdAndDeletedAtIsNull(
+                        CatalogLookupSupport.positiveId(id))
+                .map(this::categoryDetail);
+    }
+
+    public CatalogLookupResult lookupCategories(Collection<Long> ids) {
+        return CatalogLookupSupport.resolve(ids,
+                categoryRepository::findByIdInAndDeletedAtIsNullOrderByIdAsc,
+                this::categoryDetail);
+    }
+
+    public Optional<CatalogDetail> getOccupation(Long id) {
+        return occupationRepository.findByIdAndDeletedAtIsNull(
+                        CatalogLookupSupport.positiveId(id))
+                .map(this::occupationDetail);
+    }
+
+    public CatalogLookupResult lookupOccupations(Collection<Long> ids) {
+        return CatalogLookupSupport.resolve(ids,
+                occupationRepository::findByIdInAndDeletedAtIsNullOrderByIdAsc,
+                this::occupationDetail);
     }
 
     public int normalizedPageSize(int pageSize) {
@@ -77,5 +136,28 @@ public class OccupationCatalogService {
 
     private String keyword(String keyword) {
         return keyword == null ? "" : keyword.trim();
+    }
+
+    private CatalogDetail majorCategoryDetail(OccupationMajorCategory item) {
+        return new CatalogDetail(
+                item.getId(), item.getCode(), item.getName(), null, false, "");
+    }
+
+    private CatalogDetail subCategoryDetail(OccupationSubCategory item) {
+        return new CatalogDetail(
+                item.getId(), item.getCode(), item.getName(),
+                item.getOccupationMajorCategoryId(), false, "");
+    }
+
+    private CatalogDetail categoryDetail(OccupationCategory item) {
+        return new CatalogDetail(
+                item.getId(), item.getCode(), item.getName(),
+                item.getOccupationSubCategoryId(), false, "");
+    }
+
+    private CatalogDetail occupationDetail(Occupation item) {
+        return new CatalogDetail(
+                item.getId(), item.getCode(), item.getName(), item.getOccupationCategoryId(),
+                item.getEmbeddingStatus() == TaskStatus.SUCCESS, item.getDescription());
     }
 }

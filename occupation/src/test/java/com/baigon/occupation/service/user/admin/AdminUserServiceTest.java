@@ -29,18 +29,22 @@ import static org.mockito.Mockito.when;
 class AdminUserServiceTest {
 
     private UserRepository userRepository;
+    private UniversityRepository universityRepository;
     private SchoolRepository schoolRepository;
+    private DepartmentRepository departmentRepository;
     private AdminUserService service;
 
     @BeforeEach
     void setUp() {
         userRepository = mock(UserRepository.class);
+        universityRepository = mock(UniversityRepository.class);
         schoolRepository = mock(SchoolRepository.class);
+        departmentRepository = mock(DepartmentRepository.class);
         service = new AdminUserService(
                 userRepository,
-                mock(UniversityRepository.class),
+                universityRepository,
                 schoolRepository,
-                mock(DepartmentRepository.class));
+                departmentRepository);
     }
 
     @Test
@@ -76,16 +80,7 @@ class AdminUserServiceTest {
     }
 
     @Test
-    void listUsersReturnsOrganizationIdsAndNames() {
-        University university = new University();
-        university.setId(1L);
-        university.setName("百工大学");
-        School school = new School();
-        school.setId(2L);
-        school.setName("计算机学院");
-        Department department = new Department();
-        department.setId(3L);
-        department.setName("软件工程系");
+    void listUsersReturnsOnlyOrganizationIds() {
         User user = new User();
         user.setId(8L);
         user.setUid("student01");
@@ -95,9 +90,6 @@ class AdminUserServiceTest {
         user.setUniversityId(1L);
         user.setSchoolId(2L);
         user.setDepartmentId(3L);
-        user.setUniversity(university);
-        user.setSchool(school);
-        user.setDepartment(department);
         when(userRepository.search(
                 eq(""), eq(null), eq(null), eq(null), eq(null), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(user)));
@@ -108,9 +100,38 @@ class AdminUserServiceTest {
         assertEquals(1L, result.universityId());
         assertEquals(2L, result.schoolId());
         assertEquals(3L, result.departmentId());
-        assertEquals("百工大学", result.universityName());
-        assertEquals("计算机学院", result.schoolName());
-        assertEquals("软件工程系", result.departmentName());
+    }
+
+    @Test
+    void batchGetSchoolsShouldDeduplicateAndKeepRequestOrder() {
+        School first = new School();
+        first.setId(9L);
+        first.setName("九号学院");
+        first.setUniversityId(1L);
+        School second = new School();
+        second.setId(3L);
+        second.setName("三号学院");
+        second.setUniversityId(2L);
+        when(schoolRepository.findByIdInAndDeletedAtIsNull(List.of(9L, 3L, 8L)))
+                .thenReturn(List.of(second, first));
+
+        List<AdminUserService.OrganizationSummary> result =
+                service.batchGetSchools(List.of(9L, 3L, 9L, 8L));
+
+        assertEquals(List.of(9L, 3L), result.stream()
+                .map(AdminUserService.OrganizationSummary::id).toList());
+        assertEquals(List.of("九号学院", "三号学院"), result.stream()
+                .map(AdminUserService.OrganizationSummary::name).toList());
+        assertEquals(List.of(1L, 2L), result.stream()
+                .map(AdminUserService.OrganizationSummary::parentId).toList());
+        verify(schoolRepository).findByIdInAndDeletedAtIsNull(List.of(9L, 3L, 8L));
+    }
+
+    @Test
+    void organizationBatchShouldRequireOneToTwoHundredRawIds() {
+        assertThrows(IllegalArgumentException.class, () -> service.batchGetSchools(List.of()));
+        assertThrows(IllegalArgumentException.class, () ->
+                service.batchGetSchools(java.util.Collections.nCopies(201, 1L)));
     }
 
     @Test

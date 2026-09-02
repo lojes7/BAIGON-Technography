@@ -4,6 +4,7 @@ package audit
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -38,6 +39,10 @@ type pagedSearchRequest struct {
 	UserType      string `json:"userType" example:"STUDENT"`
 }
 
+type batchDetailRequest struct {
+	IDs []int64 `json:"ids" binding:"required"`
+}
+
 // ListOccupationAuditLogsHandler 分页查询 occupation 日志。
 // @Summary      分页查询 occupation 审计日志
 // @Description  仅 ADMIN 可按用户类型、具体用户、时间和级别查询。
@@ -46,7 +51,7 @@ type pagedSearchRequest struct {
 // @Produce      json
 // @Security     Bearer
 // @Param        request body pagedSearchRequest true "分页与筛选条件"
-// @Success      200 {object} response.SuccessBody
+// @Success      200 {object} response.SuccessBody{data=response.IDPageData}
 // @Failure      400 {object} response.ErrorBody
 // @Failure      401 {object} response.ErrorBody
 // @Failure      403 {object} response.ErrorBody
@@ -63,7 +68,7 @@ func ListOccupationAuditLogsHandler(pool grpcpool.ConnectionProvider) gin.Handle
 // @Produce      json
 // @Security     Bearer
 // @Param        request body pagedSearchRequest true "分页、时间与级别条件"
-// @Success      200 {object} response.SuccessBody
+// @Success      200 {object} response.SuccessBody{data=response.IDPageData}
 // @Failure      400 {object} response.ErrorBody
 // @Failure      401 {object} response.ErrorBody
 // @Failure      403 {object} response.ErrorBody
@@ -80,7 +85,7 @@ func ListCrawlerAuditLogsHandler(pool grpcpool.ConnectionProvider) gin.HandlerFu
 // @Produce      json
 // @Security     Bearer
 // @Param        request body pagedSearchRequest true "分页、时间与级别条件"
-// @Success      200 {object} response.SuccessBody
+// @Success      200 {object} response.SuccessBody{data=response.IDPageData}
 // @Failure      400 {object} response.ErrorBody
 // @Failure      401 {object} response.ErrorBody
 // @Failure      403 {object} response.ErrorBody
@@ -88,6 +93,96 @@ func ListCrawlerAuditLogsHandler(pool grpcpool.ConnectionProvider) gin.HandlerFu
 // @Router       /api/auth/audit-logs/ai [post]
 func ListAIAuditLogsHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc {
 	return pagedSearchHandler(pool, sourceAI)
+}
+
+// BatchGetOccupationAuditLogsHandler 批量查询 occupation 日志详情。
+// @Summary 批量查询 occupation 审计日志
+// @Tags 审计日志
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param body body batchDetailRequest true "1 至 200 个日志 ID"
+// @Success 200 {object} response.SuccessBody{data=audit.LogLookupData}
+// @Failure 400 {object} response.ErrorBody
+// @Failure 403 {object} response.ErrorBody
+// @Router /api/auth/audit-logs/occupation/lookup [post]
+func BatchGetOccupationAuditLogsHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc {
+	return batchDetailHandler(pool, sourceOccupation)
+}
+
+// BatchGetCrawlerAuditLogsHandler 批量查询 crawler 日志详情。
+// @Summary 批量查询 crawler 审计日志
+// @Tags 审计日志
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param body body batchDetailRequest true "1 至 200 个日志 ID"
+// @Success 200 {object} response.SuccessBody{data=audit.LogLookupData}
+// @Failure 400 {object} response.ErrorBody
+// @Failure 403 {object} response.ErrorBody
+// @Router /api/auth/audit-logs/crawler/lookup [post]
+func BatchGetCrawlerAuditLogsHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc {
+	return batchDetailHandler(pool, sourceCrawler)
+}
+
+// BatchGetAIAuditLogsHandler 批量查询 AI 日志详情。
+// @Summary 批量查询 AI 审计日志
+// @Tags 审计日志
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param body body batchDetailRequest true "1 至 200 个日志 ID"
+// @Success 200 {object} response.SuccessBody{data=audit.LogLookupData}
+// @Failure 400 {object} response.ErrorBody
+// @Failure 403 {object} response.ErrorBody
+// @Router /api/auth/audit-logs/ai/lookup [post]
+func BatchGetAIAuditLogsHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc {
+	return batchDetailHandler(pool, sourceAI)
+}
+
+// GetOccupationAuditLogHandler 查询 occupation 日志详情。
+// @Summary 查询 occupation 审计日志详情
+// @Tags 审计日志
+// @Produce json
+// @Security Bearer
+// @Param id path int true "日志 ID"
+// @Success 200 {object} response.SuccessBody{data=audit.LogData}
+// @Failure 400 {object} response.ErrorBody
+// @Failure 403 {object} response.ErrorBody
+// @Failure 404 {object} response.ErrorBody
+// @Router /api/auth/audit-logs/occupation/{id} [get]
+func GetOccupationAuditLogHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc {
+	return detailHandler(pool, sourceOccupation)
+}
+
+// GetCrawlerAuditLogHandler 查询 crawler 日志详情。
+// @Summary 查询 crawler 审计日志详情
+// @Tags 审计日志
+// @Produce json
+// @Security Bearer
+// @Param id path int true "日志 ID"
+// @Success 200 {object} response.SuccessBody{data=audit.LogData}
+// @Failure 400 {object} response.ErrorBody
+// @Failure 403 {object} response.ErrorBody
+// @Failure 404 {object} response.ErrorBody
+// @Router /api/auth/audit-logs/crawler/{id} [get]
+func GetCrawlerAuditLogHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc {
+	return detailHandler(pool, sourceCrawler)
+}
+
+// GetAIAuditLogHandler 查询 AI 日志详情。
+// @Summary 查询 AI 审计日志详情
+// @Tags 审计日志
+// @Produce json
+// @Security Bearer
+// @Param id path int true "日志 ID"
+// @Success 200 {object} response.SuccessBody{data=audit.LogData}
+// @Failure 400 {object} response.ErrorBody
+// @Failure 403 {object} response.ErrorBody
+// @Failure 404 {object} response.ErrorBody
+// @Router /api/auth/audit-logs/ai/{id} [get]
+func GetAIAuditLogHandler(pool grpcpool.ConnectionProvider) gin.HandlerFunc {
+	return detailHandler(pool, sourceAI)
 }
 
 func pagedSearchHandler(pool grpcpool.ConnectionProvider, logSource source) gin.HandlerFunc {
@@ -137,15 +232,134 @@ func pagedSearchHandler(pool grpcpool.ConnectionProvider, logSource source) gin.
 			return
 		}
 
-		items := make([]gin.H, 0, len(result.GetItems()))
-		for _, item := range result.GetItems() {
-			items = append(items, auditLogData(item, logSource, role == "ADMIN"))
-		}
 		response.Success(c, gin.H{
-			"items": items, "total": result.GetTotal(),
+			"ids": nonNilAuditIDs(result.GetAuditLogIds()), "total": result.GetTotal(),
 			"page": result.GetPage(), "pageSize": result.GetPageSize(),
 		})
 	}
+}
+
+func batchDetailHandler(pool grpcpool.ConnectionProvider, logSource source) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, role, ok := adminRequester(c)
+		if !ok {
+			return
+		}
+		var body batchDetailRequest
+		if err := c.ShouldBindJSON(&body); err != nil {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+		ids, valid := normalizeAuditBatchIDs(body.IDs)
+		if !valid {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+		result, ok := fetchDetails(c, pool, logSource, userID, role, ids)
+		if !ok {
+			return
+		}
+		items := make([]gin.H, 0, len(result.GetDetailItems()))
+		for _, item := range result.GetDetailItems() {
+			items = append(items, auditLogData(item, logSource, role == "ADMIN"))
+		}
+		response.Success(c, gin.H{
+			"items": items, "missingIds": nonNilAuditIDs(result.GetMissingAuditLogIds()),
+		})
+	}
+}
+
+func detailHandler(pool grpcpool.ConnectionProvider, logSource source) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, role, ok := adminRequester(c)
+		if !ok {
+			return
+		}
+		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+		if err != nil || id <= 0 {
+			response.Error(c, http.StatusBadRequest, http.StatusBadRequest)
+			return
+		}
+		result, ok := fetchDetails(c, pool, logSource, userID, role, []int64{id})
+		if !ok {
+			return
+		}
+		if len(result.GetDetailItems()) == 0 {
+			response.Error(c, http.StatusNotFound, http.StatusNotFound)
+			return
+		}
+		response.Success(c, auditLogData(
+			result.GetDetailItems()[0], logSource, role == "ADMIN"))
+	}
+}
+
+func fetchDetails(
+	c *gin.Context,
+	pool grpcpool.ConnectionProvider,
+	logSource source,
+	userID int64,
+	role string,
+	ids []int64,
+) (*commonpb.PagedSearchAuditLogsResponse, bool) {
+	conn, err := pool.GetConn(serviceName(logSource))
+	if err != nil {
+		response.Error(c, http.StatusServiceUnavailable, http.StatusServiceUnavailable)
+		return nil, false
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	request := &commonpb.PagedSearchAuditLogsRequest{
+		TargetLogIds: ids, TraceId: c.GetString("trace_id"), UserId: userID,
+		UserName: c.GetString("uid"), UserRole: role, UserIp: c.ClientIP(),
+		RequestMethod: c.Request.Method, RequestUrl: c.Request.URL.Path,
+	}
+	var trailer metadata.MD
+	result, err := callService(ctx, conn, logSource, request, &trailer)
+	if err != nil {
+		httpCode, errorCode := commonhandler.GRPCErrorCodes(err, trailer)
+		response.Error(c, httpCode, errorCode)
+		return nil, false
+	}
+	return result, true
+}
+
+func adminRequester(c *gin.Context) (int64, string, bool) {
+	role := c.GetString("role")
+	userID := commonhandler.UserIDFromContext(c)
+	if userID <= 0 || role == "" {
+		response.Error(c, http.StatusUnauthorized, http.StatusUnauthorized)
+		return 0, "", false
+	}
+	if role != "ADMIN" {
+		response.Error(c, http.StatusForbidden, http.StatusForbidden)
+		return 0, "", false
+	}
+	return userID, role, true
+}
+
+func normalizeAuditBatchIDs(ids []int64) ([]int64, bool) {
+	if len(ids) == 0 || len(ids) > 200 {
+		return nil, false
+	}
+	seen := make(map[int64]struct{}, len(ids))
+	normalized := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			return nil, false
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		normalized = append(normalized, id)
+	}
+	return normalized, true
+}
+
+func nonNilAuditIDs(ids []int64) []int64 {
+	result := make([]int64, len(ids))
+	copy(result, ids)
+	return result
 }
 
 func callService(ctx context.Context,

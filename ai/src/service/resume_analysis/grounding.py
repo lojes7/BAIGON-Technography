@@ -47,19 +47,52 @@ def text_is_grounded(value: str, content: str) -> bool:
     return not normalized_value or normalized_value in normalize_for_match(content)
 
 
+def normalize_layout_for_match(value: str) -> str:
+    """来源匹配忽略 PDF/OCR 排版空白，但不忽略任何实际文本字符。"""
+    normalized = unicodedata.normalize("NFKC", value)
+    return re.sub(r"\s+", "", normalized)
+
+
+def layout_text_is_grounded(value: str, content: str) -> bool:
+    """允许原文和模型结果仅在排版空白上存在差异。"""
+    normalized_value = normalize_layout_for_match(value)
+    return not normalized_value or normalized_value in normalize_layout_for_match(content)
+
+
+def ground_description(value: str, content: str) -> str:
+    """逐行保留能在原文中找到的描述，避免一处排版差异清空整段。"""
+    normalized_content = normalize_layout_for_match(content)
+    grounded_lines: list[str] = []
+    for raw_line in value.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        normalized_line = normalize_layout_for_match(line)
+        if normalized_line and normalized_line in normalized_content:
+            grounded_lines.append(line)
+    return "\n".join(grounded_lines)
+
+
 def date_is_grounded(value: str, content: str) -> bool:
-    """只允许从原文中的完整年月日确定性标准化日期。"""
+    """按年、年月或完整日期精度检查标准化结果是否来自原文。"""
     if not value:
         return True
     normalized_content = normalize_for_match(content)
-    if value in normalized_content:
-        return True
-
-    year, month, day = (int(part) for part in value.split("-"))
-    pattern = re.compile(
-        rf"(?<!\d){year}\s*(?:年|[-/.])\s*0?{month}"
-        rf"\s*(?:月|[-/.])\s*0?{day}\s*日?(?!\d)"
-    )
+    parts = [int(part) for part in value.split("-")]
+    year = parts[0]
+    if len(parts) == 1:
+        pattern = re.compile(rf"(?<!\d){year}(?!\d)")
+    elif len(parts) == 2:
+        month = parts[1]
+        pattern = re.compile(
+            rf"(?<!\d){year}\s*(?:年|[-/.])\s*0?{month}\s*月?(?!\d)"
+        )
+    else:
+        month, day = parts[1], parts[2]
+        pattern = re.compile(
+            rf"(?<!\d){year}\s*(?:年|[-/.])\s*0?{month}"
+            rf"\s*(?:月|[-/.])\s*0?{day}\s*日?(?!\d)"
+        )
     return pattern.search(normalized_content) is not None
 
 
@@ -95,7 +128,9 @@ def ground_resume_analysis(
         seen: set[tuple] = set()
         for record in records:
             for field_name in TEXT_FIELDS[section_name]:
-                if record[field_name] and not text_is_grounded(record[field_name], content):
+                if field_name == "description" and record[field_name]:
+                    record[field_name] = ground_description(record[field_name], content)
+                elif record[field_name] and not text_is_grounded(record[field_name], content):
                     record[field_name] = ""
             for field_name in DATE_FIELDS.get(section_name, ()):
                 if record[field_name] and not date_is_grounded(record[field_name], content):

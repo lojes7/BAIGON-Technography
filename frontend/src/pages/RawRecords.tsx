@@ -91,7 +91,7 @@ export default function RawRecordsPage() {
   // 批量审核状态
   const [reviewPhase, setReviewPhase] = useState<ReviewPhase>("idle");
   const [reviewing, setReviewing] = useState(false);
-  const [reviewStatus, setReviewStatus] = useState<"REVIEW_PASSED" | "REVIEW_REJECT">("REVIEW_PASSED");
+  const [reviewStatus, setReviewStatus] = useState<"PASSED" | "REJECTED">("PASSED");
   const [reviewProgress, setReviewProgress] = useState({ done: 0, total: 0, success: 0, fail: 0 });
   const [reviewLogs, setReviewLogs] = useState<{ id: string; name: string; status: "pending" | "success" | "fail"; error?: string }[]>([]);
 
@@ -140,15 +140,15 @@ export default function RawRecordsPage() {
     setEditing(false);
     setEditForm(emptyEditForm());
     Promise.allSettled([getSourceRecord(r.id), getDataSourceDetail(r.id)]).then(([src, cleaned]) => {
-      if (src.status === "fulfilled") setSourceDetail(src.value.data.source);
-      if (cleaned.status === "fulfilled") setCleanedDetail(cleaned.value.data.job);
+      if (src.status === "fulfilled") setSourceDetail(src.value.data);
+      if (cleaned.status === "fulfilled") setCleanedDetail(cleaned.value.data);
     }).finally(() => setDiffLoading(false));
   };
 
   const handleReview = async (dsId: string, status: string) => {
     try {
       const res = await reviewDataSource(dsId, status);
-      toast.success("审核完成", { description: res.data.job?.source_platform ?? "" });
+      toast.success("审核完成", { description: `记录 #${res.data.id}` });
       setDetail(null);
       setSourceDetail(null);
       setCleanedDetail(null);
@@ -162,6 +162,7 @@ export default function RawRecordsPage() {
   interface EditForm {
     jobName: string;
     companyName: string;
+    majorName: string;
     salary: string;
     city: string;
     education: string;
@@ -174,20 +175,21 @@ export default function RawRecordsPage() {
   const [savingEdit, setSavingEdit] = useState(false);
 
   function emptyEditForm(): EditForm {
-    return { jobName: "", companyName: "", salary: "", city: "", education: "", experience: "", jobDescription: "" };
+    return { jobName: "", companyName: "", majorName: "", salary: "", city: "", education: "", experience: "", jobDescription: "" };
   }
 
   // 打开编辑：初始值优先取清洗后详情，为空回退列表摘要字段
   const openEdit = () => {
     if (!detail) return;
     setEditForm({
-      jobName: cleanedDetail?.job_name ?? detail.job_name ?? "",
-      companyName: cleanedDetail?.company_name ?? detail.company_name ?? "",
+      jobName: cleanedDetail?.jobName ?? detail.jobName ?? "",
+      companyName: cleanedDetail?.companyName ?? detail.companyName ?? "",
+      majorName: cleanedDetail?.major ?? "",
       salary: cleanedDetail?.salary ?? "",
       city: cleanedDetail?.city ?? "",
       education: cleanedDetail?.education ?? "",
       experience: cleanedDetail?.experience ?? "",
-      jobDescription: cleanedDetail?.job_description ?? "",
+      jobDescription: cleanedDetail?.jobDescription ?? "",
     });
     setEditing(true);
   };
@@ -218,13 +220,14 @@ export default function RawRecordsPage() {
   // ==================== 勾选逻辑 ====================
 
   // 当前选中中的分类统计
-  const selectedPassed = records.filter(r => selectedIds.has(r.id) && r.review_status === "REVIEW_PASSED");
-  const selectedPending = records.filter(r => selectedIds.has(r.id) && r.review_status !== "REVIEW_PASSED");
+  const selectedPassed = records.filter(r => selectedIds.has(r.id) && r.reviewStatus === "PASSED");
+  const selectedPending = records.filter(r => selectedIds.has(r.id) && r.reviewStatus !== "PASSED");
 
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
@@ -255,7 +258,7 @@ export default function RawRecordsPage() {
       }
     }
     // 批量驳回：全部有效，无需过滤
-    setReviewStatus(action === "approve" ? "REVIEW_PASSED" : "REVIEW_REJECT");
+    setReviewStatus(action === "approve" ? "PASSED" : "REJECTED");
     setReviewPhase("confirm");
   };
 
@@ -272,7 +275,7 @@ export default function RawRecordsPage() {
     const totalCount = ids.length;
     const logs = ids.map(id => {
       const r = records.find(rc => rc.id === id);
-      return { id, name: r ? `${r.source_platform} #${r.id}` : `ID:${id}`, status: "pending" as const };
+      return { id, name: r ? `${r.sourcePlatform} #${r.id}` : `ID:${id}`, status: "pending" as const };
     });
 
     setReviewPhase("progress");
@@ -590,21 +593,21 @@ export default function RawRecordsPage() {
                       <div className="flex gap-3">
                         <label className="flex items-center gap-2 px-4 py-2.5 rounded-lg cursor-pointer text-[13px] flex-1"
                           style={{
-                            border: `1px solid ${reviewStatus === "REVIEW_PASSED" ? T.emerging : T.border}`,
-                            background: reviewStatus === "REVIEW_PASSED" ? `${T.emerging}10` : T.white,
+                            border: `1px solid ${reviewStatus === "PASSED" ? T.emerging : T.border}`,
+                            background: reviewStatus === "PASSED" ? `${T.emerging}10` : T.white,
                           }}>
-                          <input type="radio" className="accent-[#10B981]" checked={reviewStatus === "REVIEW_PASSED"}
-                            onChange={() => setReviewStatus("REVIEW_PASSED")} />
+                          <input type="radio" className="accent-[#10B981]" checked={reviewStatus === "PASSED"}
+                            onChange={() => setReviewStatus("PASSED")} />
                           <ShieldCheck size={15} style={{ color: T.emerging }} />
                           审核通过
                         </label>
                         <label className="flex items-center gap-2 px-4 py-2.5 rounded-lg cursor-pointer text-[13px] flex-1"
                           style={{
-                            border: `1px solid ${reviewStatus === "REVIEW_REJECT" ? T.risk : T.border}`,
-                            background: reviewStatus === "REVIEW_REJECT" ? `${T.risk}10` : T.white,
+                            border: `1px solid ${reviewStatus === "REJECTED" ? T.risk : T.border}`,
+                            background: reviewStatus === "REJECTED" ? `${T.risk}10` : T.white,
                           }}>
-                          <input type="radio" className="accent-[#EF4444]" checked={reviewStatus === "REVIEW_REJECT"}
-                            onChange={() => setReviewStatus("REVIEW_REJECT")} />
+                          <input type="radio" className="accent-[#EF4444]" checked={reviewStatus === "REJECTED"}
+                            onChange={() => setReviewStatus("REJECTED")} />
                           <XCircle size={15} style={{ color: T.risk }} />
                           审核驳回
                         </label>
@@ -858,7 +861,7 @@ export default function RawRecordsPage() {
                   <div className="flex items-center justify-between gap-3 px-5 py-3 flex-shrink-0" style={{ borderTop: `1px solid ${P.border}`, background: "#FAFBFD" }}>
                     <div className="flex items-center gap-2 min-w-0">
                       <Btn size="sm" icon={FileText} onClick={() => setViewDiff(true)}>{t("page.rawRecords.viewOriginalRecord")}</Btn>
-                      {isReviewer && detail.review_status !== "REVIEW_PASSED" && (
+                      {isReviewer && detail.reviewStatus !== "PASSED" && (
                         <Btn size="sm" variant="secondary" icon={Pencil} onClick={openEdit}>{t("page.rawRecords.edit")}</Btn>
                       )}
                     </div>
@@ -889,8 +892,8 @@ export default function RawRecordsPage() {
 
 // 双栏 diff 对比的字段清单：[i18n key, snake_case 字段名]
 const DIFF_FIELDS: [string, string][] = [
-  ["jobName", "job_name"],
-  ["companyName", "company_name"],
+  ["jobName", "jobName"],
+  ["companyName", "companyName"],
   ["jobSalary", "salary"],
   ["jobCity", "city"],
   ["jobProvince", "province"],
@@ -899,11 +902,11 @@ const DIFF_FIELDS: [string, string][] = [
   ["jobMajor", "major"],
   ["jobNature", "nature"],
   ["jobTags", "tags"],
-  ["jobCompanySize", "company_size"],
-  ["sourcePlatform", "source_platform"],
-  ["jobSourceUrl", "source_url"],
-  ["publishDate", "publish_date"],
-  ["jobDesc", "job_description"],
+  ["jobCompanySize", "companySize"],
+  ["sourcePlatform", "sourcePlatform"],
+  ["jobSourceUrl", "sourceUrl"],
+  ["publishDate", "publishDate"],
+  ["jobDesc", "jobDescription"],
 ];
 
 // 对比原始记录与清洗后详情，生成 diff 行（增/删/改/不变）

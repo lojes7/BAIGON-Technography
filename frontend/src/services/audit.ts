@@ -4,6 +4,7 @@ import type {
   AuditLogItem,
   AuditLogSource,
   PaginatedData,
+  PaginatedIds,
   PagedSearchAuditLogsParams,
 } from "../types/api";
 import { parseJson, stringifyNumericIdBody } from "./lossless";
@@ -24,7 +25,7 @@ async function request<T>(url: string, init: RequestInit): Promise<ApiResponse<T
   return parseJson(await response.text()) as ApiResponse<T>;
 }
 
-export function pagedSearchAuditLogs(
+export async function pagedSearchAuditLogs(
   source: AuditLogSource,
   params: PagedSearchAuditLogsParams,
 ) {
@@ -39,7 +40,7 @@ export function pagedSearchAuditLogs(
     targetUserId,
     userType: params.userType ?? "",
   };
-  return request<PaginatedData<AuditLogItem>>(`${BASE}/${source}`, {
+  const page = await request<PaginatedIds>(`${BASE}/${source}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -47,5 +48,34 @@ export function pagedSearchAuditLogs(
     },
     // 具体用户 ID 是雪花 ID；替换为 JSON 数字时不能经过 Number。
     body: stringifyNumericIdBody(payload, ["targetUserId"]),
+  });
+  const details = page.data.ids.length > 0
+    ? await batchGetAuditLogs(source, page.data.ids)
+    : { code: 200, data: { items: [] } } as ApiResponse<{ items: AuditLogItem[] }>;
+  return {
+    ...page,
+    data: {
+      items: details.data.items,
+      total: page.data.total,
+      page: page.data.page,
+      pageSize: page.data.pageSize,
+    },
+  } as ApiResponse<PaginatedData<AuditLogItem>>;
+}
+
+export function batchGetAuditLogs(source: AuditLogSource, ids: Array<string | number>) {
+  return request<{ items: AuditLogItem[]; missingIds: string[] }>(`${BASE}/${source}/lookup`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${localStorage.getItem("baigon_token")}`,
+    },
+    body: stringifyNumericIdBody({ ids }, [], ["ids"]),
+  });
+}
+
+export function getAuditLogDetail(source: AuditLogSource, id: string | number) {
+  return request<AuditLogItem>(`${BASE}/${source}/${id}`, {
+    headers: { Authorization: `Bearer ${localStorage.getItem("baigon_token")}` },
   });
 }

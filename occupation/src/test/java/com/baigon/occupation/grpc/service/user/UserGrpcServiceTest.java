@@ -3,6 +3,7 @@ package com.baigon.occupation.grpc.service.user;
 
 import com.baigon.occupation.entity.user.User;
 import com.baigon.occupation.entity.user.resume.ResumeSource;
+import com.baigon.occupation.error.ApiException;
 import com.baigon.occupation.service.LogService;
 import com.baigon.occupation.service.user.AuthService;
 import com.baigon.occupation.service.user.UserService;
@@ -11,6 +12,10 @@ import com.baigon.occupation.service.user.analysis.UserAnalysisService;
 import com.baigon.occupation.service.user.resume.ResumeService;
 import com.baigon.user.AnalyzeMyResumeSkillsRequest;
 import com.baigon.user.AnalyzeMyResumeSkillsResponse;
+import com.baigon.user.BatchGetMySkillsRequest;
+import com.baigon.user.BatchGetMySkillsResponse;
+import com.baigon.user.BatchGetUsersRequest;
+import com.baigon.user.BatchGetUsersResponse;
 import com.baigon.user.BlockUserRequest;
 import com.baigon.user.BlockUserResponse;
 import com.baigon.user.CompleteResumeUploadRequest;
@@ -20,6 +25,8 @@ import com.baigon.user.CreateResumeUploadResponse;
 import com.baigon.user.EditMyResumeRequest;
 import com.baigon.user.EditMyResumeResponse;
 import com.baigon.user.GetLatestMyJobMatchRequest;
+import com.baigon.user.GetMySkillRequest;
+import com.baigon.user.GetMySkillResponse;
 import com.baigon.user.GetUserRequest;
 import com.baigon.user.GetUserResponse;
 import com.baigon.user.GetMyResumeRequest;
@@ -34,6 +41,8 @@ import com.baigon.user.MatchMyResumeToJobRequest;
 import com.baigon.user.MatchMyResumeToJobResponse;
 import com.baigon.user.OrganizationListRequest;
 import com.baigon.user.OrganizationListResponse;
+import com.baigon.user.OrganizationBatchRequest;
+import com.baigon.user.OrganizationBatchResponse;
 import com.baigon.user.UnlockUserRequest;
 import com.baigon.user.UnlockUserResponse;
 import io.grpc.Status;
@@ -42,6 +51,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -94,9 +104,8 @@ class UserGrpcServiceTest {
         verify(observer, never()).onError(any());
         assertEquals("jwt-token", response.getValue().getToken());
         assertEquals(7L, response.getValue().getUserId());
-        assertEquals("admin", response.getValue().getUid());
-        assertEquals("管理员", response.getValue().getName());
-        assertEquals("ADMIN", response.getValue().getRole());
+        assertEquals(List.of("token", "user_id"), response.getValue()
+                .getDescriptorForType().getFields().stream().map(field -> field.getName()).toList());
         verify(logService).info(any(), eq("login success"));
     }
 
@@ -133,10 +142,10 @@ class UserGrpcServiceTest {
     }
 
     @Test
-    void listUsersShouldReturnUserDataAndPagination() {
+    void listUsersShouldReturnOnlyUserIdsAndPagination() {
         var user = new AdminUserService.UserData(
                 8L, "student01", "张三", "STUDENT", "NORMAL",
-                1L, 2L, 3L, "百工大学", "计算机学院", "软件工程系");
+                1L, 2L, 3L);
         when(adminUserService.normalizedPageSize(20)).thenReturn(20);
         when(adminUserService.listUsers(eq(0), eq(20), any()))
                 .thenReturn(new PageImpl<>(List.of(user)));
@@ -159,14 +168,8 @@ class UserGrpcServiceTest {
         ArgumentCaptor<ListUsersResponse> response = ArgumentCaptor.forClass(ListUsersResponse.class);
         verify(observer).onNext(response.capture());
         verify(observer).onCompleted();
-        assertEquals(1, response.getValue().getItemsCount());
-        assertEquals("student01", response.getValue().getItems(0).getUid());
-        assertEquals(1L, response.getValue().getItems(0).getUniversityId());
-        assertEquals(2L, response.getValue().getItems(0).getSchoolId());
-        assertEquals(3L, response.getValue().getItems(0).getDepartmentId());
-        assertEquals("百工大学", response.getValue().getItems(0).getUniversityName());
-        assertEquals("计算机学院", response.getValue().getItems(0).getSchoolName());
-        assertEquals("软件工程系", response.getValue().getItems(0).getDepartmentName());
+        assertEquals(List.of(8L), response.getValue().getUserIdsList());
+        assertEquals(null, response.getValue().getDescriptorForType().findFieldByName("items"));
         assertEquals(20, response.getValue().getPageSize());
         verify(logService).info(any(), eq("list users: total=1"));
     }
@@ -192,10 +195,38 @@ class UserGrpcServiceTest {
     }
 
     @Test
-    void getUserShouldReturnOrganizationIdsAndNames() {
+    void batchGetUsersShouldKeepStableOrderAndReportMissingIds() {
+        var first = new UserService.UserData(
+                9L, "student09", "九号", User.Role.STUDENT, User.UserStatus.NORMAL,
+                1L, 2L, 3L);
+        var second = new UserService.UserData(
+                3L, "student03", "三号", User.Role.STUDENT, User.UserStatus.NORMAL,
+                1L, 2L, 3L);
+        when(userService.batchGetUsers(List.of(9L, 3L, 9L, 8L)))
+                .thenReturn(List.of(first, second));
+        @SuppressWarnings("unchecked")
+        StreamObserver<BatchGetUsersResponse> observer = mock(StreamObserver.class);
+
+        service.batchGetUsers(BatchGetUsersRequest.newBuilder()
+                .addAllIds(List.of(9L, 3L, 9L, 8L))
+                .build(), observer);
+
+        ArgumentCaptor<BatchGetUsersResponse> response =
+                ArgumentCaptor.forClass(BatchGetUsersResponse.class);
+        verify(observer).onNext(response.capture());
+        verify(observer).onCompleted();
+        assertEquals(List.of(9L, 3L), response.getValue().getItemsList().stream()
+                .map(com.baigon.user.UserData::getId).toList());
+        assertEquals(List.of(8L), response.getValue().getMissingIdsList());
+        assertEquals(null, response.getValue().getItems(0).getDescriptorForType()
+                .findFieldByName("university_name"));
+    }
+
+    @Test
+    void getUserShouldReturnOrganizationIdsWithoutNames() {
         var user = new UserService.UserData(
                 8L, "student01", "张三", User.Role.STUDENT, User.UserStatus.NORMAL,
-                1L, 2L, 3L, "百工大学", "计算机学院", "软件工程系");
+                1L, 2L, 3L);
         when(userService.getUser(8L)).thenReturn(Optional.of(user));
         @SuppressWarnings("unchecked")
         StreamObserver<GetUserResponse> observer = mock(StreamObserver.class);
@@ -213,9 +244,12 @@ class UserGrpcServiceTest {
         assertEquals(1L, response.getValue().getUser().getUniversityId());
         assertEquals(2L, response.getValue().getUser().getSchoolId());
         assertEquals(3L, response.getValue().getUser().getDepartmentId());
-        assertEquals("百工大学", response.getValue().getUser().getUniversityName());
-        assertEquals("计算机学院", response.getValue().getUser().getSchoolName());
-        assertEquals("软件工程系", response.getValue().getUser().getDepartmentName());
+        assertEquals(null, response.getValue().getUser().getDescriptorForType()
+                .findFieldByName("university_name"));
+        assertEquals(null, response.getValue().getUser().getDescriptorForType()
+                .findFieldByName("school_name"));
+        assertEquals(null, response.getValue().getUser().getDescriptorForType()
+                .findFieldByName("department_name"));
         verify(logService).info(any(), eq("get user: id=8"));
     }
 
@@ -266,7 +300,7 @@ class UserGrpcServiceTest {
     }
 
     @Test
-    void completeResumeUploadShouldReturnExtractedContentWithoutStorageFields() {
+    void completeResumeUploadShouldReturnOnlyResumeId() {
         when(resumeService.completeUpload(eq(8L), eq(101L), eq("张三.pdf"), any()))
                 .thenReturn(new ResumeService.ResumeData(
                         101L, "张三.pdf", 128L, "OCR 简历正文",
@@ -287,11 +321,8 @@ class UserGrpcServiceTest {
                 ArgumentCaptor.forClass(CompleteResumeUploadResponse.class);
         verify(observer).onNext(response.capture());
         verify(observer).onCompleted();
-        assertEquals(101L, response.getValue().getResume().getId());
-        assertEquals("OCR 简历正文", response.getValue().getResume().getContent());
-        assertEquals("张三.pdf", response.getValue().getResume().getFileName());
-        assertEquals(ResumeSource.SYSTEM.name(), response.getValue().getResume().getSource());
-        assertEquals(resumeFieldsJson(), response.getValue().getResume().getFieldsJson());
+        assertEquals(101L, response.getValue().getResumeId());
+        assertEquals(1, response.getValue().getDescriptorForType().getFields().size());
         verify(logService).info(any(),
                 eq("complete resume upload and analyze content: id=101"));
     }
@@ -322,7 +353,7 @@ class UserGrpcServiceTest {
     }
 
     @Test
-    void editMyResumeShouldForwardCheckedJsonAndReturnEditedSource() {
+    void editMyResumeShouldForwardCheckedJsonAndReturnOnlyResumeId() {
         when(resumeService.editMyResume(eq(8L), isNull(), eq(resumeFieldsJson())))
                 .thenReturn(new ResumeService.ResumeData(
                         102L, null, null, null,
@@ -342,16 +373,13 @@ class UserGrpcServiceTest {
                 ArgumentCaptor.forClass(EditMyResumeResponse.class);
         verify(observer).onNext(response.capture());
         verify(observer).onCompleted();
-        assertEquals(102L, response.getValue().getResume().getId());
-        assertEquals("EDITED", response.getValue().getResume().getSource());
-        assertEquals(false, response.getValue().getResume().hasFileName());
-        assertEquals(false, response.getValue().getResume().hasFileSize());
-        assertEquals(false, response.getValue().getResume().hasContent());
+        assertEquals(102L, response.getValue().getResumeId());
+        assertEquals(1, response.getValue().getDescriptorForType().getFields().size());
         verify(logService).info(any(), eq("edit my resume: id=102"));
     }
 
     @Test
-    void analyzeMyResumeSkillsShouldReturnPersistedSkillSnapshot() {
+    void analyzeMyResumeSkillsShouldReturnOnlyResumeAndSkillRecordIds() {
         OffsetDateTime createdAt = OffsetDateTime.parse("2026-08-20T10:00:00+08:00");
         when(userAnalysisService.analyzeMyResumeSkills(eq(8L), any())).thenReturn(
                 new UserAnalysisService.SkillAnalysisData(
@@ -373,20 +401,25 @@ class UserGrpcServiceTest {
         verify(observer).onNext(response.capture());
         verify(observer).onCompleted();
         assertEquals(101L, response.getValue().getResumeId());
-        assertEquals(1, response.getValue().getSkillsCount());
-        assertEquals("Java", response.getValue().getSkills(0).getSkillName());
-        assertEquals("ADVANCED", response.getValue().getSkills(0).getProficiency());
-        assertEquals(createdAt.toString(), response.getValue().getSkills(0).getCreatedAt());
+        assertEquals(List.of(501L), response.getValue().getUserSkillRecordIdsList());
+        assertEquals(null, response.getValue().getDescriptorForType().findFieldByName("skills"));
     }
 
     @Test
-    void listMySkillsShouldReturnStableEmptyItems() {
-        when(userAnalysisService.listMySkills(8L)).thenReturn(List.of());
+    void listMySkillsShouldReturnStableIdPage() {
+        OffsetDateTime createdAt = OffsetDateTime.parse("2026-08-20T10:00:00+08:00");
+        var skill = new UserAnalysisService.UserSkillData(
+                501L, 101L, "Java", "ADVANCED", "Java 开发经验", createdAt);
+        when(userAnalysisService.normalizedSkillPageSize(20)).thenReturn(20);
+        when(userAnalysisService.listMySkills(8L, 1, 20)).thenReturn(
+                new PageImpl<>(List.of(skill), PageRequest.of(1, 20), 21));
         @SuppressWarnings("unchecked")
         StreamObserver<ListMySkillsResponse> observer = mock(StreamObserver.class);
 
         service.listMySkills(ListMySkillsRequest.newBuilder()
                 .setUserId(8L)
+                .setPage(1)
+                .setPageSize(20)
                 .setRequestMethod("GET")
                 .setRequestUrl("/api/auth/me/skills")
                 .build(), observer);
@@ -395,7 +428,60 @@ class UserGrpcServiceTest {
                 ArgumentCaptor.forClass(ListMySkillsResponse.class);
         verify(observer).onNext(response.capture());
         verify(observer).onCompleted();
-        assertEquals(0, response.getValue().getItemsCount());
+        assertEquals(List.of(501L), response.getValue().getUserSkillRecordIdsList());
+        assertEquals(21L, response.getValue().getTotal());
+        assertEquals(1, response.getValue().getPage());
+        assertEquals(20, response.getValue().getPageSize());
+        assertEquals(null, response.getValue().getDescriptorForType().findFieldByName("items"));
+    }
+
+    @Test
+    void getMySkillShouldReturnOwnedFlatSkillDetail() {
+        OffsetDateTime createdAt = OffsetDateTime.parse("2026-08-20T10:00:00+08:00");
+        when(userAnalysisService.getMySkill(8L, 501L)).thenReturn(
+                new UserAnalysisService.UserSkillData(
+                        501L, 101L, "Java", "ADVANCED", "Java 开发经验", createdAt));
+        @SuppressWarnings("unchecked")
+        StreamObserver<GetMySkillResponse> observer = mock(StreamObserver.class);
+
+        service.getMySkill(GetMySkillRequest.newBuilder()
+                .setId(501L)
+                .setUserId(8L)
+                .build(), observer);
+
+        ArgumentCaptor<GetMySkillResponse> response =
+                ArgumentCaptor.forClass(GetMySkillResponse.class);
+        verify(observer).onNext(response.capture());
+        verify(observer).onCompleted();
+        assertEquals(501L, response.getValue().getSkill().getId());
+        assertEquals("Java", response.getValue().getSkill().getSkillName());
+    }
+
+    @Test
+    void batchGetMySkillsShouldKeepStableOrderAndReportMissingIds() {
+        OffsetDateTime createdAt = OffsetDateTime.parse("2026-08-20T10:00:00+08:00");
+        var first = new UserAnalysisService.UserSkillData(
+                502L, 101L, "Go", "ADVANCED", "Go 开发经验", createdAt);
+        var second = new UserAnalysisService.UserSkillData(
+                501L, 101L, "Java", "ADVANCED", "Java 开发经验", createdAt);
+        when(userAnalysisService.batchGetMySkills(
+                8L, List.of(502L, 501L, 502L, 999L)))
+                .thenReturn(List.of(first, second));
+        @SuppressWarnings("unchecked")
+        StreamObserver<BatchGetMySkillsResponse> observer = mock(StreamObserver.class);
+
+        service.batchGetMySkills(BatchGetMySkillsRequest.newBuilder()
+                .setUserId(8L)
+                .addAllIds(List.of(502L, 501L, 502L, 999L))
+                .build(), observer);
+
+        ArgumentCaptor<BatchGetMySkillsResponse> response =
+                ArgumentCaptor.forClass(BatchGetMySkillsResponse.class);
+        verify(observer).onNext(response.capture());
+        verify(observer).onCompleted();
+        assertEquals(List.of(502L, 501L), response.getValue().getItemsList().stream()
+                .map(com.baigon.user.UserSkillData::getId).toList());
+        assertEquals(List.of(999L), response.getValue().getMissingIdsList());
     }
 
     @Test
@@ -475,10 +561,33 @@ class UserGrpcServiceTest {
     }
 
     @Test
+    void getLatestMyJobMatchNotFoundShouldRemain404WithoutErrorLog() {
+        when(userAnalysisService.getLatestMyJobMatch(8L, 201L)).thenThrow(
+                new ApiException(ApiException.ErrorCode.NOT_FOUND, "job match not found"));
+        @SuppressWarnings("unchecked")
+        StreamObserver<MatchMyResumeToJobResponse> observer = mock(StreamObserver.class);
+
+        service.getLatestMyJobMatch(GetLatestMyJobMatchRequest.newBuilder()
+                .setJobId(201L)
+                .setUserId(8L)
+                .setRequestMethod("GET")
+                .setRequestUrl("/api/jobs/201/match")
+                .build(), observer);
+
+        ArgumentCaptor<Throwable> error = ArgumentCaptor.forClass(Throwable.class);
+        verify(observer).onError(error.capture());
+        verify(observer, never()).onCompleted();
+        assertEquals(Status.Code.NOT_FOUND, Status.fromThrowable(error.getValue()).getCode());
+        verify(logService).info(any(),
+                eq("get latest my job match: no saved result, job_id=201"));
+        verify(logService, never()).error(any(), any(), any());
+    }
+
+    @Test
     void blockUserShouldReturnLockedUser() {
         var user = new AdminUserService.UserData(
                 8L, "student01", "张三", "STUDENT", "LOCKED",
-                1L, 2L, 3L, "百工大学", "计算机学院", "软件工程系");
+                1L, 2L, 3L);
         when(adminUserService.blockUser(8L)).thenReturn(Optional.of(user));
         @SuppressWarnings("unchecked")
         StreamObserver<BlockUserResponse> observer = mock(StreamObserver.class);
@@ -495,8 +604,8 @@ class UserGrpcServiceTest {
                 ArgumentCaptor.forClass(BlockUserResponse.class);
         verify(observer).onNext(response.capture());
         verify(observer).onCompleted();
-        assertEquals("LOCKED", response.getValue().getUser().getStatus());
-        assertEquals(1L, response.getValue().getUser().getUniversityId());
+        assertEquals(8L, response.getValue().getUserId());
+        assertEquals(1, response.getValue().getDescriptorForType().getFields().size());
         verify(logService).info(any(), eq("block user: id=8"));
     }
 
@@ -519,7 +628,7 @@ class UserGrpcServiceTest {
     void unlockUserShouldReturnNormalUser() {
         var user = new AdminUserService.UserData(
                 8L, "student01", "张三", "STUDENT", "NORMAL",
-                1L, 2L, 3L, "百工大学", "计算机学院", "软件工程系");
+                1L, 2L, 3L);
         when(adminUserService.unlockUser(8L)).thenReturn(Optional.of(user));
         @SuppressWarnings("unchecked")
         StreamObserver<UnlockUserResponse> observer = mock(StreamObserver.class);
@@ -536,8 +645,8 @@ class UserGrpcServiceTest {
                 ArgumentCaptor.forClass(UnlockUserResponse.class);
         verify(observer).onNext(response.capture());
         verify(observer).onCompleted();
-        assertEquals("NORMAL", response.getValue().getUser().getStatus());
-        assertEquals(1L, response.getValue().getUser().getUniversityId());
+        assertEquals(8L, response.getValue().getUserId());
+        assertEquals(1, response.getValue().getDescriptorForType().getFields().size());
         verify(logService).info(any(), eq("unlock user: id=8"));
     }
 
@@ -557,8 +666,9 @@ class UserGrpcServiceTest {
     }
 
     @Test
-    void listSchoolsShouldForwardOptionalParentAndReturnCatalog() {
-        var school = new AdminUserService.OrganizationSummary(2L, "计算机信息工程学院");
+    void listSchoolsShouldForwardOptionalParentAndReturnOnlyIds() {
+        var school = new AdminUserService.OrganizationSummary(
+                2L, "计算机信息工程学院", 1L);
         when(adminUserService.normalizedPageSize(20)).thenReturn(20);
         when(adminUserService.listSchools(1L, 0, 20, "计算机"))
                 .thenReturn(new PageImpl<>(List.of(school)));
@@ -574,9 +684,33 @@ class UserGrpcServiceTest {
         ArgumentCaptor<OrganizationListResponse> response =
                 ArgumentCaptor.forClass(OrganizationListResponse.class);
         verify(observer).onNext(response.capture());
-        assertEquals(1, response.getValue().getItemsCount());
-        assertEquals("计算机信息工程学院", response.getValue().getItems(0).getName());
+        assertEquals(List.of(2L), response.getValue().getOrganizationIdsList());
+        assertEquals(null, response.getValue().getDescriptorForType().findFieldByName("items"));
         verify(logService).info(any(), eq("list schools: total=1"));
+    }
+
+    @Test
+    void batchGetSchoolsShouldKeepStableOrderAndReportMissingIds() {
+        when(adminUserService.batchGetSchools(List.of(9L, 3L, 9L, 8L)))
+                .thenReturn(List.of(
+                        new AdminUserService.OrganizationSummary(9L, "九号学院", 1L),
+                        new AdminUserService.OrganizationSummary(3L, "三号学院", 2L)));
+        @SuppressWarnings("unchecked")
+        StreamObserver<OrganizationBatchResponse> observer = mock(StreamObserver.class);
+
+        service.batchGetSchools(OrganizationBatchRequest.newBuilder()
+                .addAllIds(List.of(9L, 3L, 9L, 8L))
+                .build(), observer);
+
+        ArgumentCaptor<OrganizationBatchResponse> response =
+                ArgumentCaptor.forClass(OrganizationBatchResponse.class);
+        verify(observer).onNext(response.capture());
+        verify(observer).onCompleted();
+        assertEquals(List.of(9L, 3L), response.getValue().getItemsList().stream()
+                .map(com.baigon.user.OrganizationData::getId).toList());
+        assertEquals(List.of(1L, 2L), response.getValue().getItemsList().stream()
+                .map(com.baigon.user.OrganizationData::getParentId).toList());
+        assertEquals(List.of(8L), response.getValue().getMissingIdsList());
     }
 
     private LoginRequest request() {

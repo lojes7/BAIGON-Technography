@@ -167,8 +167,9 @@ export default function JobsPage() {
   const [matching, setMatching] = useState(false);
 
   const fetchList = () => {
+    const requestId = ++listRequestRef.current;
     setLoading(true);
-    listJobs({
+    loadJobsPage({
       page: page - 1,
       pageSize: 20,
       name: applied.name || undefined,
@@ -344,17 +345,36 @@ export default function JobsPage() {
   const openDetail = async (id: string | number) => {
     const requestId = ++detailRequestRef.current;
     setDetail(null);
+    setDetailMajor(null);
+    setDetailOccupation(null);
+    setJobSkills([]);
     setMatch(null);
     setMatchLoading(true);
     setMatching(false);
     const [detailResult, matchResult] = await Promise.allSettled([
-      getJobDetail(id),
+      getJobDetail(id).then(async (response) => {
+        const job = response.data;
+        const [skills, majors, occupations] = await Promise.all([
+          lookupJobSkills(job.jobSkillIds),
+          lookupMajors(job.majorId ? [job.majorId] : []),
+          lookupOccupations(job.occupationId ? [job.occupationId] : []),
+        ]);
+        return {
+          job,
+          skills: skills.data.items,
+          major: majors.data.items[0] ?? null,
+          occupation: occupations.data.items[0] ?? null,
+        };
+      }),
       getLatestMyJobMatch(id),
     ]);
     if (detailRequestRef.current !== requestId) return;
 
     if (detailResult.status === "fulfilled") {
-      setDetail(detailResult.value.data);
+      setDetail(detailResult.value.job);
+      setJobSkills(detailResult.value.skills);
+      setDetailMajor(detailResult.value.major);
+      setDetailOccupation(detailResult.value.occupation);
     } else {
       toast.error(detailResult.reason instanceof Error ? detailResult.reason.message : "岗位详情加载失败");
     }
@@ -367,13 +387,14 @@ export default function JobsPage() {
   };
 
   const handleMatch = async () => {
-    if (!detail?.job) return;
+    if (!detail) return;
     const requestId = detailRequestRef.current;
-    const jobId = detail.job.id;
+    const jobId = detail.id;
     setMatching(true);
     try {
-      const res = await matchMyResumeToJob(jobId);
-      if (detailRequestRef.current === requestId) setMatch(res.data);
+      await matchMyResumeToJob(jobId);
+      const latest = await getLatestMyJobMatch(jobId);
+      if (detailRequestRef.current === requestId) setMatch(latest.data);
     } catch (err) {
       if (detailRequestRef.current === requestId) toast.error((err as Error).message);
     } finally {
@@ -384,6 +405,9 @@ export default function JobsPage() {
   const closeDetail = () => {
     detailRequestRef.current += 1;
     setDetail(null);
+    setDetailMajor(null);
+    setDetailOccupation(null);
+    setJobSkills([]);
     setMatch(null);
     setMatchLoading(false);
     setMatching(false);
@@ -752,7 +776,7 @@ export default function JobsPage() {
             )}
           </div>
         ) : (
-          <table className="w-full table-fixed text-[13px]">
+          <table className="w-full text-[13px]">
             <thead>
               <tr style={{ background: P.sky }}>
                 <th className="w-[36px] pl-4 py-2.5">

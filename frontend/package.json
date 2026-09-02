@@ -7,6 +7,11 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "test:catalog": "node --experimental-strip-types --test tests/catalog-id.test.mjs",
+    "test:catalog-jobs": "node --experimental-strip-types --test tests/catalog-jobs-contract.test.mjs",
+    "test:skills": "node --experimental-strip-types --test tests/skill-api-contract.test.mjs",
+    "test:review-contracts": "node --experimental-strip-types --test tests/review-id-contract.test.mjs",
+    "test:id-contracts": "node --experimental-strip-types --test tests/id-reference-contract.test.mjs",
     "test:ingest": "node --experimental-strip-types --test tests/ingest-csv.test.mjs",
     "preview": "vite preview"
   },

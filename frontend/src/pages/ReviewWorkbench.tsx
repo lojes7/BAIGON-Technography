@@ -7,14 +7,16 @@ import P from "../constants/palette";
 import { isHttpErrorStatus } from "../services/http-error";
 import {
   getSkillResolutionTask,
+  loadCanonicalSkillPage,
   listSkillResolutionSimilarSkills,
   listSkillResolutionTasks,
+  lookupCanonicalSkills,
   reviewSkillResolutionTask,
-  searchCanonicalSkills,
 } from "../services/skill-resolution";
 import type {
   CanonicalSkillItem,
-  JobSkillResolutionCandidate,
+  JobSkillData,
+  JobSkillResolutionSimilarSkill,
   JobSkillResolutionTaskDetail,
   JobSkillResolutionTaskSummary,
   SkillResolutionAction,
@@ -46,8 +48,10 @@ function ReviewWorkbenchPage() {
   const { t } = useTranslation();
   const [items, setItems] = useState<JobSkillResolutionTaskSummary[]>([]);
   const [page, setPage] = useState(1);
-  const [taskStatusFilter, setTaskStatusFilter] = useState<"success" | "failed" | "processing">("success");
-  const [reviewFilter, setReviewFilter] = useState<"all" | "pending" | "reviewed">("all");
+  const [total, setTotal] = useState(0);
+  const [jobSkills, setJobSkills] = useState<Record<string, JobSkillData>>({});
+  const [taskStatusFilter, setTaskStatusFilter] = useState<"SUCCESS" | "FAILED" | "RUNNING" | "PENDING">("SUCCESS");
+  const [reviewFilter, setReviewFilter] = useState<"all" | "PENDING" | "PASSED">("all");
   const [loading, setLoading] = useState(true);
   const [openingId, setOpeningId] = useState("");
 
@@ -57,7 +61,8 @@ function ReviewWorkbenchPage() {
   const [newSkillName, setNewSkillName] = useState("");
   const [keyword, setKeyword] = useState("");
   const [appliedKeyword, setAppliedKeyword] = useState("");
-  const [similarSkills, setSimilarSkills] = useState<JobSkillResolutionCandidate[]>([]);
+  const [similarSkills, setSimilarSkills] = useState<JobSkillResolutionSimilarSkill[]>([]);
+  const [skillNames, setSkillNames] = useState<Record<string, string>>({});
   const [skillResults, setSkillResults] = useState<CanonicalSkillItem[]>([]);
   const [skillTotal, setSkillTotal] = useState(0);
   const [skillPage, setSkillPage] = useState(1);
@@ -66,46 +71,37 @@ function ReviewWorkbenchPage() {
   const [searching, setSearching] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // 后端 task_status 是单值筛选（PENDING/RUNNING/SUCCESS/FAILED），无法表达「处理中=PENDING+RUNNING」，
-  // 因此与岗位分析页一致：拉全量后在本地按三分类 + 审核状态过滤。
-  const fetchList = async () => {
+  // 任务索引、任务摘要与岗位技能正文分别批量解析，但只处理当前服务端页。
+  const fetchList = useCallback(async () => {
     setLoading(true);
     try {
-      const firstPage = await listSkillResolutionTasks({ page: 0, pageSize: MAX_PAGE_SIZE });
-      const allItems = [...(firstPage.data.items ?? [])];
-      const pageCount = Math.ceil((firstPage.data.total ?? 0) / MAX_PAGE_SIZE);
-      for (let p = 1; p < pageCount; p += 1) {
-        const response = await listSkillResolutionTasks({ page: p, pageSize: MAX_PAGE_SIZE });
-        allItems.push(...(response.data.items ?? []));
-      }
-      setItems(allItems);
+      const response = await listSkillResolutionTasks({
+        page: page - 1,
+        pageSize: PAGE_SIZE,
+        taskStatus: taskStatusFilter,
+        reviewStatus: reviewFilter === "all" ? undefined : reviewFilter,
+      });
+      setItems(response.data.items ?? []);
+      setTotal(response.data.total ?? 0);
+      setJobSkills(Object.fromEntries(
+        (response.data.jobSkills ?? []).map((jobSkill) => [jobSkill.id, jobSkill]),
+      ));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "归一任务加载失败");
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, reviewFilter, taskStatusFilter]);
 
-  useEffect(() => { void fetchList(); }, []);
-
-  const visibleItems = items.filter((item) => {
-    if (taskStatusFilter === "processing") {
-      if (item.taskStatus !== "PENDING" && item.taskStatus !== "RUNNING") return false;
-    } else if (item.taskStatus !== (taskStatusFilter === "success" ? "SUCCESS" : "FAILED")) {
-      return false;
-    }
-    if (reviewFilter === "pending") return item.reviewStatus === "PENDING";
-    if (reviewFilter === "reviewed") return item.reviewStatus === "PASSED";
-    return true;
-  });
-
-  const pagedItems = visibleItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  // eslint-disable-next-line react/set-state-in-effect -- 筛选与页码变化时需要同步发起当前服务端页请求。
+  useEffect(() => { void fetchList(); }, [fetchList]);
 
   const initializeDetail = (nextDetail: JobSkillResolutionTaskDetail) => {
     setDetail(nextDetail);
     setKeyword("");
     setAppliedKeyword("");
     setSimilarSkills([]);
+    setSkillNames(Object.fromEntries(nextDetail.canonicalSkills.map((skill) => [skill.id, skill.name])));
     setSkillResults([]);
     setSkillTotal(0);
     setSkillPage(1);
@@ -137,7 +133,7 @@ function ReviewWorkbenchPage() {
     setOpeningId(String(id));
     try {
       const response = await getSkillResolutionTask(id);
-      initializeDetail(response.data.resolution);
+      initializeDetail(response.data);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "归一任务详情加载失败");
     } finally {
@@ -150,8 +146,16 @@ function ReviewWorkbenchPage() {
     if (!detail || action !== "SELECT_EXISTING") return;
     let active = true;
     listSkillResolutionSimilarSkills(detail.task.id)
-      .then((response) => {
-        if (active) setSimilarSkills(response.data.items ?? []);
+      .then(async (response) => {
+        const nextSimilarSkills = response.data.items ?? [];
+        if (!active) return;
+        setSimilarSkills(nextSimilarSkills);
+        const details = await lookupCanonicalSkills(nextSimilarSkills.map((skill) => skill.skillId));
+        if (!active) return;
+        setSkillNames((current) => ({
+          ...current,
+          ...Object.fromEntries(details.data.items.map((skill) => [skill.id, skill.name])),
+        }));
       })
       .catch((error) => {
         if (active) toast.error(error instanceof Error ? error.message : "相似技能加载失败");
@@ -166,7 +170,7 @@ function ReviewWorkbenchPage() {
   useEffect(() => {
     if (!detail || action !== "SELECT_EXISTING") return;
     let active = true;
-    searchCanonicalSkills({
+    loadCanonicalSkillPage({
       page: skillPage - 1,
       pageSize: SKILL_PAGE_SIZE,
       keyword: appliedKeyword || undefined,
@@ -222,9 +226,9 @@ function ReviewWorkbenchPage() {
       const body = effectiveAction === "CREATE_NEW"
         ? { resolutionAction: effectiveAction, newSkillName: newSkillName.trim() } as const
         : { resolutionAction: effectiveAction, skillId: selectedSkillId } as const;
-      const response = await reviewSkillResolutionTask(detail.task.id, body);
-      initializeDetail(response.data.resolution);
+      await reviewSkillResolutionTask(detail.task.id, body);
       toast.success("技能归一审核已提交");
+      await openDetail(detail.task.id);
       await fetchList();
     } catch (error) {
       if (isHttpErrorStatus(error, 409)) {
@@ -242,6 +246,7 @@ function ReviewWorkbenchPage() {
   const closeDetail = () => {
     setDetail(null);
     setSimilarSkills([]);
+    setSkillNames({});
     setSkillResults([]);
     setSkillTotal(0);
   };
@@ -249,7 +254,7 @@ function ReviewWorkbenchPage() {
   const canReview = detail?.task.reviewStatus === "PENDING"
     && (detail.task.taskStatus === "SUCCESS" || detail.task.taskStatus === "FAILED");
   const canSelectCandidate = detail?.task.taskStatus === "SUCCESS" && detail.candidates.length > 0;
-  const pageCount = Math.max(1, Math.ceil(visibleItems.length / PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const skillPageCount = Math.max(1, Math.ceil(skillTotal / SKILL_PAGE_SIZE));
 
   return (
@@ -285,21 +290,29 @@ function ReviewWorkbenchPage() {
         sections={[
           {
             value: taskStatusFilter,
-            onChange: (value) => { setTaskStatusFilter(value as "success" | "failed" | "processing"); setReviewFilter("all"); setPage(1); },
+            onChange: (value) => {
+              setTaskStatusFilter(value as "SUCCESS" | "FAILED" | "RUNNING" | "PENDING");
+              setReviewFilter("all");
+              setPage(1);
+            },
             options: [
-              { value: "success", label: `成功 ${items.filter((i) => i.taskStatus === "SUCCESS").length}` },
-              { value: "failed", label: `失败 ${items.filter((i) => i.taskStatus === "FAILED").length}` },
-              { value: "processing", label: `处理中 ${items.filter((i) => i.taskStatus === "PENDING" || i.taskStatus === "RUNNING").length}` },
+              { value: "SUCCESS", label: "成功" },
+              { value: "FAILED", label: "失败" },
+              { value: "RUNNING", label: "处理中" },
+              { value: "PENDING", label: "等待中" },
             ],
           },
-
-          ...(taskStatusFilter === "success" || taskStatusFilter === "failed" ? [{
+          // 成功与失败任务可审核；运行中与等待中任务只展示执行状态。
+          ...((taskStatusFilter === "SUCCESS" || taskStatusFilter === "FAILED") ? [{
             value: reviewFilter,
-            onChange: (value: string) => setReviewFilter(value as "all" | "pending" | "reviewed"),
+            onChange: (value: string) => {
+              setReviewFilter(value as "all" | "PENDING" | "PASSED");
+              setPage(1);
+            },
             options: [
               { value: "all", label: "全部" },
-              { value: "pending", label: "待复核" },
-              { value: "reviewed", label: "已复核" },
+              { value: "PENDING", label: "待复核" },
+              { value: "PASSED", label: "已复核" },
             ],
           }] : []),
         ]}
@@ -344,8 +357,9 @@ function ReviewWorkbenchPage() {
                         {item.reviewStatus === "PENDING" ? "审核" : "查看"}
                       </button>
                     </td>
-                  </tr>
-                ))}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -435,7 +449,7 @@ function ReviewWorkbenchPage() {
                   ) : detail.candidates.map((candidate) => (
                     <button
                       type="button"
-                      key={candidate.skillId}
+                      key={candidate.id}
                       className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left disabled:cursor-not-allowed"
                       style={{
                         border: `1px solid ${String(selectedSkillId) === String(candidate.skillId) ? P.primary : P.border}`,
@@ -560,7 +574,7 @@ function ReviewWorkbenchPage() {
                               background: skill.is_embed ? `${P.green}12` : `${P.amber}12`,
                               color: skill.is_embed ? P.green : P.amber,
                             }}>
-                              {skill.is_embed ? "已向量化" : "未向量化"}
+                              {skill.isEmbed ? "已向量化" : "未向量化"}
                             </span>
                           </button>
                         ))}
