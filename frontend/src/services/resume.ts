@@ -41,6 +41,22 @@ export function createResumeUploadUrl(params: CreateResumeUploadParams) {
   });
 }
 
+// 使用后端签发的地址直接上传 MinIO；该请求不能携带 Gateway 的鉴权头。
+export async function uploadResumeFile(
+  upload: Pick<ResumeUploadUrlResult, "uploadUrl" | "method" | "contentType">,
+  file: Blob,
+) {
+  const response = await fetch(upload.uploadUrl, {
+    method: upload.method || "PUT",
+    headers: upload.contentType ? { "Content-Type": upload.contentType } : undefined,
+    body: file,
+  });
+  if (!response.ok) {
+    // MinIO 返回非 2xx 时禁止继续调用 upload-complete，避免后端处理不存在的对象。
+    throw new Error(`文件上传失败 (${response.status})`);
+  }
+}
+
 // 完成上传并结构化分析（前端直传 MinIO 后调用；同步 OCR + 结构化 + 校验五类字段）
 export function completeResumeUpload(params: CompleteResumeUploadParams) {
   return request<ResumeMutationResult>(`${BASE}/upload-complete`, {

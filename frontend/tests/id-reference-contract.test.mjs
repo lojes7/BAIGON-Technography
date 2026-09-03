@@ -154,3 +154,37 @@ test("爬虫与简历命令响应不再回显对象，只保留资源 ID", async
   assert.equal("status" in stopped.data, false);
   assert.equal(calls[2].url, "/api/auth/resumes");
 });
+
+test("简历文件按签发契约直传 MinIO，且不携带 Gateway 鉴权头", async () => {
+  const file = new Blob(["resume-content"], { type: "application/pdf" });
+  let captured;
+  globalThis.fetch = async (url, init = {}) => {
+    captured = { url: String(url), init };
+    return { ok: true, status: 200 };
+  };
+
+  await resume.uploadResumeFile({
+    uploadUrl: "http://localhost:9000/resumes/signed-object?signature=keep-intact",
+    method: "PUT",
+    contentType: "application/pdf",
+  }, file);
+
+  assert.equal(captured.url, "http://localhost:9000/resumes/signed-object?signature=keep-intact");
+  assert.equal(captured.init.method, "PUT");
+  assert.equal(captured.init.headers["Content-Type"], "application/pdf");
+  assert.equal(captured.init.headers.Authorization, undefined);
+  assert.equal(captured.init.body, file);
+});
+
+test("MinIO 上传失败时立即报错，不允许把失败 PUT 当作上传成功", async () => {
+  globalThis.fetch = async () => ({ ok: false, status: 403 });
+
+  await assert.rejects(
+    () => resume.uploadResumeFile({
+      uploadUrl: "http://localhost:9000/resumes/expired-object",
+      method: "PUT",
+      contentType: "application/pdf",
+    }, new Blob(["resume-content"])),
+    /文件上传失败 \(403\)/,
+  );
+});

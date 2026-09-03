@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { Upload, FileText, Eye, Pencil, Plus, Trash2, X } from "lucide-react";
-import { getMyResume, createResumeUploadUrl, completeResumeUpload, editMyResume } from "../services/resume";
+import { getMyResume, createResumeUploadUrl, uploadResumeFile, completeResumeUpload, editMyResume } from "../services/resume";
 import type {
   ResumeData, ResumeFields, ResumeProficiency,
   EducationExperience, WorkExperience, ProjectExperience, ProfessionalSkill, ResumeAward,
@@ -221,15 +221,8 @@ export default function MyResume() {
     setUploading(true);
     try {
       const urlRes = await createResumeUploadUrl({ fileName: file.name, fileSize: file.size });
-      //const { uploadId, uploadUrl, method, contentType } = urlRes.data;
-      //await fetch(uploadUrl, { method: method || "PUT", headers: contentType ? { "Content-Type": contentType } : {}, body: file });
-      const { uploadId, uploadUrl, method } = urlRes.data;
-      const body = await file.arrayBuffer();
-      //await fetch(uploadUrl, { method: method || "PUT", body });
-      await fetch(uploadUrl, {
-        method: method || "PUT",
-        body
-      });
+      const { uploadId } = urlRes.data;
+      await uploadResumeFile(urlRes.data, file);
       await completeResumeUpload({ uploadId, fileName: file.name });
       toast.success("上传成功，结构化分析已完成");
       fetchResume();
